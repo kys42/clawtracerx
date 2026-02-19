@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% set active = "sessions" %}
+{% block title %}Session {{ session_id[:10] }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <a href="/" class="back-link">&larr; Sessions</a>
+  <div class="header-actions">
+    <a href="/session/{{ session_id }}/graph" class="btn btn-outline" id="graph-btn">Graph View</a>
+  </div>
+</div>
+
+<div id="session-header" class="card session-header">
+  <div class="loading">Loading session...</div>
+</div>
+
+<div id="turns-container"></div>
+
+<!-- Raw log modal -->
+<div id="raw-modal" class="modal" onclick="if(event.target===this)closeRawModal()">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Raw JSONL — <span id="raw-title"></span></h3>
+      <button class="btn-close" onclick="closeRawModal()">&times;</button>
+    </div>
+    <pre id="raw-content" class="raw-json"></pre>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SESSION_ID = '{{ session_id }}';
+let sessionData = null;
+
+async function loadSession() {
+  sessionData = await fetchJSON(`/api/session/${SESSION_ID}`);
+  renderHeader(sessionData);
+  renderTurns(sessionData.turns);
+}
+
+function renderHeader(s) {
+  qs('#session-header').innerHTML = `
+    <div class="session-meta">
+      <h2>
+        <code class="session-id">${s.session_id.slice(0,12)}</code>
+        <span class="badge badge-agent">${s.agent_id}</span>
+        <span class="badge badge-${s.session_type}">${s.session_type}</span>
+      </h2>
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Started</span>
+          <span class="meta-value">${fmtDate(s.started_at)}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Model</span>
+          <span class="meta-value model-name">${s.model}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Provider</span>
+          <span class="meta-value">${s.provider}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Duration</span>
+          <span class="meta-value">${fmtDuration(s.total_duration_ms)}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Cost</span>
+          <span class="meta-value cost">${fmtCost(s.total_cost)}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Tokens</span>
+          <span class="meta-value">${fmtTokens(s.total_tokens)}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Turns</span>
+          <span class="meta-value">${s.turns.length}</span>
+        </div>
+        ${s.compactions ? `<div class="meta-item"><span class="meta-label">Compactions</span><span class="meta-value">${s.compactions}</span></div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderTurns(turns) {
+  const container = qs('#turns-container');
+  container.innerHTML = turns.map(t => renderTurn(t)).join('');
+}
+
+function renderTurn(t) {
+  const hasErrors = t.tool_calls.some(tc => tc.is_error);
+  const turnClass = hasErrors ? 'turn-card has-errors' : 'turn-card';
+
+  return `
+  <div class="${turnClass}" id="turn-${t.index}">
+    <div class="turn-header" onclick="toggleTurn(${t.index})">
+      <div class="turn-left">
+        <span class="turn-index">Turn ${t.index}</span>
+        <span class="badge badge-${t.user_source}">${t.user_source}</span>
+        <span class="turn-preview">${escHtml(truncate(t.user_text.replace(/\\n/g, ' '), 80))}</span>
+      </div>
+      <div class="turn-stats">
+        ${t.tool_calls.length ? `<span class="stat-chip tools">${t.tool_calls.length} tools</span>` : ''}
+        ${t.subagent_spawns.length ? `<span class="stat-chip subagents">${t.subagent_spawns.length} subagents</span>` : ''}
+        <span class="stat-chip duration">${fmtDuration(t.duration_ms)}</span>
+        <span class="stat-chip cost">${fmtCost(t.cost.total || 0)}</span>
+        <span class="stat-chip tokens">${fmtTokens(t.usage.totalTokens || 0)}</span>
+        <button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" title="View raw JSONL">{ }</button>
+      </div>
+    </div>
+    <div class="turn-body" id="turn-body-${t.index}" style="display:none">
+      <div class="turn-detail">
+        <!-- User message -->
+        <div class="msg-block user-msg">
+          <div class="msg-role">User</div>
+          <pre class="msg-content">${escHtml(t.user_text.slice(0, 2000))}</pre>
+        </div>
+
+        <!-- Token breakdown -->
+        <div class="token-bar">
+          ${renderTokenBar(t.usage)}
+        </div>
+
+        <!-- Thinking -->
+        ${t.thinking_text ? `
+        <div class="thinking-block">
+          <div class="thinking-label">Thinking</div>
+          <pre class="thinking-content">${escHtml(t.thinking_text)}</pre>
+        </div>` : ''}
+        ${t.thinking_encrypted ? '<div class="thinking-block encrypted"><span class="thinking-label">Thinking [encrypted]</span></div>' : ''}
+
+        <!-- Tool calls -->
+        ${t.tool_calls.length ? `
+        <div class="tool-calls">
+          <div class="tc-header">Tool Calls</div>
+          ${t.tool_calls.map(tc => renderToolCall(tc)).join('')}
+        </div>` : ''}
+
+        <!-- Subagent spawns -->
+        ${t.subagent_spawns.map(s => renderSubagent(s)).join('')}
+
+        <!-- Assistant response -->
+        ${t.assistant_texts.map(txt => `
+        <div class="msg-block assistant-msg">
+          <div class="msg-role">Assistant</div>
+          <pre class="msg-content">${escHtml(txt)}</pre>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderToolCall(tc) {
+  const icon = toolIcon(tc.name);
+  const errorClass = tc.is_error ? 'tc-error' : '';
+  const durStr = tc.duration_ms != null ? `<span class="tc-dur">${fmtDuration(tc.duration_ms)}</span>` : '';
+  const sizeStr = tc.result_size > 500 ? `<span class="tc-size">${fmtSize(tc.result_size)}</span>` : '';
+
+  let argSummary = '';
+  if (tc.arguments.file_path) argSummary = shortenPath(tc.arguments.file_path);
+  else if (tc.arguments.command) argSummary = truncate(tc.arguments.command, 80);
+  else if (tc.arguments.pattern) argSummary = tc.arguments.pattern;
+
+  return `
+  <div class="tc-row ${errorClass}" onclick="toggleTcResult(this)">
+    <span class="tc-icon">${icon}</span>
+    <span class="tc-name">${tc.name}</span>
+    <span class="tc-args">${escHtml(argSummary)}</span>
+    ${durStr}${sizeStr}
+    ${tc.is_error ? '<span class="tc-err-badge">ERROR</span>' : ''}
+    <div class="tc-result" style="display:none">
+      <pre>${escHtml(tc.result_text)}</pre>
+    </div>
+  </div>`;
+}
+
+function renderSubagent(s) {
+  const outcomeClass = s.outcome === 'ok' ? 'outcome-ok' : 'outcome-error';
+  const durStr = s.duration_ms ? fmtDuration(s.duration_ms) : '?';
+  const costStr = s.cost_usd != null ? fmtCost(s.cost_usd) : '?';
+  const tokensStr = s.total_tokens != null ? fmtTokens(s.total_tokens) : '?';
+
+  let childHtml = '';
+  if (s.child_turns && s.child_turns.length) {
+    childHtml = `
+    <div class="subagent-children">
+      <div class="subagent-children-header" onclick="toggleEl(this.nextElementSibling)">
+        ${s.child_turns.length} turns in child session (click to expand)
+      </div>
+      <div class="subagent-turns" style="display:none">
+        ${s.child_turns.map(ct => `
+          <div class="child-turn">
+            <div class="child-turn-header">Turn ${ct.index} — ${ct.tool_calls.length} tools — ${fmtDuration(ct.duration_ms)}</div>
+            ${ct.tool_calls.map(tc => renderToolCall(tc)).join('')}
+            ${ct.assistant_texts.map(txt => `<pre class="child-response">${escHtml(truncate(txt, 500))}</pre>`).join('')}
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+  }
+
+  return `
+  <div class="subagent-block">
+    <div class="subagent-header">
+      <span class="subagent-icon">&#x1f500;</span>
+      <span class="subagent-label">${escHtml(s.label || 'subagent')}</span>
+      <span class="badge ${outcomeClass}">${s.outcome}</span>
+      <span class="subagent-stats">${durStr} &middot; ${costStr} &middot; ${tokensStr} tokens</span>
+      ${s.child_session_id ? `<a href="/session/${s.child_session_id}" class="btn btn-sm">Open Session</a>` : ''}
+    </div>
+    <div class="subagent-task">${escHtml(truncate(s.task, 200))}</div>
+    ${childHtml}
+  </div>`;
+}
+
+function renderTokenBar(usage) {
+  const input = usage.input || 0;
+  const output = usage.output || 0;
+  const cache = usage.cacheRead || 0;
+  const total = input + output + cache || 1;
+  return `
+    <div class="token-segments">
+      <div class="token-seg input" style="width:${input/total*100}%" title="Input: ${fmtTokens(input)}"></div>
+      <div class="token-seg cache" style="width:${cache/total*100}%" title="Cache: ${fmtTokens(cache)}"></div>
+      <div class="token-seg output" style="width:${output/total*100}%" title="Output: ${fmtTokens(output)}"></div>
+    </div>
+    <div class="token-legend">
+      <span class="legend-item"><span class="dot input"></span>In: ${fmtTokens(input)}</span>
+      <span class="legend-item"><span class="dot cache"></span>Cache: ${fmtTokens(cache)}</span>
+      <span class="legend-item"><span class="dot output"></span>Out: ${fmtTokens(output)}</span>
+    </div>
+  `;
+}
+
+function toggleTurn(idx) {
+  const body = qs(`#turn-body-${idx}`);
+  body.style.display = body.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleTcResult(el) {
+  const result = el.querySelector('.tc-result');
+  if (result) result.style.display = result.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleEl(el) {
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function showRaw(turnIndex) {
+  const modal = qs('#raw-modal');
+  qs('#raw-title').textContent = `Turn ${turnIndex}`;
+  qs('#raw-content').textContent = 'Loading...';
+  modal.style.display = 'flex';
+
+  const data = await fetchJSON(`/api/session/${SESSION_ID}/raw/${turnIndex}`);
+  qs('#raw-content').textContent = JSON.stringify(data, null, 2);
+}
+
+function closeRawModal() {
+  qs('#raw-modal').style.display = 'none';
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRawModal(); });
+loadSession();
+</script>
+{% endblock %}

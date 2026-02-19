@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% set active = "cost" %}
+{% block title %}Cost Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Cost Dashboard</h1>
+  <div class="filters">
+    <select id="filter-period" class="input-select" onchange="loadCost()">
+      <option value="today">Today</option>
+      <option value="week" selected>This Week</option>
+      <option value="month">This Month</option>
+      <option value="all">All Time</option>
+    </select>
+    <select id="filter-agent" class="input-select" onchange="loadCost()">
+      <option value="all">All Agents</option>
+    </select>
+  </div>
+</div>
+
+<div class="cost-summary" id="cost-summary">
+  <div class="loading">Loading...</div>
+</div>
+
+<div class="cost-grid">
+  <div class="card">
+    <h3>Cost by Agent</h3>
+    <div id="chart-agent" class="bar-chart"></div>
+  </div>
+  <div class="card">
+    <h3>Cost by Type</h3>
+    <div id="chart-type" class="bar-chart"></div>
+  </div>
+  <div class="card">
+    <h3>Cost by Model</h3>
+    <div id="chart-model" class="bar-chart"></div>
+  </div>
+  <div class="card full-width">
+    <h3>Daily Cost</h3>
+    <div id="chart-daily" class="daily-chart"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadCost() {
+  const period = qs('#filter-period').value;
+  const agent = qs('#filter-agent').value;
+  const data = await fetchJSON(`/api/cost?period=${period}&agent=${agent}`);
+
+  // Summary cards
+  qs('#cost-summary').innerHTML = `
+    <div class="summary-card">
+      <div class="summary-value cost">${fmtCost(data.total_cost)}</div>
+      <div class="summary-label">Total Cost</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-value">${fmtTokens(data.total_tokens)}</div>
+      <div class="summary-label">Total Tokens</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-value">${data.session_count}</div>
+      <div class="summary-label">Sessions</div>
+    </div>
+  `;
+
+  renderBarChart('chart-agent', data.by_agent, data.total_cost);
+  renderBarChart('chart-type', data.by_type, data.total_cost);
+  renderBarChart('chart-model', data.by_model, data.total_cost);
+  renderDailyChart('chart-daily', data.by_day);
+}
+
+function renderBarChart(containerId, dataMap, total) {
+  const container = qs(`#${containerId}`);
+  if (!dataMap || !Object.keys(dataMap).length) {
+    container.innerHTML = '<div class="empty">No data</div>';
+    return;
+  }
+  const max = Math.max(...Object.values(dataMap), 0.001);
+  container.innerHTML = Object.entries(dataMap).map(([label, value]) => {
+    const pct = (value / max) * 100;
+    const share = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+    return `
+    <div class="bar-row">
+      <span class="bar-label">${label}</span>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pct}%"></div>
+      </div>
+      <span class="bar-value">${fmtCost(value)} <span class="dim">(${share}%)</span></span>
+    </div>`;
+  }).join('');
+}
+
+function renderDailyChart(containerId, dataMap) {
+  const container = qs(`#${containerId}`);
+  if (!dataMap || !Object.keys(dataMap).length) {
+    container.innerHTML = '<div class="empty">No data</div>';
+    return;
+  }
+  const entries = Object.entries(dataMap);
+  const max = Math.max(...entries.map(e => e[1]), 0.001);
+  const barWidth = Math.max(20, Math.min(60, (container.clientWidth - 40) / entries.length - 4));
+
+  container.innerHTML = `
+    <div class="daily-bars">
+      ${entries.map(([day, value]) => {
+        const pct = (value / max) * 100;
+        const shortDay = day.slice(5); // MM-DD
+        return `
+        <div class="daily-bar-col" style="width:${barWidth}px">
+          <div class="daily-bar-value">${fmtCost(value)}</div>
+          <div class="daily-bar-track">
+            <div class="daily-bar-fill" style="height:${pct}%"></div>
+          </div>
+          <div class="daily-bar-label">${shortDay}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+async function loadAgents() {
+  const agents = await fetchJSON('/api/agents');
+  const sel = qs('#filter-agent');
+  agents.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = a.id;
+    sel.appendChild(opt);
+  });
+}
+
+loadAgents();
+loadCost();
+</script>
+{% endblock %}

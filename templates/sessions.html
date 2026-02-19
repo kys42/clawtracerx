@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% set active = "sessions" %}
+{% block title %}Sessions{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Sessions</h1>
+  <div class="filters">
+    <select id="filter-agent" class="input-select">
+      <option value="all">All Agents</option>
+    </select>
+    <select id="filter-type" class="input-select">
+      <option value="">All Types</option>
+      <option value="cron">Cron</option>
+      <option value="heartbeat">Heartbeat</option>
+      <option value="chat">Chat</option>
+      <option value="subagent">Subagent</option>
+    </select>
+    <select id="filter-count" class="input-select">
+      <option value="30">30</option>
+      <option value="50" selected>50</option>
+      <option value="100">100</option>
+      <option value="200">200</option>
+    </select>
+    <button class="btn btn-primary" onclick="loadSessions()">Refresh</button>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table" id="sessions-table">
+    <thead>
+      <tr>
+        <th>Session</th>
+        <th>Agent</th>
+        <th>Type</th>
+        <th>Model</th>
+        <th class="num">Turns</th>
+        <th class="num">Tokens</th>
+        <th class="num">Cost</th>
+        <th class="num">Size</th>
+        <th>Date</th>
+      </tr>
+    </thead>
+    <tbody id="sessions-body">
+      <tr><td colspan="9" class="loading">Loading...</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadSessions() {
+  const agent = qs('#filter-agent').value;
+  const type = qs('#filter-type').value;
+  const last = qs('#filter-count').value;
+  let url = `/api/sessions?agent=${agent}&last=${last}`;
+  if (type) url += `&type=${type}`;
+
+  const data = await fetchJSON(url);
+  const tbody = qs('#sessions-body');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">No sessions found</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(s => `
+    <tr class="clickable" onclick="location.href='/session/${s.session_id}'">
+      <td><code class="session-id">${s.session_id.slice(0, 10)}</code></td>
+      <td><span class="badge badge-agent">${s.agent_id}</span></td>
+      <td><span class="badge badge-${s.type}">${s.type}</span></td>
+      <td class="model-name">${s.model || '—'}</td>
+      <td class="num">${s.turns}</td>
+      <td class="num">${fmtTokens(s.tokens)}</td>
+      <td class="num cost">${fmtCost(s.cost)}</td>
+      <td class="num">${fmtSize(s.file_size)}</td>
+      <td class="timestamp">${fmtDate(s.modified || s.started_at)}</td>
+    </tr>
+  `).join('');
+}
+
+async function loadAgents() {
+  const agents = await fetchJSON('/api/agents');
+  const sel = qs('#filter-agent');
+  agents.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = `${a.id} (${a.sessions})`;
+    sel.appendChild(opt);
+  });
+  // Sidebar agent info
+  qs('#agent-list').innerHTML = agents.map(a =>
+    `<div class="agent-badge">${a.id} <span class="dim">${a.sessions}</span></div>`
+  ).join('');
+}
+
+loadAgents();
+loadSessions();
+</script>
+{% endblock %}

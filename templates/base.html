@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}ocmon{% endblock %} — OpenClaw Monitor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-icon">&#x1f441;</span>
+      <span class="brand-text">ocmon</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a href="/" class="nav-link {% if active == 'sessions' %}active{% endif %}">
+        <span class="nav-icon">&#x1f4cb;</span> Sessions
+      </a></li>
+      <li><a href="/cost" class="nav-link {% if active == 'cost' %}active{% endif %}">
+        <span class="nav-icon">&#x1f4b0;</span> Cost
+      </a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <div class="sidebar-info" id="agent-list"></div>
+    </div>
+  </nav>
+
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
