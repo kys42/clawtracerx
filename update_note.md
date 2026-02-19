@@ -1,3 +1,71 @@
+## [2026-02-20] - 웹 대시보드 버그 수정 및 기능 개선 (5개 이슈)
+
+### 작업 내용
+- 웹 대시보드 테스트 중 발견된 5개 버그/기능 이슈 일괄 수정
+- 실제 세션 데이터(aki 98dfebb5: 1030턴, 63 서브에이전트, 8 compaction)로 검증
+
+### 수정 이슈 목록
+
+#### 이슈 1 (CRITICAL): 서브에이전트 세션 파일 연결 안 됨
+- **근본 원인**: OpenClaw이 서브에이전트 완료 후 세션 파일을 soft-delete → `{uuid}.jsonl.deleted.{timestamp}`로 rename. `find_subagent_child_session()`이 `.jsonl` 확장자만 검색
+- **추가 발견**: 서브에이전트 announce 메시지에 풍부한 stats 포함 (runtime, tokens, sessionKey, sessionId, transcript 경로)
+  - announce 포맷: `[Day YYYY-MM-DD HH:MM TZ] A subagent task "label" just completed...Stats: runtime Xm Ys • tokens XK (in XK / out XK) • sessionKey ... • sessionId ... • transcript ...`
+  - queued 포맷: `[Day ...] [Queued announce messages...] --- Queued #N A subagent task...` (한 메시지에 여러 announce)
+- **수정**:
+  - `find_subagent_child_session()`: `.jsonl.deleted.*` 패턴도 검색
+  - `_resolve()` (web.py): `.deleted.*` 패턴도 검색
+  - announce 메시지 정규식 파싱 → `_ANNOUNCE_RE` (sessionKey로 spawn과 매칭)
+  - transcript 경로에서 .deleted 파일도 resolve하여 child_turns 복원
+  - 파일명에서 session_id 추출 시 `.jsonl.deleted.*` 처리
+- **검증**: aki 세션 63개 spawn 중 52개 announce 매칭 성공
+
+#### 이슈 2 (HIGH): 빈 Assistant 박스 표시
+- **근본 원인**: `{"type":"text","text":""}` 빈 텍스트 블록이 `assistant_texts`에 추가됨
+- **수정**: `parse_session()` line ~552: `strip()` 후 빈 문자열 필터링
+
+#### 이슈 3 (NEW): Context Window 표시
+- **데이터**: `compaction` 이벤트의 `firstKeptEntryId` — 이 entry ID 이전의 모든 entry는 context에서 제거됨
+- **수정**:
+  - `CompactionEvent` 데이터클래스 추가 (first_kept_entry_id, tokens_before, timestamp)
+  - `SessionAnalysis.compaction_events` 리스트 추가
+  - `Turn.in_context: bool` — 마지막 compaction의 firstKeptEntryId 기준 계산
+  - `_compute_context_status()`: entry ID 순서로 evicted turn 판별
+  - 웹 UI: compacted 턴 회색+반투명 처리, context 경계에 노란 divider 표시
+
+#### 이슈 4 (MEDIUM): User vs System 메시지 구분
+- **수정**: `_detect_source()` 대폭 보강
+  - `[Mon 2026-02-16 ...]` 타임스탬프 접두사 패턴 인식
+  - `A subagent task` → subagent_announce, `A cron job` → cron_announce
+  - `[message_id:]` → discord/telegram 채널 구분
+  - 소스별 색상 배지: chat(초록), cron/cron_announce(시안), heartbeat(마젠타), discord(파란), subagent_announce(회색), system(회색)
+  - 신규 배지 CSS: `.badge-discord`, `.badge-telegram`, `.badge-cron_announce`, `.badge-compacted`
+
+#### 이슈 5 (UX): 서브에이전트 인라인 펼치기
+- **수정**:
+  - 서브에이전트 블록: 헤더 클릭으로 접기/펼치기 (task + child turns)
+  - `renderChildTurn()`: child turn별 tools/thinking/response 표시 + 접기/펼치기
+  - 재귀 표시: 서브에이전트 안의 서브에이전트도 depth 기반 들여쓰기로 표시
+  - announce_stats 폴백: child_turns 없을 때 announce의 runtime/tokens 표시
+  - `.outcome-unknown` 스타일 추가 (회색 배지)
+
+### 변경 파일 목록
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `parser.py` | `.deleted` 파일 검색, announce 파싱, 빈 text 필터, CompactionEvent, in_context, source 세분화 |
+| `web.py` | `_resolve()` .deleted 지원, compaction_events/in_context/announce_stats 직렬화 |
+| `templates/detail.html` | compacted turn 시각화, compaction divider, source 배지, 서브에이전트 inline expand, 재귀 child turn |
+| `static/style.css` | compacted/divider 스타일, 신규 배지 색상(discord/telegram/cron_announce/compacted), subagent expand UI |
+
+### 기술 발견사항 (OpenClaw 동작 분석)
+
+- **서브에이전트 lifecycle**: sessions_spawn → child session JSONL 생성 → 완료 시 announce 메시지 → child JSONL soft-delete (`.jsonl.deleted.{ISO-timestamp}`)
+- **sessionKey vs sessionId**: sessionKey(spawn 시 생성, format: `agent:name:subagent:UUID`)의 UUID와 sessionId(실행 시 생성)는 **서로 다른 UUID**. sessionKey의 UUID가 자식 세션 파일명에 사용됨
+- **compaction**: entry별 8-char hex `id` 필드로 추적. `firstKeptEntryId` 이전 entry는 context window에서 제거
+- **announce 메시지**: agent가 busy할 때 쌓여서 `[Queued announce messages while agent was busy]`로 일괄 전달됨
+
+---
+
 ## [2026-02-20] - ocmon (OpenClaw Agent Monitor) 전체 구현
 
 ### 작업 내용

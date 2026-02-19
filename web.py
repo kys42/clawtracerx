@@ -187,15 +187,24 @@ def create_app():
 # --- Helpers ---
 
 def _resolve(session_id: str):
-    """Resolve session ID to file path."""
+    """Resolve session ID to file path.
+
+    Searches for both active .jsonl files and soft-deleted
+    .jsonl.deleted.{timestamp} files.
+    """
     for agent_dir in AGENTS_DIR.iterdir():
         if not agent_dir.is_dir():
             continue
         sessions_dir = agent_dir / "sessions"
         if not sessions_dir.exists():
             continue
+        # Try exact .jsonl first
         for f in sessions_dir.glob(f"{session_id}*.jsonl"):
             return f
+        # Try .deleted.* variants
+        for f in sessions_dir.iterdir():
+            if f.name.startswith(session_id) and ".jsonl.deleted." in f.name:
+                return f
     return None
 
 
@@ -213,6 +222,14 @@ def _serialize_analysis(analysis):
         "total_tokens": analysis.total_tokens,
         "total_duration_ms": analysis.total_duration_ms,
         "compactions": analysis.compactions,
+        "compaction_events": [
+            {
+                "first_kept_entry_id": ce.first_kept_entry_id,
+                "tokens_before": ce.tokens_before,
+                "timestamp": ce.timestamp.isoformat() if ce.timestamp else None,
+            }
+            for ce in analysis.compaction_events
+        ],
         "turns": [_serialize_turn(t) for t in analysis.turns],
     }
 
@@ -235,6 +252,7 @@ def _serialize_turn(turn):
         "stop_reason": turn.stop_reason,
         "duration_ms": turn.duration_ms,
         "timestamp": turn.timestamp.isoformat() if turn.timestamp else None,
+        "in_context": turn.in_context,
     }
 
 
@@ -269,6 +287,7 @@ def _serialize_spawn(spawn):
         "total_tokens": spawn.total_tokens,
         "cost_usd": round(spawn.cost_usd, 6) if spawn.cost_usd else None,
         "outcome": spawn.outcome,
+        "announce_stats": spawn.announce_stats,
     }
 
 

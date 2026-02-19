@@ -31,12 +31,13 @@
 {% block scripts %}
 <script>
 const SESSION_ID = '{{ session_id }}';
+const SYSTEM_SOURCES = new Set(['system', 'subagent_announce', 'cron_announce']);
 let sessionData = null;
 
 async function loadSession() {
   sessionData = await fetchJSON(`/api/session/${SESSION_ID}`);
   renderHeader(sessionData);
-  renderTurns(sessionData.turns);
+  renderTurns(sessionData.turns, sessionData.compaction_events || []);
 }
 
 function renderHeader(s) {
@@ -82,20 +83,53 @@ function renderHeader(s) {
   `;
 }
 
-function renderTurns(turns) {
+function renderTurns(turns, compactionEvents) {
   const container = qs('#turns-container');
-  container.innerHTML = turns.map(t => renderTurn(t)).join('');
+  let html = '';
+
+  // Build compaction boundary: find the first in-context turn index
+  let contextBoundaryIdx = -1;
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i].in_context && (i === 0 || !turns[i-1].in_context)) {
+      contextBoundaryIdx = i;
+      break;
+    }
+  }
+
+  for (let i = 0; i < turns.length; i++) {
+    // Insert compaction divider at the context boundary
+    if (i === contextBoundaryIdx && i > 0 && compactionEvents.length > 0) {
+      const lastCe = compactionEvents[compactionEvents.length - 1];
+      const tokensBefore = lastCe.tokens_before ? fmtTokens(lastCe.tokens_before) : '?';
+      html += `<div class="compaction-divider">
+        <span class="compaction-line"></span>
+        <span class="compaction-label">Context compacted: ${tokensBefore} tokens — kept from turn ${i}</span>
+        <span class="compaction-line"></span>
+      </div>`;
+    }
+    html += renderTurn(turns[i]);
+  }
+  container.innerHTML = html;
 }
 
 function renderTurn(t) {
   const hasErrors = t.tool_calls.some(tc => tc.is_error);
-  const turnClass = hasErrors ? 'turn-card has-errors' : 'turn-card';
+  const isSystem = SYSTEM_SOURCES.has(t.user_source);
+  const isCompacted = t.in_context === false;
+
+  let classes = 'turn-card';
+  if (hasErrors) classes += ' has-errors';
+  if (isCompacted) classes += ' compacted';
+
+  // System messages start collapsed by default
+  const bodyHidden = true;
 
   return `
-  <div class="${turnClass}" id="turn-${t.index}">
+  <div class="${classes}" id="turn-${t.index}">
     <div class="turn-header" onclick="toggleTurn(${t.index})">
       <div class="turn-left">
         <span class="turn-index">Turn ${t.index}</span>
+        ${isCompacted ? '<span class="badge badge-compacted">compacted</span>' : ''}
         <span class="badge badge-${t.user_source}">${t.user_source}</span>
         <span class="turn-preview">${escHtml(truncate(t.user_text.replace(/\\n/g, ' '), 80))}</span>
       </div>
@@ -112,7 +146,7 @@ function renderTurn(t) {
       <div class="turn-detail">
         <!-- User message -->
         <div class="msg-block user-msg">
-          <div class="msg-role">User</div>
+          <div class="msg-role">User <span class="badge badge-${t.user_source}" style="font-size:10px">${t.user_source}</span></div>
           <pre class="msg-content">${escHtml(t.user_text.slice(0, 2000))}</pre>
         </div>
 
@@ -137,7 +171,7 @@ function renderTurn(t) {
         </div>` : ''}
 
         <!-- Subagent spawns -->
-        ${t.subagent_spawns.map(s => renderSubagent(s)).join('')}
+        ${t.subagent_spawns.map(s => renderSubagent(s, 0)).join('')}
 
         <!-- Assistant response -->
         ${t.assistant_texts.map(txt => `
@@ -174,42 +208,80 @@ function renderToolCall(tc) {
   </div>`;
 }
 
-function renderSubagent(s) {
-  const outcomeClass = s.outcome === 'ok' ? 'outcome-ok' : 'outcome-error';
+function renderSubagent(s, depth) {
+  const outcomeClass = s.outcome === 'ok' ? 'outcome-ok' : (s.outcome === 'unknown' ? 'outcome-unknown' : 'outcome-error');
   const durStr = s.duration_ms ? fmtDuration(s.duration_ms) : '?';
   const costStr = s.cost_usd != null ? fmtCost(s.cost_usd) : '?';
   const tokensStr = s.total_tokens != null ? fmtTokens(s.total_tokens) : '?';
+  const indent = depth > 0 ? `style="margin-left:${depth * 16}px"` : '';
 
   let childHtml = '';
   if (s.child_turns && s.child_turns.length) {
     childHtml = `
     <div class="subagent-children">
-      <div class="subagent-children-header" onclick="toggleEl(this.nextElementSibling)">
+      <div class="subagent-children-header" onclick="event.stopPropagation();toggleEl(this.nextElementSibling)">
         ${s.child_turns.length} turns in child session (click to expand)
       </div>
       <div class="subagent-turns" style="display:none">
-        ${s.child_turns.map(ct => `
-          <div class="child-turn">
-            <div class="child-turn-header">Turn ${ct.index} — ${ct.tool_calls.length} tools — ${fmtDuration(ct.duration_ms)}</div>
-            ${ct.tool_calls.map(tc => renderToolCall(tc)).join('')}
-            ${ct.assistant_texts.map(txt => `<pre class="child-response">${escHtml(truncate(txt, 500))}</pre>`).join('')}
-          </div>
-        `).join('')}
+        ${s.child_turns.map(ct => renderChildTurn(ct, depth + 1)).join('')}
       </div>
+    </div>`;
+  } else if (s.announce_stats) {
+    // Fallback: show announce stats when no child turns available
+    const as = s.announce_stats;
+    childHtml = `
+    <div class="subagent-announce-stats">
+      <span class="dim">From announce:</span>
+      runtime ${fmtDuration(as.runtime_ms)}
+      &middot; ${fmtTokens(as.total_tokens)} tokens
+      (in ${fmtTokens(as.input_tokens)} / out ${fmtTokens(as.output_tokens)})
     </div>`;
   }
 
   return `
-  <div class="subagent-block">
-    <div class="subagent-header">
+  <div class="subagent-block" ${indent}>
+    <div class="subagent-header" onclick="toggleSubagent(this)">
       <span class="subagent-icon">&#x1f500;</span>
       <span class="subagent-label">${escHtml(s.label || 'subagent')}</span>
       <span class="badge ${outcomeClass}">${s.outcome}</span>
       <span class="subagent-stats">${durStr} &middot; ${costStr} &middot; ${tokensStr} tokens</span>
-      ${s.child_session_id ? `<a href="/session/${s.child_session_id}" class="btn btn-sm">Open Session</a>` : ''}
+      ${s.child_session_id ? `<a href="/session/${s.child_session_id}" class="btn btn-sm" onclick="event.stopPropagation()">Open Session</a>` : ''}
     </div>
-    <div class="subagent-task">${escHtml(truncate(s.task, 200))}</div>
-    ${childHtml}
+    <div class="subagent-body" style="display:none">
+      <div class="subagent-task">${escHtml(truncate(s.task, 300))}</div>
+      ${childHtml}
+    </div>
+  </div>`;
+}
+
+function renderChildTurn(ct, depth) {
+  const hasErrors = ct.tool_calls.some(tc => tc.is_error);
+  const errorClass = hasErrors ? ' has-errors' : '';
+
+  // Nested subagents from child turns
+  const nestedSubagents = ct.subagent_spawns
+    ? ct.subagent_spawns.map(s => renderSubagent(s, depth)).join('')
+    : '';
+
+  return `
+  <div class="child-turn${errorClass}">
+    <div class="child-turn-header" onclick="toggleEl(this.nextElementSibling)">
+      <span class="child-turn-idx">Turn ${ct.index}</span>
+      <span class="dim">${ct.tool_calls.length} tools</span>
+      <span class="dim">${fmtDuration(ct.duration_ms)}</span>
+      <span class="dim">${fmtCost(ct.cost?.total || 0)}</span>
+      ${ct.user_source && ct.user_source !== 'chat' ? `<span class="badge badge-${ct.user_source}" style="font-size:9px">${ct.user_source}</span>` : ''}
+    </div>
+    <div class="child-turn-body" style="display:none">
+      ${ct.thinking_text ? `
+      <div class="thinking-block">
+        <div class="thinking-label">Thinking</div>
+        <pre class="thinking-content">${escHtml(truncate(ct.thinking_text, 1000))}</pre>
+      </div>` : ''}
+      ${ct.tool_calls.map(tc => renderToolCall(tc)).join('')}
+      ${nestedSubagents}
+      ${ct.assistant_texts.map(txt => `<pre class="child-response">${escHtml(truncate(txt, 500))}</pre>`).join('')}
+    </div>
   </div>`;
 }
 
@@ -237,13 +309,18 @@ function toggleTurn(idx) {
   body.style.display = body.style.display === 'none' ? 'block' : 'none';
 }
 
+function toggleSubagent(headerEl) {
+  const body = headerEl.nextElementSibling;
+  if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+}
+
 function toggleTcResult(el) {
   const result = el.querySelector('.tc-result');
   if (result) result.style.display = result.style.display === 'none' ? 'block' : 'none';
 }
 
 function toggleEl(el) {
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 async function showRaw(turnIndex) {

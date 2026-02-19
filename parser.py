@@ -47,6 +47,7 @@ class SubagentSpawn:
     total_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
     outcome: str = "unknown"
+    announce_stats: Optional[dict] = None  # parsed from announce message
 
 
 @dataclass
@@ -68,6 +69,14 @@ class Turn:
     duration_ms: int = 0
     timestamp: Optional[datetime] = None
     raw_lines: list = field(default_factory=list)
+    in_context: bool = True  # whether this turn is still in context window
+
+
+@dataclass
+class CompactionEvent:
+    first_kept_entry_id: str = ""
+    tokens_before: int = 0
+    timestamp: Optional[datetime] = None
 
 
 @dataclass
@@ -84,6 +93,7 @@ class SessionAnalysis:
     total_tokens: int = 0
     total_duration_ms: int = 0
     compactions: int = 0
+    compaction_events: list = field(default_factory=list)  # list of CompactionEvent
     file_path: str = ""
 
 
@@ -128,17 +138,53 @@ def _truncate(text: str, max_len: int = 200) -> str:
 
 
 def _detect_source(user_text: str) -> str:
-    """Detect user message source from text prefix."""
+    """Detect user message source from text prefix.
+
+    Returns one of:
+      chat, cron, heartbeat, system, subagent_announce, cron_announce,
+      discord, telegram
+
+    OpenClaw message formats:
+      - "[cron:...]" → cron trigger
+      - "[System Message] A subagent..." → subagent announce
+      - "[System Message] A cron job..." → cron announce
+      - "[System Message]..." → generic system
+      - "[Day YYYY-MM-DD ...] A subagent task..." → subagent announce (timestamped)
+      - "[Day YYYY-MM-DD ...] A cron job..." → cron announce (timestamped)
+      - "[Day YYYY-MM-DD ...] [Queued announce...] ... A subagent task" → queued announce
+      - "[heartbeat..." → heartbeat trigger
+      - "Read HEARTBEAT.md" / contains "heartbeat" → heartbeat
+      - "[message_id: ...]" → channel message (discord/telegram)
+    """
     if not user_text:
         return "chat"
     if user_text.startswith("[cron:"):
         return "cron"
     if user_text.startswith("[System Message]"):
-        if "subagent" in user_text.lower():
+        lower = user_text.lower()
+        if "a subagent task" in lower or "subagent" in lower:
             return "subagent_announce"
+        if "a cron job" in lower or "cron" in lower:
+            return "cron_announce"
         return "system"
     if user_text.startswith("[heartbeat"):
         return "heartbeat"
+    # Timestamped announce: [Day YYYY-MM-DD HH:MM TZ] A subagent/cron...
+    if re.match(r"\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}", user_text):
+        lower = user_text.lower()
+        if "a subagent task" in lower:
+            return "subagent_announce"
+        if "a cron job" in lower:
+            return "cron_announce"
+        return "system"
+    # Channel messages with message_id marker
+    if "[message_id:" in user_text:
+        lower = user_text.lower()
+        if "discord" in lower or "#" in user_text.split("]")[0]:
+            return "discord"
+        if "telegram" in lower:
+            return "telegram"
+        return "chat"
     # Heartbeat prompt patterns
     if "HEARTBEAT.md" in user_text or "heartbeat" in user_text.lower():
         return "heartbeat"
@@ -176,7 +222,12 @@ def get_subagent_run(run_id: str) -> Optional[dict]:
 
 
 def find_subagent_child_session(child_session_key: str) -> Optional[Path]:
-    """Find the JSONL file for a child session key."""
+    """Find the JSONL file for a child session key.
+
+    OpenClaw soft-deletes subagent session files by renaming them to
+    {uuid}.jsonl.deleted.{timestamp}, so we search for both .jsonl
+    and .jsonl.deleted.* patterns.
+    """
     session_id = _extract_session_id_from_key(child_session_key)
     if not session_id:
         return None
@@ -188,9 +239,91 @@ def find_subagent_child_session(child_session_key: str) -> Optional[Path]:
         if not sessions_dir.exists():
             continue
         for f in sessions_dir.iterdir():
-            if f.name.startswith(session_id) and f.suffix == ".jsonl":
+            if not f.name.startswith(session_id):
+                continue
+            # Match {uuid}.jsonl or {uuid}.jsonl.deleted.{ts}
+            if f.suffix == ".jsonl" or ".jsonl.deleted." in f.name:
                 return f
     return None
+
+
+# --- Subagent announce parsing ---
+
+_ANNOUNCE_RE = re.compile(
+    r"Stats:\s*runtime\s+([\d\w .]+?)\s*"
+    r"[•·]\s*tokens\s+([\d.]+[KMkm]?)\s*\(in\s+([\d.]+[KMkm]?).*?out\s+([\d.]+[KMkm]?)\)"
+    r".*?sessionKey\s+(\S+)"
+    r".*?sessionId\s+(\S+)"
+    r".*?transcript\s+(\S+)",
+    re.DOTALL,
+)
+
+
+def _parse_token_str(s: str) -> int:
+    s = s.strip().lower()
+    if s.endswith("m"):
+        return int(float(s[:-1]) * 1_000_000)
+    if s.endswith("k"):
+        return int(float(s[:-1]) * 1_000)
+    return int(float(s))
+
+
+def _parse_runtime_str(s: str) -> int:
+    """Parse runtime like '1m25s' or '45s' to milliseconds."""
+    s = s.strip()
+    total_ms = 0
+    m_match = re.search(r"(\d+)m", s)
+    s_match = re.search(r"([\d.]+)s", s)
+    if m_match:
+        total_ms += int(m_match.group(1)) * 60_000
+    if s_match:
+        total_ms += int(float(s_match.group(1)) * 1000)
+    return total_ms or 0
+
+
+def _parse_announce_match(m) -> Optional[dict]:
+    """Parse a regex match from _ANNOUNCE_RE into a stats dict."""
+    try:
+        session_key = m.group(5)
+        # Extract child_session_id from key: agent:name:subagent:UUID
+        child_sid = _extract_session_id_from_key(session_key)
+        return {
+            "runtime_ms": _parse_runtime_str(m.group(1)),
+            "total_tokens": _parse_token_str(m.group(2)),
+            "input_tokens": _parse_token_str(m.group(3)),
+            "output_tokens": _parse_token_str(m.group(4)),
+            "session_key": session_key,
+            "child_session_id": child_sid,
+            "session_id": m.group(6),
+            "transcript": m.group(7),
+        }
+    except (ValueError, IndexError):
+        return None
+
+
+def _resolve_child_from_transcript(spawn, transcript: str):
+    """Try to resolve child session turns from transcript path."""
+    if not transcript:
+        return
+    tp = Path(transcript)
+    # Check if the exact path exists
+    if tp.exists():
+        child_analysis = parse_session(tp, recursive_subagents=True)
+        spawn.child_turns = child_analysis.turns
+        if not spawn.cost_usd and child_analysis.total_cost:
+            spawn.cost_usd = child_analysis.total_cost
+        return
+    # Try .deleted.* variant
+    parent = tp.parent
+    stem = tp.name  # e.g. "uuid.jsonl"
+    if parent.exists():
+        for f in parent.iterdir():
+            if f.name.startswith(stem) and ".deleted." in f.name:
+                child_analysis = parse_session(f, recursive_subagents=True)
+                spawn.child_turns = child_analysis.turns
+                if not spawn.cost_usd and child_analysis.total_cost:
+                    spawn.cost_usd = child_analysis.total_cost
+                return
 
 
 # --- Cron ---
@@ -280,7 +413,9 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     except ValueError:
         pass
 
-    session_id = file_path.stem.split("-topic-")[0]
+    # Extract session_id from filename (handles both .jsonl and .jsonl.deleted.*)
+    fname = file_path.name.split(".jsonl")[0]  # strip .jsonl and anything after
+    session_id = fname.split("-topic-")[0]
 
     analysis = SessionAnalysis(
         session_id=session_id,
@@ -303,6 +438,11 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             current_provider = entry.get("provider", "")
         elif etype == "compaction":
             analysis.compactions += 1
+            analysis.compaction_events.append(CompactionEvent(
+                first_kept_entry_id=entry.get("firstKeptEntryId", ""),
+                tokens_before=entry.get("tokensBefore", 0),
+                timestamp=_ts_to_dt(entry.get("timestamp")),
+            ))
 
     analysis.model = current_model
     analysis.provider = current_provider
@@ -412,7 +552,9 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     ctype = c.get("type")
 
                     if ctype == "text":
-                        current_turn.assistant_texts.append(c.get("text", ""))
+                        text = c.get("text", "").strip()
+                        if text:  # skip empty/whitespace-only text blocks
+                            current_turn.assistant_texts.append(c.get("text", ""))
 
                     elif ctype == "thinking":
                         thinking_text = c.get("thinking", "")
@@ -531,6 +673,13 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         _finalize_turn(current_turn, pending_tool_calls)
         turns.append(current_turn)
 
+    # Enrich subagent spawns from announce messages
+    _enrich_spawns_from_announces(turns)
+
+    # Compute in_context based on compaction events
+    if analysis.compaction_events:
+        _compute_context_status(turns, lines, analysis.compaction_events)
+
     analysis.turns = turns
 
     # Calculate totals
@@ -566,6 +715,47 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     return analysis
 
 
+def _compute_context_status(turns: list, lines: list, compaction_events: list):
+    """Mark turns as out-of-context based on the last compaction event.
+
+    Each entry has an 'id' field. The compaction's firstKeptEntryId tells us
+    the first entry still in context. All entries (and thus turns) whose
+    entry IDs come before firstKeptEntryId in the file order are out of context.
+    """
+    if not compaction_events:
+        return
+
+    # Use the last compaction event (most recent context boundary)
+    last_compaction = compaction_events[-1]
+    first_kept_id = last_compaction.first_kept_entry_id
+    if not first_kept_id:
+        return
+
+    # Build ordered list of entry IDs from the raw lines
+    entry_id_order = []
+    for entry in lines:
+        eid = entry.get("id", "")
+        if eid:
+            entry_id_order.append(eid)
+
+    # Find the position of firstKeptEntryId
+    try:
+        kept_pos = entry_id_order.index(first_kept_id)
+    except ValueError:
+        return  # can't find it, don't modify anything
+
+    # Set of entry IDs that are before the kept boundary
+    evicted_ids = set(entry_id_order[:kept_pos])
+
+    # For each turn, check if ALL its raw_lines entry IDs are evicted
+    for turn in turns:
+        if not turn.raw_lines:
+            continue
+        turn_ids = {e.get("id", "") for e in turn.raw_lines if e.get("id")}
+        if turn_ids and turn_ids.issubset(evicted_ids):
+            turn.in_context = False
+
+
 def _finalize_turn(turn: Turn, pending_tool_calls: dict):
     """Calculate turn duration from raw lines."""
     if not turn.raw_lines:
@@ -580,6 +770,52 @@ def _finalize_turn(turn: Turn, pending_tool_calls: dict):
         timestamps.append(turn.timestamp)
     if len(timestamps) >= 2:
         turn.duration_ms = int((max(timestamps) - min(timestamps)).total_seconds() * 1000)
+
+
+def _enrich_spawns_from_announces(turns: list):
+    """Match subagent announce messages to their spawns.
+
+    Announce messages come in two formats:
+    1. Single: "[Day ...] A subagent task ... Stats: ..."
+    2. Queued: "[Day ...] [Queued announce...] --- Queued #N A subagent task ... Stats: ..."
+
+    The Stats section contains: runtime, tokens, sessionKey, sessionId, transcript path.
+    """
+    # Build lookup: child_session_id -> SubagentSpawn
+    spawns_by_sid = {}
+    for turn in turns:
+        for spawn in turn.subagent_spawns:
+            if spawn.child_session_id:
+                spawns_by_sid[spawn.child_session_id] = spawn
+
+    if not spawns_by_sid:
+        return
+
+    for turn in turns:
+        if turn.user_source != "subagent_announce":
+            continue
+        # A single announce message may contain multiple queued announces
+        # Split by "Queued #" or try as single
+        text = turn.user_text
+        # Find all Stats: sections
+        for m in _ANNOUNCE_RE.finditer(text):
+            stats = _parse_announce_match(m)
+            if not stats:
+                continue
+            # Match by child_session_id extracted from sessionKey
+            sid = stats.get("child_session_id", "")
+            spawn = spawns_by_sid.get(sid)
+            if not spawn:
+                continue
+            spawn.announce_stats = stats
+            # Fill in missing data from announce
+            if not spawn.duration_ms and stats.get("runtime_ms"):
+                spawn.duration_ms = stats["runtime_ms"]
+            if not spawn.total_tokens and stats.get("total_tokens"):
+                spawn.total_tokens = stats["total_tokens"]
+            # Try to resolve child session from transcript path
+            if not spawn.child_turns:
+                _resolve_child_from_transcript(spawn, stats.get("transcript", ""))
 
 
 # --- Session discovery ---
