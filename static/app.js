@@ -94,3 +94,57 @@ function toolIcon(name) {
   }
   return '\ud83d\udd27';
 }
+
+async function postJSON(url, data) {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    return await res.json();
+  } catch (e) {
+    console.error('postJSON error:', e);
+    return { error: e.message };
+  }
+}
+
+async function putJSON(url, data) {
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    return await res.json();
+  } catch (e) {
+    console.error('putJSON error:', e);
+    return { error: e.message };
+  }
+}
+
+async function patchJSON(url, data) {
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    return await res.json();
+  } catch (e) {
+    console.error('patchJSON error:', e);
+    return { error: e.message };
+  }
+}

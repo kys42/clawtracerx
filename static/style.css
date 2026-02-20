@@ -1288,3 +1288,244 @@ body {
   .turn-card::before { display: none; }
   .compaction-divider { margin-left: 0; width: 100%; }
 }
+
+/* === Lab Page === */
+
+/* Common input styles */
+.input-text {
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  color: var(--text-1);
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input-text:hover { border-color: var(--border-emphasis); }
+.input-text:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); outline: none; }
+
+.input-textarea {
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  color: var(--text-1);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+.input-textarea:hover { border-color: var(--border-emphasis); }
+.input-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); outline: none; }
+
+/* Lab session selector */
+.lab-session-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lab-session-bar .input-text { flex: 1; min-width: 200px; }
+.lab-status {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+}
+.lab-status.idle { background: var(--bg-3); color: var(--text-3); }
+.lab-status.running { background: var(--warning-muted); color: var(--warning); border: 1px solid rgba(245,158,11,0.2); }
+.lab-status.done { background: var(--success-muted); color: var(--success); border: 1px solid rgba(34,197,94,0.2); }
+.lab-status.error { background: var(--error-muted); color: var(--error); border: 1px solid rgba(239,68,68,0.2); }
+
+/* Lab settings panel */
+.lab-settings {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.lab-settings > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  transition: background 0.15s;
+}
+.lab-settings > summary::-webkit-details-marker { display: none; }
+.lab-settings > summary:hover { background: rgba(255,255,255,0.03); }
+.lab-settings[open] > summary { border-bottom: 1px solid var(--border-subtle); }
+.lab-settings-body {
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.lab-settings-body .full-width { grid-column: 1 / -1; }
+.lab-field label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 5px;
+}
+
+/* Lab context editor */
+.lab-context {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.lab-context > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  transition: background 0.15s;
+}
+.lab-context > summary::-webkit-details-marker { display: none; }
+.lab-context > summary:hover { background: rgba(255,255,255,0.03); }
+.lab-context[open] > summary { border-bottom: 1px solid var(--border-subtle); }
+.lab-context-body { padding: 14px 16px; }
+
+.lab-ctx-file {
+  margin-bottom: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.lab-ctx-file-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  cursor: pointer;
+}
+.lab-ctx-file-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  font-family: 'JetBrains Mono', monospace;
+}
+.lab-ctx-file-size {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: 'JetBrains Mono', monospace;
+}
+.lab-ctx-file-body { display: none; padding: 8px; }
+.lab-ctx-file-body textarea {
+  width: 100%;
+  min-height: 150px;
+  max-height: 400px;
+}
+.lab-ctx-file-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 0 0;
+}
+
+/* Lab message input */
+.lab-input-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-0);
+  border-top: 1px solid var(--border-subtle);
+  padding: 12px 0;
+  z-index: 20;
+}
+.lab-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.lab-input-row textarea {
+  flex: 1;
+  min-height: 60px;
+  max-height: 200px;
+}
+.lab-input-row .btn-primary {
+  height: 42px;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+.lab-input-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+/* Lab page section spacing */
+.lab-section {
+  margin-bottom: 16px;
+}
+.lab-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 8px;
+}
+
+/* Lab timeline container — same styling as detail page */
+.lab-timeline {
+  position: relative;
+  padding-left: 36px;
+}
+.lab-timeline::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 8px; bottom: 8px;
+  width: 2px;
+  background: linear-gradient(to bottom, rgba(99,102,241,0.35), transparent);
+  border-radius: 2px;
+}
+
+/* Lab header */
+.lab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.lab-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-0);
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lab-header h1 .lab-icon {
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(245,158,11,0.4);
+  font-size: 14px;
+}

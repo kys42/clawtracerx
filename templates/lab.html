@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+{% set active = "lab" %}
+{% block title %}Lab{% endblock %}
+
+{% block content %}
+<div class="lab-header">
+  <h1>
+    <span class="lab-icon">&#x1F9EA;</span>
+    Lab
+  </h1>
+  <span class="lab-status idle" id="lab-status">idle</span>
+</div>
+
+<!-- Session selector -->
+<div class="lab-section">
+  <div class="lab-session-bar">
+    <select class="input-select" id="agent-select" onchange="loadGatewaySessions()">
+      <option value="all">All Agents</option>
+    </select>
+    <select class="input-select" id="session-select" onchange="selectSession()" style="min-width:360px">
+      <option value="">Select session...</option>
+    </select>
+  </div>
+  <div class="lab-session-bar" style="margin-top:6px">
+    <span style="color:var(--text-3);font-size:12px">or key:</span>
+    <input type="text" class="input-text" id="session-key-input" placeholder="Session key (e.g. agent:main:chat:lab-test)" style="min-width:320px">
+    <button class="btn btn-outline" onclick="attachByKey()">Attach</button>
+    <button class="btn btn-outline" onclick="resetSession()" title="Reset session transcript">Reset</button>
+  </div>
+</div>
+
+<!-- Settings panel -->
+<details class="lab-settings lab-section">
+  <summary>Settings <span class="context-chevron">&#x25BE;</span></summary>
+  <div class="lab-settings-body">
+    <div class="lab-field">
+      <label>Model</label>
+      <input type="text" class="input-text" id="setting-model" placeholder="e.g. openai-codex/gpt-5.2" style="width:100%">
+    </div>
+    <div class="lab-field">
+      <label>Thinking Level</label>
+      <select class="input-select" id="setting-thinking" style="width:100%">
+        <option value="">default</option>
+        <option value="none">none</option>
+        <option value="low">low</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+      </select>
+    </div>
+    <div class="lab-field full-width">
+      <label>Extra System Prompt</label>
+      <textarea class="input-textarea" id="setting-extra-prompt" rows="3" placeholder="Additional instructions injected into system prompt..."></textarea>
+    </div>
+    <div class="lab-field">
+      <label>Deliver to Channel</label>
+      <select class="input-select" id="setting-deliver" style="width:100%">
+        <option value="false" selected>No (lab only)</option>
+        <option value="true">Yes</option>
+      </select>
+    </div>
+    <div class="lab-field">
+      <label>Timeout (seconds)</label>
+      <input type="number" class="input-text" id="setting-timeout" value="120" min="10" max="600" style="width:100%">
+    </div>
+  </div>
+</details>
+
+<!-- Context files -->
+<details class="lab-context lab-section">
+  <summary>Context Files <span class="context-chevron">&#x25BE;</span></summary>
+  <div class="lab-context-body" id="context-files">
+    <div class="loading">Loading context files...</div>
+  </div>
+</details>
+
+<!-- Message input -->
+<div class="lab-section">
+  <div class="lab-section-title">Message</div>
+  <div class="lab-input-bar">
+    <div class="lab-input-row">
+      <textarea class="input-textarea" id="message-input" rows="3" placeholder="Type a message to send to the agent..." onkeydown="if(event.ctrlKey && event.key==='Enter') sendMessage()"></textarea>
+      <button class="btn btn-primary" onclick="sendMessage()" id="send-btn">Send</button>
+    </div>
+    <div class="lab-input-meta">
+      <span id="input-hint">Ctrl+Enter to send</span>
+      <span id="current-session-info">No session attached</span>
+    </div>
+  </div>
+</div>
+
+<!-- Execution timeline -->
+<div class="lab-section">
+  <div class="lab-section-title">Execution Timeline</div>
+  <div id="turns-container" class="lab-timeline"></div>
+  <div id="timeline-empty" class="empty" style="display:none">No turns yet. Send a message to get started.</div>
+</div>
+
+<!-- Activity log -->
+<details class="lab-settings lab-section">
+  <summary>Activity Log <span class="context-chevron">&#x25BE;</span></summary>
+  <div id="activity-log" style="padding:12px;max-height:300px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-2)">
+    <div class="loading">Loading...</div>
+  </div>
+</details>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/turns.js"></script>
+<script>
+let currentSessionId = null;   // JSONL file UUID — for polling/viewing
+let currentSessionKey = null;  // gateway routing key — for sending
+let currentAgentId = 'main';
+let pollTimer = null;
+let lastTurnCount = 0;
+let isSending = false;
+
+// Gateway session cache: key -> {sessionId, agentId, ...}
+let gwSessions = [];
+
+// --- Init ---
+async function init() {
+  await loadAgents();
+  await loadGatewaySessions();
+  loadContextFiles();
+  loadActivityLog();
+}
+
+async function loadAgents() {
+  const agents = await fetchJSON('/api/agents');
+  const sel = qs('#agent-select');
+  agents.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = `${a.id} (${a.sessions})`;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadGatewaySessions() {
+  const agent = qs('#agent-select').value;
+  const param = agent === 'all' ? '' : `?agent=${agent}`;
+  gwSessions = await fetchJSON(`/api/lab/sessions${param}&last=50`);
+
+  const sel = qs('#session-select');
+  sel.innerHTML = '<option value="">Select session...</option>';
+
+  gwSessions.forEach((s, i) => {
+    const opt = document.createElement('option');
+    opt.value = i; // index into gwSessions
+    const keyShort = s.session_key.length > 40
+      ? '...' + s.session_key.slice(-35)
+      : s.session_key;
+    const display = s.display_name
+      ? `${s.agent_id} / ${s.display_name}`
+      : `${s.agent_id} / ${s.session_id.slice(0,10)}`;
+    opt.textContent = `${display}  ${fmtTokens(s.tokens)} ${fmtCost(s.cost)}  [${keyShort}]`;
+    sel.appendChild(opt);
+  });
+}
+
+function selectSession() {
+  const sel = qs('#session-select');
+  const idx = parseInt(sel.value);
+  if (isNaN(idx) || !gwSessions[idx]) return;
+
+  const s = gwSessions[idx];
+  currentSessionKey = s.session_key;
+  currentSessionId = s.session_id;
+
+  // Extract agent from key
+  const parts = currentSessionKey.split(':');
+  currentAgentId = parts.length >= 2 && parts[0] === 'agent' ? parts[1] : 'main';
+
+  qs('#session-key-input').value = currentSessionKey;
+  updateSessionInfo();
+  loadSessionData();
+  startPolling();
+}
+
+function attachByKey() {
+  const key = qs('#session-key-input').value.trim();
+  if (!key) return;
+
+  currentSessionKey = key;
+  // Extract agent ID from key
+  const parts = key.split(':');
+  if (parts.length >= 2 && parts[0] === 'agent') {
+    currentAgentId = parts[1];
+  }
+
+  // Try to find the session_id from our cached gateway sessions
+  const match = gwSessions.find(s => s.session_key === key);
+  if (match) {
+    currentSessionId = match.session_id;
+  } else {
+    // For new sessions, session_id will be returned after first send
+    currentSessionId = null;
+  }
+
+  updateSessionInfo();
+  if (currentSessionId) {
+    loadSessionData();
+    startPolling();
+  }
+}
+
+function updateSessionInfo() {
+  const idPart = currentSessionId ? currentSessionId.slice(0, 10) : 'new';
+  qs('#current-session-info').textContent = currentSessionKey
+    ? `${currentAgentId} / ${idPart}  key: ${currentSessionKey}`
+    : 'No session attached';
+}
+
+async function loadSessionData() {
+  if (!currentSessionId) return;
+
+  const data = await fetchJSON(`/api/session/${currentSessionId}`);
+  if (data && data.turns && data.turns.length > 0) {
+    qs('#timeline-empty').style.display = 'none';
+    renderTurns(data.turns, data.compaction_events || []);
+    lastTurnCount = data.turns.length;
+    autoScroll();
+  } else {
+    qs('#turns-container').innerHTML = '';
+    qs('#timeline-empty').style.display = 'block';
+    lastTurnCount = 0;
+  }
+}
+
+// --- Send message ---
+async function sendMessage() {
+  if (isSending) return;
+  const message = qs('#message-input').value.trim();
+  if (!message) return;
+
+  if (!currentSessionKey) {
+    // Auto-generate session key for new lab session
+    const ts = Date.now().toString(36);
+    currentSessionKey = `agent:${currentAgentId}:chat:lab-${ts}`;
+    qs('#session-key-input').value = currentSessionKey;
+  }
+
+  isSending = true;
+  setStatus('running');
+  qs('#send-btn').disabled = true;
+
+  const payload = {
+    message: message,
+    sessionKey: currentSessionKey,
+    agentId: currentAgentId,
+    model: qs('#setting-model').value || undefined,
+    thinking: qs('#setting-thinking').value || undefined,
+    deliver: qs('#setting-deliver').value === 'true',
+    extraSystemPrompt: qs('#setting-extra-prompt').value || undefined,
+    timeout: parseInt(qs('#setting-timeout').value) || 120,
+  };
+
+  const result = await postJSON('/api/lab/send', payload);
+
+  isSending = false;
+  qs('#send-btn').disabled = false;
+
+  if (result.error) {
+    setStatus('error');
+    console.error('Send failed:', result.error);
+  } else {
+    setStatus('done');
+    qs('#message-input').value = '';
+
+    // If we didn't have a session_id yet, refresh gateway sessions to find it
+    if (!currentSessionId && result.result) {
+      await refreshSessionId();
+    }
+    // Poll immediately
+    pollSession();
+  }
+
+  startPolling();
+  loadActivityLog();
+}
+
+async function refreshSessionId() {
+  // Re-fetch gateway sessions to get the session_id for our key
+  const sessions = await fetchJSON(`/api/lab/sessions?last=50`);
+  const match = sessions.find(s => s.session_key === currentSessionKey);
+  if (match) {
+    currentSessionId = match.session_id;
+    gwSessions = sessions;
+    updateSessionInfo();
+  }
+}
+
+// --- Polling ---
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollSession, 2000);
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+async function pollSession() {
+  if (!currentSessionId) {
+    // Try to find session_id if we only have a key
+    if (currentSessionKey) await refreshSessionId();
+    return;
+  }
+
+  const data = await fetchJSON(
+    `/api/lab/poll/${currentSessionId}?since_turns=${lastTurnCount}`
+  );
+
+  if (data.changed && data.data) {
+    qs('#timeline-empty').style.display = 'none';
+    renderTurns(data.data.turns, data.data.compaction_events || []);
+    const newCount = data.data.turns.length;
+    if (newCount > lastTurnCount) {
+      autoScroll();
+    }
+    lastTurnCount = newCount;
+  }
+}
+
+function autoScroll() {
+  const container = qs('#turns-container');
+  if (container.lastElementChild) {
+    setTimeout(() => {
+      container.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 100);
+  }
+}
+
+// --- Status ---
+function setStatus(status) {
+  const el = qs('#lab-status');
+  el.className = `lab-status ${status}`;
+  el.textContent = status;
+}
+
+// --- Context files ---
+async function loadContextFiles() {
+  const files = await fetchJSON('/api/lab/context');
+  const container = qs('#context-files');
+
+  if (!files || !files.length) {
+    container.innerHTML = '<div class="empty">No context files found</div>';
+    return;
+  }
+
+  container.innerHTML = files.map(f => `
+    <div class="lab-ctx-file">
+      <div class="lab-ctx-file-header" onclick="toggleEl(this.nextElementSibling)">
+        <span class="lab-ctx-file-name">${escHtml(f.name)}</span>
+        <span class="lab-ctx-file-size">${fmtSize(f.size)}</span>
+      </div>
+      <div class="lab-ctx-file-body">
+        <textarea class="input-textarea" id="ctx-${f.name}" rows="10">${escHtml(f.content)}</textarea>
+        <div class="lab-ctx-file-actions">
+          <button class="btn btn-sm btn-outline" onclick="reloadContextFile('${f.name}')">Reload</button>
+          <button class="btn btn-sm btn-primary" onclick="saveContextFile('${f.name}')">Save</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function saveContextFile(name) {
+  const textarea = qs(`#ctx-${name}`);
+  if (!textarea) return;
+  const result = await putJSON(`/api/lab/context/${name}`, { content: textarea.value });
+  if (result.error) {
+    alert(`Save failed: ${result.error}`);
+  }
+  loadActivityLog();
+}
+
+async function reloadContextFile(name) {
+  const files = await fetchJSON('/api/lab/context');
+  const f = files.find(x => x.name === name);
+  if (f) {
+    const textarea = qs(`#ctx-${name}`);
+    if (textarea) textarea.value = f.content;
+  }
+}
+
+// --- Activity log ---
+async function loadActivityLog() {
+  const entries = await fetchJSON('/api/lab/activity');
+  const container = qs('#activity-log');
+  if (!entries || !entries.length) {
+    container.innerHTML = '<span class="dim">No activity yet</span>';
+    return;
+  }
+  container.innerHTML = entries.map(e => {
+    const ts = e.ts ? e.ts.split('T')[1]?.split('+')[0]?.slice(0,8) : '';
+    const action = e.action || '';
+    const key = e.sessionKey ? ` key=${e.sessionKey}` : '';
+    const msg = e.message ? ` msg="${truncate(e.message, 60)}"` : '';
+    const err = e.error ? ` <span style="color:var(--error)">ERR: ${escHtml(truncate(e.error,80))}</span>` : '';
+    const file = e.file ? ` file=${e.file}` : '';
+    const rid = e.runId ? ` run=${e.runId.slice(0,8)}` : '';
+    return `<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle)">
+      <span style="color:var(--text-3)">${ts}</span>
+      <span style="color:var(--accent);font-weight:600">${escHtml(action)}</span>${key}${msg}${rid}${file}${err}
+    </div>`;
+  }).join('');
+}
+
+// --- Reset ---
+async function resetSession() {
+  if (!currentSessionKey) return;
+  if (!confirm('Reset session transcript? This cannot be undone.')) return;
+  // Clear local state
+  qs('#turns-container').innerHTML = '';
+  qs('#timeline-empty').style.display = 'block';
+  lastTurnCount = 0;
+}
+
+// --- Cleanup ---
+window.addEventListener('beforeunload', () => { stopPolling(); });
+
+// Boot
+init();
+</script>
+{% endblock %}

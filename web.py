@@ -4,7 +4,9 @@ ocmon web — Flask web dashboard for OpenClaw agent monitoring.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,7 +17,27 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from parser import (
     parse_session, list_sessions, load_cron_runs, load_subagent_runs,
     get_raw_turn_lines, KST, _ts_to_dt, _truncate, AGENTS_DIR,
+    OPENCLAW_DIR,
 )
+import gateway
+
+# --- Lab activity logger ---
+_lab_log_file = Path(__file__).parent / "lab.log"
+_lab_logger = logging.getLogger("ocmon.lab")
+_lab_logger.setLevel(logging.INFO)
+_lab_handler = logging.FileHandler(_lab_log_file, encoding="utf-8")
+_lab_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+_lab_logger.addHandler(_lab_handler)
+
+# In-memory log for UI display (last 100 entries)
+_lab_activity_log: list[dict] = []
+
+def _log_lab(action: str, **kwargs):
+    entry = {"ts": datetime.now(KST).isoformat(), "action": action, **kwargs}
+    _lab_logger.info(json.dumps(entry, ensure_ascii=False, default=str))
+    _lab_activity_log.append(entry)
+    if len(_lab_activity_log) > 100:
+        _lab_activity_log.pop(0)
 
 
 def create_app():
@@ -181,7 +203,190 @@ def create_app():
                     agents.append({"id": d.name, "sessions": count})
         return jsonify(agents)
 
+    # --- Lab ---
+
+    @app.route("/lab")
+    def lab_page():
+        return render_template("lab.html")
+
+    @app.route("/api/lab/sessions")
+    def api_lab_sessions():
+        """Return gateway sessions (with real session keys) merged with local file info."""
+        agent = request.args.get("agent")
+        limit = int(request.args.get("last", 30))
+        try:
+            gw_sessions = gateway.list_gateway_sessions(
+                agent_id=agent if agent and agent != "all" else None,
+                limit=limit,
+            )
+        except Exception as e:
+            # Fallback to local file listing if gateway unavailable
+            gw_sessions = []
+
+        result = []
+        for s in (gw_sessions if isinstance(gw_sessions, list) else []):
+            key = s.get("key", "")
+            sid = s.get("sessionId", "")
+            # Extract agent from key: agent:<agentId>:...
+            parts = key.split(":")
+            agent_id = parts[1] if len(parts) >= 2 and parts[0] == "agent" else ""
+            result.append({
+                "session_key": key,
+                "session_id": sid,
+                "agent_id": agent_id,
+                "display_name": s.get("displayName", ""),
+                "model": s.get("model", ""),
+                "tokens": s.get("totalTokens", 0),
+                "cost": round(s.get("costUsd", 0) or 0, 6),
+                "updated_at": s.get("updatedAt", 0),
+            })
+        return jsonify(result)
+
+    @app.route("/api/lab/send", methods=["POST"])
+    def api_lab_send():
+        data = request.get_json(force=True)
+        message = data.get("message", "").strip()
+        session_key = data.get("sessionKey", "").strip()
+        if not message or not session_key:
+            return jsonify({"error": "message and sessionKey required"}), 400
+        agent_id = data.get("agentId", "main")
+        model = data.get("model") or None
+        _log_lab("send", sessionKey=session_key, agentId=agent_id,
+                 message=message[:200], model=model,
+                 deliver=data.get("deliver", False))
+        try:
+            result = gateway.send_agent_message(
+                message=message,
+                session_key=session_key,
+                agent_id=agent_id,
+                model=model,
+                thinking=data.get("thinking") or None,
+                deliver=data.get("deliver", False),
+                extra_system_prompt=data.get("extraSystemPrompt") or None,
+                timeout=int(data.get("timeout", 120)),
+            )
+            _log_lab("send_ok", sessionKey=session_key,
+                     runId=result.get("runId", ""))
+            return jsonify({"ok": True, "result": result}), 202
+        except Exception as e:
+            _log_lab("send_error", sessionKey=session_key, error=str(e))
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    # Track file sizes for change detection
+    _poll_file_cache = {}  # session_id -> (file_path, file_size)
+
+    @app.route("/api/lab/poll/<session_id>")
+    def api_lab_poll(session_id):
+        since_turns = int(request.args.get("since_turns", 0))
+        file_path = _resolve(session_id)
+        if not file_path:
+            return jsonify({"changed": False, "error": "session not found"})
+
+        # Check file size for change detection
+        try:
+            current_size = file_path.stat().st_size
+        except OSError:
+            return jsonify({"changed": False, "error": "file not accessible"})
+
+        cache_key = str(file_path)
+        prev_size = _poll_file_cache.get(cache_key, 0)
+        _poll_file_cache[cache_key] = current_size
+
+        if current_size == prev_size and since_turns > 0:
+            return jsonify({"changed": False})
+
+        # Parse and return full analysis
+        analysis = parse_session(file_path, recursive_subagents=True)
+        data = _serialize_analysis(analysis)
+
+        if len(data.get("turns", [])) == since_turns and current_size == prev_size:
+            return jsonify({"changed": False})
+
+        return jsonify({"changed": True, "data": data})
+
+    @app.route("/api/lab/context")
+    def api_lab_context():
+        workspace = _get_workspace_dir()
+        files = []
+        for name in WORKSPACE_FILES:
+            fp = workspace / name
+            if fp.exists():
+                try:
+                    content = fp.read_text(encoding="utf-8")
+                    files.append({
+                        "name": name,
+                        "size": len(content),
+                        "content": content,
+                    })
+                except Exception:
+                    files.append({"name": name, "size": 0, "content": "", "error": "read failed"})
+        return jsonify(files)
+
+    @app.route("/api/lab/context/<filename>", methods=["PUT"])
+    def api_lab_context_save(filename):
+        if filename not in WORKSPACE_FILES:
+            return jsonify({"error": f"Not an allowed file: {filename}"}), 400
+        workspace = _get_workspace_dir()
+        fp = workspace / filename
+        data = request.get_json(force=True)
+        content = data.get("content", "")
+        # Create backup before overwriting
+        _backup_context_file(fp)
+        fp.write_text(content, encoding="utf-8")
+        _log_lab("context_save", file=filename, size=len(content))
+        return jsonify({"ok": True, "size": len(content)})
+
+    @app.route("/api/lab/settings/<session_key>", methods=["PATCH"])
+    def api_lab_settings(session_key):
+        data = request.get_json(force=True)
+        _log_lab("settings_patch", sessionKey=session_key, **data)
+        try:
+            result = gateway.patch_session(session_key, **data)
+            return jsonify({"ok": True, "result": result})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.route("/api/lab/activity")
+    def api_lab_activity():
+        """Return recent lab activity log entries."""
+        return jsonify(list(reversed(_lab_activity_log)))
+
     return app
+
+
+# --- Lab helpers ---
+
+WORKSPACE_FILES = [
+    "AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md",
+    "USER.md", "HEARTBEAT.md", "BOOTSTRAP.md", "MEMORY.md",
+    "TODO.md", "MIGRATION.md",
+]
+
+
+def _get_workspace_dir() -> Path:
+    """Get workspace directory from openclaw.json config."""
+    try:
+        cfg = gateway.load_gateway_config()
+    except Exception:
+        pass
+    # Read workspace from full config
+    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    try:
+        with open(config_path) as f:
+            full_cfg = json.load(f)
+        workspace = full_cfg.get("agents", {}).get("defaults", {}).get("workspace", "")
+        if workspace:
+            return Path(workspace)
+    except Exception:
+        pass
+    return OPENCLAW_DIR / "workspace"
+
+
+def _backup_context_file(filepath: Path):
+    """Create .lab-backup before first modification."""
+    backup = filepath.with_suffix(filepath.suffix + ".lab-backup")
+    if filepath.exists() and not backup.exists():
+        shutil.copy2(filepath, backup)
 
 
 # --- Helpers ---
