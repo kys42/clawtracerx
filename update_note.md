@@ -1,3 +1,60 @@
+## [2026-02-20] - Lab 실험실 + OpenClaw 지식 문서화
+
+### 작업 내용
+- **Lab (실험실)** 기능 전체 구현 — 에이전트에 실시간 메시지 전송, 결과 관찰, 컨텍스트/설정 조정 가능
+- 게이트웨이 WebSocket RPC 클라이언트 (`gateway.py`) 구현 (Ed25519 디바이스 인증 포함)
+- 턴 렌더링 코드를 `turns.js`로 추출하여 detail.html과 lab.html에서 공유
+- Lab 전용 API 엔드포인트 6개 추가 (`web.py`)
+- 활동 로그 시스템 (`lab.log` 파일 + 인메모리 캐시)
+- OpenClaw 내부 지식 세부 문서 2개 작성 (Claude Code memory)
+
+### 주요 변경사항
+
+| 파일 | 상태 | 변경 내용 |
+|------|------|----------|
+| `gateway.py` | **신규** | 게이트웨이 WS RPC 클라이언트 — Ed25519 device auth, `rpc_call()`, `send_agent_message()`, `list_gateway_sessions()`, `patch_session()`, `reset_session()`, `list_models()`, `list_agents()` |
+| `static/turns.js` | **신규** | detail.html에서 추출한 공유 턴 렌더링 — `renderTurns()`, `renderTurn()`, `renderToolCall()`, `renderSubagent()`, `renderChildTurn()`, `renderTokenBar()`, toggle 함수들 |
+| `templates/lab.html` | **신규** | Lab 페이지 — 세션 셀렉터(게이트웨이 세션 드롭다운), 설정 패널(모델/thinking/deliver), 컨텍스트 에디터, 메시지 입력(Ctrl+Enter), 실행 타임라인, 활동 로그 |
+| `web.py` | 수정 | +205줄 — `/lab`, `/api/lab/sessions`, `/api/lab/send`, `/api/lab/poll/<id>`, `/api/lab/context`, `/api/lab/context/<name>`, `/api/lab/settings/<key>`, `/api/lab/activity` |
+| `templates/detail.html` | 수정 | 인라인 JS 274줄 제거 → `<script src="/static/turns.js">` import로 교체 |
+| `templates/base.html` | 수정 | 사이드바에 Lab 네비게이션 링크 + 비커 SVG 아이콘 추가 |
+| `static/app.js` | 수정 | `postJSON()`, `putJSON()`, `patchJSON()` 헬퍼 추가 |
+| `static/style.css` | 수정 | +241줄 — `.input-text`, `.input-textarea`, `.lab-session-bar`, `.lab-status`, `.lab-settings`, `.lab-context`, `.lab-input-bar` (sticky), `.lab-timeline` 등 |
+
+### 문제 해결
+
+- **문제 1: 게이트웨이 connect 실패** — `minProtocol`, `maxProtocol`, `client.id/platform/mode` 필수 파라미터 누락
+- **해결**: OpenClaw 소스(`ui/src/ui/gateway.ts`, `protocol/client-info.ts`) 분석하여 정확한 스키마 파악
+
+- **문제 2: RPC "missing scope" 에러** — 올바른 scopes 요청해도 모든 RPC 실패
+- **해결**: `message-handler.ts:416`에서 device identity 없으면 scopes를 `[]`로 강제 클리어하는 로직 발견. `~/.openclaw/identity/device.json`의 Ed25519 키로 디바이스 인증 구현
+
+- **문제 3: 기존 세션에 메시지 전송 시 새 세션 생성됨**
+- **원인**: Session Key(`agent:aki:chat:59428ab7...`)와 Session ID(`9520bb0d...`)가 서로 다른 UUID
+- **해결**: `/api/lab/sessions`에서 `gateway.list_gateway_sessions()` RPC로 실제 key↔id 매핑 획득
+
+- **문제 4: RPC 응답 파싱 실패** — `resp.get("result")` 사용
+- **해결**: OpenClaw 프로토콜은 `payload` 필드 사용 (`result` 아님)
+
+### 중요 결정사항
+- **매 호출마다 새 WS 연결**: 커넥션 풀링보다 단순하고 안정적. Lab 사용 빈도 고려하면 충분
+- **`deliver: false` 기본값**: Lab에서 보낸 실험 메시지가 텔레그램/디스코드로 배달되지 않도록 안전장치
+- **컨텍스트 파일 백업**: `.lab-backup` 파일 생성 후 덮어쓰기 (최초 1회만)
+- **2초 폴링**: SSE/WebSocket 대신 단순 폴링으로 구현 (향후 SSE 전환 가능)
+
+### 문서화 (Claude Code memory)
+- `openclaw-gateway-protocol.md` — WS RPC 프로토콜 v3, 프레임 타입, connect 파라미터, Ed25519 디바이스 인증, scope 시스템, RPC 메서드 전체
+- `openclaw-internals.md` — 디렉토리 레이아웃, 에이전트 설정, 세션 키 형식, sessions.json 구조, JSONL 트랜스크립트 형식, 워크스페이스 파일, 채널 바인딩, 크론 작업
+- `MEMORY.md` — 핵심 함정 3가지 + ocmon 프로젝트 구조 요약 + 문서 링크
+
+### 다음 단계
+- [ ] SSE 스트리밍으로 폴링 대체 (실시간 업데이트)
+- [ ] 세션 비교 기능 (같은 메시지를 다른 설정으로 보내고 side-by-side)
+- [ ] Lab 전용 임시 워크스페이스 (실제 파일 대신 격리된 컨텍스트)
+- [ ] 커넥션 풀링 (현재 매 호출마다 새 WS 연결)
+
+---
+
 ## [2026-02-20] - 웹 대시보드 — context 패널 + compaction 개선 + turn stat chips
 
 ### 작업 내용
