@@ -9,6 +9,7 @@ Usage:
   ocmon crons [--last N] [--job ID]
   ocmon subagents [--parent SESSION] [--last N]
   ocmon cost [--period PERIOD] [--agent NAME]
+  ocmon context SESSION
   ocmon web [--port PORT]
 """
 
@@ -58,6 +59,10 @@ def main():
     p_cost.add_argument("--period", default="today", choices=["today", "week", "month", "all"], help="Time period")
     p_cost.add_argument("--agent", "-a", default="all", help="Agent ID or 'all'")
 
+    # context
+    p_context = subparsers.add_parser("context", aliases=["ctx"], help="Show context injection details for a session")
+    p_context.add_argument("session", help="Session ID, path, or agent:id")
+
     # web
     p_web = subparsers.add_parser("web", help="Start web dashboard")
     p_web.add_argument("--port", "-p", type=int, default=8901, help="Port number")
@@ -72,7 +77,7 @@ def main():
 
     from cli import (
         cmd_sessions, cmd_analyze, cmd_raw,
-        cmd_crons, cmd_subagents, cmd_cost,
+        cmd_crons, cmd_subagents, cmd_cost, cmd_context,
     )
 
     if args.command in ("sessions", "ls"):
@@ -87,10 +92,13 @@ def main():
         cmd_subagents(parent=args.parent, last_n=args.last)
     elif args.command == "cost":
         cmd_cost(period=args.period, agent=args.agent)
+    elif args.command in ("context", "ctx"):
+        cmd_context(session_ref=args.session)
     elif args.command == "web":
         from web import create_app
         app = create_app()
-        print(f"\n🔍 ocmon web dashboard → http://localhost:{args.port}\n")
+        print(f"\nocmon web dashboard")
+        print(f"http://localhost:{args.port}\n")
         app.run(host=args.host, port=args.port, debug=args.debug)
 
 

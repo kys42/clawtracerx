@@ -24,6 +24,43 @@ CRON_RUNS_DIR = OPENCLAW_DIR / "cron" / "runs"
 
 
 @dataclass
+class InjectedFile:
+    name: str                    # "AGENTS.md", "SOUL.md", etc.
+    path: str                    # absolute path
+    missing: bool = False
+    raw_chars: int = 0
+    injected_chars: int = 0
+    truncated: bool = False
+
+
+@dataclass
+class SkillEntry:
+    name: str
+    block_chars: int = 0
+
+
+@dataclass
+class ToolEntry:
+    name: str
+    summary_chars: int = 0
+    schema_chars: int = 0
+
+
+@dataclass
+class SessionContext:
+    """Session initialization context metadata (from sessions.json)."""
+    injected_files: list = field(default_factory=list)   # List[InjectedFile]
+    system_prompt_chars: int = 0
+    project_context_chars: int = 0
+    non_project_context_chars: int = 0
+    skills: list = field(default_factory=list)            # List[SkillEntry]
+    tools: list = field(default_factory=list)             # List[ToolEntry]
+    bootstrap_max_chars: int = 0
+    workspace_dir: str = ""
+    sandbox_mode: str = ""
+
+
+@dataclass
 class ToolCall:
     id: str
     name: str
@@ -70,12 +107,17 @@ class Turn:
     timestamp: Optional[datetime] = None
     raw_lines: list = field(default_factory=list)
     in_context: bool = True  # whether this turn is still in context window
+    thinking_level: str = ""      # thinking level at the time of this turn
+    cache_hit_rate: float = 0.0   # cacheRead / (input + cacheRead)
 
 
 @dataclass
 class CompactionEvent:
     first_kept_entry_id: str = ""
     tokens_before: int = 0
+    tokens_after: int = 0          # tokens after compaction
+    summary: str = ""              # compaction summary text
+    from_hook: bool = False        # whether triggered by hook
     timestamp: Optional[datetime] = None
 
 
@@ -95,6 +137,15 @@ class SessionAnalysis:
     compactions: int = 0
     compaction_events: list = field(default_factory=list)  # list of CompactionEvent
     file_path: str = ""
+    context: Optional[SessionContext] = None   # from sessions.json
+    thinking_level: str = ""                   # current thinking level
+    context_tokens: int = 0                    # from sessions.json
+    # session-level token counters from sessions.json
+    session_input_tokens: int = 0
+    session_output_tokens: int = 0
+    session_total_tokens: int = 0
+    session_compaction_count: int = 0
+    memory_flush_at: Optional[datetime] = None
 
 
 @dataclass
@@ -387,6 +438,62 @@ def load_cron_runs(job_id: Optional[str] = None, last_n: int = 50) -> list:
     return results[:last_n]
 
 
+# --- Session metadata ---
+
+SESSIONS_JSON = "sessions.json"  # located in agents/{id}/sessions/
+
+
+def load_session_metadata(agent_id: str, session_id: str) -> Optional[dict]:
+    """Load metadata for a specific session from sessions.json."""
+    sessions_file = AGENTS_DIR / agent_id / "sessions" / SESSIONS_JSON
+    if not sessions_file.exists():
+        return None
+    with open(sessions_file) as f:
+        data = json.load(f)
+    # Find the entry whose sessionId starts with session_id
+    for key, entry in data.items():
+        if entry.get("sessionId", "").startswith(session_id):
+            return entry
+    return None
+
+
+def _parse_session_context(report: dict) -> SessionContext:
+    """Convert a systemPromptReport dict to a SessionContext dataclass."""
+    ctx = SessionContext()
+    ctx.workspace_dir = report.get("workspaceDir", "")
+    ctx.bootstrap_max_chars = report.get("bootstrapMaxChars", 0)
+
+    sp = report.get("systemPrompt", {})
+    ctx.system_prompt_chars = sp.get("chars", 0)
+    ctx.project_context_chars = sp.get("projectContextChars", 0)
+    ctx.non_project_context_chars = sp.get("nonProjectContextChars", 0)
+
+    sandbox = report.get("sandbox", {})
+    ctx.sandbox_mode = sandbox.get("mode", "")
+
+    for f in report.get("injectedWorkspaceFiles", []):
+        ctx.injected_files.append(InjectedFile(
+            name=f.get("name", ""),
+            path=f.get("path", ""),
+            missing=f.get("missing", False),
+            raw_chars=f.get("rawChars", 0),
+            injected_chars=f.get("injectedChars", 0),
+            truncated=f.get("truncated", False),
+        ))
+
+    for s in report.get("skills", {}).get("entries", []):
+        ctx.skills.append(SkillEntry(name=s.get("name", ""), block_chars=s.get("blockChars", 0)))
+
+    for t in report.get("tools", {}).get("entries", []):
+        ctx.tools.append(ToolEntry(
+            name=t.get("name", ""),
+            summary_chars=t.get("summaryChars", 0),
+            schema_chars=t.get("schemaChars", 0),
+        ))
+
+    return ctx
+
+
 # --- Session parsing ---
 
 def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> SessionAnalysis:
@@ -427,6 +534,7 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     current_model = ""
     current_provider = ""
     current_api = ""
+    current_thinking_level = ""
 
     for entry in lines:
         etype = entry.get("type")
@@ -441,11 +549,17 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             analysis.compaction_events.append(CompactionEvent(
                 first_kept_entry_id=entry.get("firstKeptEntryId", ""),
                 tokens_before=entry.get("tokensBefore", 0),
+                tokens_after=entry.get("tokensAfter", 0),
+                summary=entry.get("summary", ""),
+                from_hook=entry.get("fromHook", False),
                 timestamp=_ts_to_dt(entry.get("timestamp")),
             ))
+        elif etype == "thinking_level_change":
+            current_thinking_level = entry.get("thinkingLevel", "")
 
     analysis.model = current_model
     analysis.provider = current_provider
+    analysis.thinking_level = current_thinking_level
 
     # Second pass: build turns
     # A turn starts with a user message and includes all assistant messages + tool results
@@ -454,6 +568,7 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     current_turn = None
     pending_tool_calls = {}  # id -> ToolCall
     turn_raw_lines = []
+    current_thinking_level = ""
 
     for entry in lines:
         etype = entry.get("type")
@@ -462,6 +577,9 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             current_model = entry.get("modelId", "")
             current_provider = entry.get("provider", "")
             current_api = ""
+
+        if etype == "thinking_level_change":
+            current_thinking_level = entry.get("thinkingLevel", "")
 
         if etype != "message":
             continue
@@ -499,6 +617,7 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 model=current_model,
                 provider=current_provider,
                 api=current_api,
+                thinking_level=current_thinking_level,
             )
             pending_tool_calls = {}
             turn_raw_lines = [entry]
@@ -514,6 +633,7 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     model=current_model,
                     provider=current_provider,
                     api=current_api,
+                    thinking_level=current_thinking_level,
                 )
                 pending_tool_calls = {}
                 turn_raw_lines = []
@@ -712,6 +832,19 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         else:
             analysis.session_type = "chat"
 
+    # Enrich from sessions.json metadata
+    meta = load_session_metadata(agent_id, session_id)
+    if meta:
+        report = meta.get("systemPromptReport")
+        if report:
+            analysis.context = _parse_session_context(report)
+        analysis.context_tokens = meta.get("contextTokens", 0)
+        analysis.session_input_tokens = meta.get("inputTokens", 0)
+        analysis.session_output_tokens = meta.get("outputTokens", 0)
+        analysis.session_total_tokens = meta.get("totalTokens", 0)
+        analysis.session_compaction_count = meta.get("compactionCount", 0)
+        analysis.memory_flush_at = _ts_to_dt(meta.get("memoryFlushAt"))
+
     return analysis
 
 
@@ -757,7 +890,7 @@ def _compute_context_status(turns: list, lines: list, compaction_events: list):
 
 
 def _finalize_turn(turn: Turn, pending_tool_calls: dict):
-    """Calculate turn duration from raw lines."""
+    """Calculate turn duration and cache hit rate from raw lines."""
     if not turn.raw_lines:
         return
     timestamps = []
@@ -770,6 +903,12 @@ def _finalize_turn(turn: Turn, pending_tool_calls: dict):
         timestamps.append(turn.timestamp)
     if len(timestamps) >= 2:
         turn.duration_ms = int((max(timestamps) - min(timestamps)).total_seconds() * 1000)
+
+    # Calculate cache hit rate
+    cache_read = turn.usage.get("cacheRead", 0)
+    input_tokens = turn.usage.get("input", 0)
+    if cache_read + input_tokens > 0:
+        turn.cache_hit_rate = cache_read / (cache_read + input_tokens)
 
 
 def _enrich_spawns_from_announces(turns: list):

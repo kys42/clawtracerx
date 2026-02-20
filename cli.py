@@ -11,6 +11,7 @@ from typing import Optional
 from parser import (
     parse_session, list_sessions, load_cron_runs,
     load_subagent_runs, get_raw_turn_lines,
+    load_session_metadata, _parse_session_context,
     AGENTS_DIR, KST, _ts_to_dt, _truncate,
 )
 
@@ -148,6 +149,25 @@ def _print_analysis(analysis, depth: int = 0):
     print(f"{prefix}Type: {analysis.session_type} | CWD: {DIM}{analysis.cwd}{RESET}")
     if analysis.compactions > 0:
         print(f"{prefix}{DIM}Compactions: {analysis.compactions}{RESET}")
+
+    # Context injection info (from sessions.json)
+    if analysis.context:
+        ctx = analysis.context
+        print(f"{prefix}System Prompt: {_fmt_size(ctx.system_prompt_chars)} "
+              f"(project: {_fmt_size(ctx.project_context_chars)}, "
+              f"other: {_fmt_size(ctx.non_project_context_chars)})")
+
+        files_str = []
+        for f in ctx.injected_files:
+            status = "MISSING" if f.missing else ("TRUNC" if f.truncated else "ok")
+            files_str.append(f"{f.name}({_fmt_size(f.injected_chars)},{status})")
+        if files_str:
+            print(f"{prefix}Context Files: {', '.join(files_str)}")
+
+        if ctx.skills:
+            skills_str = ", ".join(s.name for s in ctx.skills)
+            print(f"{prefix}Skills: {skills_str}")
+
     print(f"{prefix}{BOLD}{'═' * 60}{RESET}")
 
     for turn in analysis.turns:
@@ -157,6 +177,13 @@ def _print_analysis(analysis, depth: int = 0):
     print(f"\n{prefix}{BOLD}{'═' * 60}{RESET}")
     print(f"{prefix}{BOLD}Summary{RESET}")
     print(f"{prefix}  Turns: {len(analysis.turns)} | Duration: {_fmt_duration(analysis.total_duration_ms)} | Cost: {GREEN}{_fmt_cost(analysis.total_cost)}{RESET}")
+
+    if analysis.compaction_events:
+        for i, ce in enumerate(analysis.compaction_events):
+            summary_preview = _truncate(ce.summary.replace("\n", " "), 100) if ce.summary else ""
+            after_str = f" → {_fmt_tokens(ce.tokens_after)}" if ce.tokens_after else ""
+            print(f"{prefix}  Compaction #{i+1}: {_fmt_tokens(ce.tokens_before)} tokens{after_str}"
+                  + (f" — {DIM}{summary_preview}{RESET}" if summary_preview else ""))
 
     total_input = sum(t.usage.get("input", 0) for t in analysis.turns)
     total_output = sum(t.usage.get("output", 0) for t in analysis.turns)
@@ -217,6 +244,8 @@ def _print_turn(turn, prefix: str):
         v = turn.usage.get(k, 0)
         if v > 0:
             token_parts.append(f"{label}={_fmt_tokens(v)}")
+    if turn.cache_hit_rate > 0:
+        token_parts.append(f"cache_hit={turn.cache_hit_rate:.0%}")
     if token_parts:
         print(f"{prefix}     Tokens: {', '.join(token_parts)}")
 
@@ -489,3 +518,74 @@ def _resolve_session(ref: str) -> Optional[Path]:
             return f
 
     return None
+
+
+def cmd_context(session_ref: str):
+    """Show detailed context injection info for a session."""
+    file_path = _resolve_session(session_ref)
+    if not file_path:
+        print(f"{RED}Session not found: {session_ref}{RESET}")
+        return
+
+    analysis = parse_session(file_path, recursive_subagents=False)
+
+    print(f"\n{BOLD}Context Injection for session {CYAN}{analysis.session_id[:10]}{RESET} {BOLD}({analysis.agent_id}){RESET}")
+    print("=" * 60)
+
+    if not analysis.context:
+        print(f"{DIM}No context metadata available (sessions.json not found or no match).{RESET}")
+        return
+
+    ctx = analysis.context
+
+    # System prompt
+    print(f"System Prompt: {BOLD}{_fmt_size(ctx.system_prompt_chars)}{RESET} "
+          f"(project: {_fmt_size(ctx.project_context_chars)}, "
+          f"other: {_fmt_size(ctx.non_project_context_chars)})")
+    if ctx.bootstrap_max_chars:
+        workspace_str = f" | Workspace: {DIM}{ctx.workspace_dir}{RESET}" if ctx.workspace_dir else ""
+        print(f"Bootstrap Max: {ctx.bootstrap_max_chars:,} chars{workspace_str}")
+    if ctx.sandbox_mode:
+        print(f"Sandbox: {ctx.sandbox_mode}")
+
+    # Injected files
+    if ctx.injected_files:
+        print(f"\n{BOLD}Injected Files:{RESET}")
+        for f in ctx.injected_files:
+            if f.missing:
+                status = f"{RED}MISSING{RESET}"
+                size_str = ""
+            elif f.truncated:
+                status = f"{YELLOW}TRUNC{RESET}"
+                size_str = f"  {_fmt_size(f.injected_chars)}"
+            else:
+                status = f"{GREEN}ok{RESET}"
+                size_str = f"  {_fmt_size(f.injected_chars)}"
+            print(f"  {f.name:<20}{size_str:<10}  {status}")
+
+    # Skills
+    if ctx.skills:
+        total_skill_chars = sum(s.block_chars for s in ctx.skills)
+        print(f"\n{BOLD}Skills ({_fmt_size(total_skill_chars)}):{RESET}")
+        for s in ctx.skills:
+            print(f"  {s.name:<30}  {s.block_chars:,} chars")
+
+    # Tools
+    if ctx.tools:
+        total_tool_chars = sum(t.summary_chars + t.schema_chars for t in ctx.tools)
+        print(f"\n{BOLD}Tools ({_fmt_size(total_tool_chars)}):{RESET}")
+        for t in ctx.tools:
+            print(f"  {t.name:<30}  {t.summary_chars}+{t.schema_chars} chars")
+
+    # Session token summary
+    parts = []
+    if analysis.context_tokens:
+        parts.append(f"context={_fmt_tokens(analysis.context_tokens)}")
+    if analysis.session_compaction_count:
+        parts.append(f"compactions={analysis.session_compaction_count}")
+    if analysis.memory_flush_at:
+        parts.append(f"memory_flush={_fmt_dt(analysis.memory_flush_at)}")
+    if parts:
+        print(f"\n{BOLD}Session Tokens:{RESET} {', '.join(parts)}")
+
+    print()

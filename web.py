@@ -210,7 +210,7 @@ def _resolve(session_id: str):
 
 def _serialize_analysis(analysis):
     """Serialize SessionAnalysis to JSON-safe dict."""
-    return {
+    result = {
         "session_id": analysis.session_id,
         "agent_id": analysis.agent_id,
         "session_type": analysis.session_type,
@@ -226,12 +226,53 @@ def _serialize_analysis(analysis):
             {
                 "first_kept_entry_id": ce.first_kept_entry_id,
                 "tokens_before": ce.tokens_before,
+                "tokens_after": ce.tokens_after,
+                "summary": _truncate(ce.summary, 500),
+                "from_hook": ce.from_hook,
                 "timestamp": ce.timestamp.isoformat() if ce.timestamp else None,
             }
             for ce in analysis.compaction_events
         ],
         "turns": [_serialize_turn(t) for t in analysis.turns],
+        # session-level metadata from sessions.json
+        "context_tokens": analysis.context_tokens,
+        "session_input_tokens": analysis.session_input_tokens,
+        "session_output_tokens": analysis.session_output_tokens,
+        "session_total_tokens": analysis.session_total_tokens,
+        "session_compaction_count": analysis.session_compaction_count,
+        "memory_flush_at": analysis.memory_flush_at.isoformat() if analysis.memory_flush_at else None,
     }
+
+    if analysis.context:
+        result["context"] = {
+            "systemPromptChars": analysis.context.system_prompt_chars,
+            "projectContextChars": analysis.context.project_context_chars,
+            "nonProjectContextChars": analysis.context.non_project_context_chars,
+            "bootstrapMaxChars": analysis.context.bootstrap_max_chars,
+            "workspaceDir": analysis.context.workspace_dir,
+            "sandboxMode": analysis.context.sandbox_mode,
+            "injectedFiles": [
+                {
+                    "name": f.name,
+                    "path": f.path,
+                    "rawChars": f.raw_chars,
+                    "injectedChars": f.injected_chars,
+                    "missing": f.missing,
+                    "truncated": f.truncated,
+                }
+                for f in analysis.context.injected_files
+            ],
+            "skills": [
+                {"name": s.name, "chars": s.block_chars}
+                for s in analysis.context.skills
+            ],
+            "tools": [
+                {"name": t.name, "summaryChars": t.summary_chars, "schemaChars": t.schema_chars}
+                for t in analysis.context.tools
+            ],
+        }
+
+    return result
 
 
 def _serialize_turn(turn):
@@ -253,6 +294,8 @@ def _serialize_turn(turn):
         "duration_ms": turn.duration_ms,
         "timestamp": turn.timestamp.isoformat() if turn.timestamp else None,
         "in_context": turn.in_context,
+        "thinking_level": turn.thinking_level,
+        "cache_hit_rate": round(turn.cache_hit_rate, 4),
     }
 
 
