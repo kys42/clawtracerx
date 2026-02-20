@@ -300,14 +300,24 @@ def find_subagent_child_session(child_session_key: str) -> Optional[Path]:
 
 # --- Subagent announce parsing ---
 
+# Matches Stats section (runtime + tokens). Optional trailing fields vary by version.
 _ANNOUNCE_RE = re.compile(
     r"Stats:\s*runtime\s+([\d\w .]+?)\s*"
-    r"[•·]\s*tokens\s+([\d.]+[KMkm]?)\s*\(in\s+([\d.]+[KMkm]?).*?out\s+([\d.]+[KMkm]?)\)"
-    r".*?sessionKey\s+(\S+)"
-    r".*?sessionId\s+(\S+)"
-    r".*?transcript\s+(\S+)",
+    r"[•·]\s*tokens\s+([\d.]+[KMkm]?)\s*\(in\s+([\d.]+[KMkm]?).*?out\s+([\d.]+[KMkm]?)\)",
     re.DOTALL,
 )
+
+# Old format: sessionId inline in Stats line  (• sessionId UUID)
+_ANNOUNCE_INLINE_SID_RE = re.compile(r'[•·]\s*sessionId\s+([0-9a-f-]{36})')
+
+# Old format: transcript path inline in Stats
+_ANNOUNCE_INLINE_TRANSCRIPT_RE = re.compile(r'[•·]\s*transcript\s+(\S+\.jsonl\S*)')
+
+# New format: sessionId in message prefix [sessionId: UUID]
+_ANNOUNCE_SESSION_ID_RE = re.compile(r'\[sessionId:\s*([0-9a-f-]{36})\]')
+
+# Extracts task label: A subagent task "LABEL" just completed
+_ANNOUNCE_LABEL_RE = re.compile(r'A subagent task "([^"]+)"')
 
 
 def _parse_token_str(s: str) -> int:
@@ -332,22 +342,42 @@ def _parse_runtime_str(s: str) -> int:
     return total_ms or 0
 
 
-def _parse_announce_match(m) -> Optional[dict]:
-    """Parse a regex match from _ANNOUNCE_RE into a stats dict."""
+def _parse_announce_match(m, full_text: str = "") -> Optional[dict]:
+    """Parse a regex match from _ANNOUNCE_RE into a stats dict.
+
+    Supports two announce formats:
+    - New: [sessionId: UUID] prefix + Stats: runtime • tokens (no inline sessionId)
+    - Old: Stats: runtime • tokens • sessionKey ... • sessionId UUID • transcript PATH
+    """
     try:
-        session_key = m.group(5)
-        # Extract child_session_id from key: agent:name:subagent:UUID
-        child_sid = _extract_session_id_from_key(session_key)
-        return {
+        result = {
             "runtime_ms": _parse_runtime_str(m.group(1)),
             "total_tokens": _parse_token_str(m.group(2)),
             "input_tokens": _parse_token_str(m.group(3)),
             "output_tokens": _parse_token_str(m.group(4)),
-            "session_key": session_key,
-            "child_session_id": child_sid,
-            "session_id": m.group(6),
-            "transcript": m.group(7),
         }
+        if full_text:
+            # Label from "A subagent task "LABEL""
+            label_m = _ANNOUNCE_LABEL_RE.search(full_text)
+            if label_m:
+                result["label"] = label_m.group(1)
+
+            # Session ID: new format = [sessionId: UUID] prefix
+            sid_m = _ANNOUNCE_SESSION_ID_RE.search(full_text)
+            if sid_m:
+                result["session_id"] = sid_m.group(1)
+            else:
+                # Old format: • sessionId UUID inline in Stats
+                inline_sid_m = _ANNOUNCE_INLINE_SID_RE.search(full_text)
+                if inline_sid_m:
+                    result["session_id"] = inline_sid_m.group(1)
+
+            # Transcript path (old format only)
+            transcript_m = _ANNOUNCE_INLINE_TRANSCRIPT_RE.search(full_text)
+            if transcript_m:
+                result["transcript"] = transcript_m.group(1)
+
+        return result
     except (ValueError, IndexError):
         return None
 
@@ -793,8 +823,8 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         _finalize_turn(current_turn, pending_tool_calls)
         turns.append(current_turn)
 
-    # Enrich subagent spawns from announce messages
-    _enrich_spawns_from_announces(turns)
+    # Enrich subagent spawns from announce messages (uses real sessionId from announce prefix)
+    _enrich_spawns_from_announces(turns, agent_id=agent_id)
 
     # Compute in_context based on compaction events
     if analysis.compaction_events:
@@ -911,50 +941,179 @@ def _finalize_turn(turn: Turn, pending_tool_calls: dict):
         turn.cache_hit_rate = cache_read / (cache_read + input_tokens)
 
 
-def _enrich_spawns_from_announces(turns: list):
-    """Match subagent announce messages to their spawns.
+def _find_child_session_by_id(session_id: str, agent_id: str) -> Optional[Path]:
+    """Find a child session JSONL file by its real session UUID."""
+    if not session_id:
+        return None
+    # Search in the same agent first, then all agents
+    search_dirs = []
+    agent_dir = AGENTS_DIR / agent_id
+    if agent_dir.exists():
+        search_dirs.append(agent_dir / "sessions")
+    for d in AGENTS_DIR.iterdir():
+        if d.is_dir() and d.name != agent_id:
+            search_dirs.append(d / "sessions")
 
-    Announce messages come in two formats:
-    1. Single: "[Day ...] A subagent task ... Stats: ..."
-    2. Queued: "[Day ...] [Queued announce...] --- Queued #N A subagent task ... Stats: ..."
+    for sessions_dir in search_dirs:
+        if not sessions_dir.exists():
+            continue
+        for f in sessions_dir.iterdir():
+            if f.name.startswith(session_id):
+                if f.suffix == ".jsonl" or ".jsonl.deleted." in f.name:
+                    return f
+    return None
 
-    The Stats section contains: runtime, tokens, sessionKey, sessionId, transcript path.
+
+def _find_child_session_by_label(label: str, spawn_label: str, agent_id: str,
+                                  announce_ts: datetime) -> Optional[Path]:
+    """Fallback: find child session by scanning files near announce timestamp.
+
+    Used for old announce format that lacks [sessionId:] and Stats: sections.
+    Searches JSONL files modified within 30 minutes before the announce, and
+    checks if the first user message contains the spawn label.
     """
-    # Build lookup: child_session_id -> SubagentSpawn
-    spawns_by_sid = {}
+    target_ts = announce_ts.timestamp()
+    window_start = target_ts - 1800  # 30 min before announce
+
+    # Derive keywords from label (e.g. "ys-dev-trailing-slash-redirects-167-worker")
+    keywords = [w for w in label.replace("-", " ").split() if len(w) > 3]
+
+    search_dirs = []
+    agent_dir = AGENTS_DIR / agent_id
+    if agent_dir.exists():
+        search_dirs.append(agent_dir / "sessions")
+    for d in AGENTS_DIR.iterdir():
+        if d.is_dir() and d.name != agent_id:
+            search_dirs.append(d / "sessions")
+
+    candidates = []
+    for sessions_dir in search_dirs:
+        if not sessions_dir.exists():
+            continue
+        for f in sessions_dir.iterdir():
+            if not (f.suffix == ".jsonl" or ".jsonl.deleted." in f.name):
+                continue
+            try:
+                mtime = f.stat().st_mtime
+                if not (window_start <= mtime <= target_ts + 60):
+                    continue
+                candidates.append((mtime, f))
+            except OSError:
+                continue
+
+    # Check first user message of each candidate for label keywords
+    for _, f in sorted(candidates):
+        try:
+            for line in f.read_text(errors="replace").splitlines()[:10]:
+                obj = json.loads(line)
+                if obj.get("type") == "message":
+                    msg = obj.get("message", {})
+                    if msg.get("role") == "user":
+                        text = (msg.get("content") or [{}])[0].get("text", "")
+                        # Match if majority of keywords found in first user msg
+                        hits = sum(1 for kw in keywords if kw in text)
+                        if hits >= max(2, len(keywords) * 0.5):
+                            return f
+                        break
+        except Exception:
+            continue
+    return None
+
+
+def _enrich_spawns_from_announces(turns: list, agent_id: str = ""):
+    """Match subagent announce messages to their spawns and load child turns.
+
+    Current announce format:
+      [sessionId: UUID] A subagent task "LABEL" just completed ...
+      Stats: runtime Xm Ys • tokens X.Xk (in X.Xk / out X.Xk)
+
+    The real child sessionId is in the [sessionId: ...] prefix (different from the
+    childSessionKey UUID used for routing). We match by label, then load child turns
+    using the real session UUID.
+    """
+    # Build lookup: label -> [SubagentSpawn, ...] (ordered, pop first match)
+    from collections import defaultdict
+    spawns_by_label: dict = defaultdict(list)
     for turn in turns:
         for spawn in turn.subagent_spawns:
-            if spawn.child_session_id:
-                spawns_by_sid[spawn.child_session_id] = spawn
+            if spawn.label:
+                spawns_by_label[spawn.label].append(spawn)
 
-    if not spawns_by_sid:
+    if not spawns_by_label:
         return
 
     for turn in turns:
         if turn.user_source != "subagent_announce":
             continue
-        # A single announce message may contain multiple queued announces
-        # Split by "Queued #" or try as single
         text = turn.user_text
-        # Find all Stats: sections
+
+        # --- New format: has Stats: section ---
         for m in _ANNOUNCE_RE.finditer(text):
-            stats = _parse_announce_match(m)
+            match_start = m.start()
+            chunk_start = text.rfind("---", 0, match_start)
+            # Extend chunk past match end to capture inline • sessionId / transcript fields
+            chunk_end = text.find("\n\n", m.end())
+            if chunk_end < 0:
+                chunk_end = len(text)
+            chunk = text[chunk_start if chunk_start >= 0 else 0: chunk_end]
+
+            stats = _parse_announce_match(m, chunk if chunk else text)
             if not stats:
                 continue
-            # Match by child_session_id extracted from sessionKey
-            sid = stats.get("child_session_id", "")
-            spawn = spawns_by_sid.get(sid)
-            if not spawn:
+
+            label = stats.get("label", "")
+            candidates = spawns_by_label.get(label)
+            if not candidates:
                 continue
+            spawn = candidates.pop(0)
+
             spawn.announce_stats = stats
-            # Fill in missing data from announce
             if not spawn.duration_ms and stats.get("runtime_ms"):
                 spawn.duration_ms = stats["runtime_ms"]
             if not spawn.total_tokens and stats.get("total_tokens"):
                 spawn.total_tokens = stats["total_tokens"]
-            # Try to resolve child session from transcript path
+
             if not spawn.child_turns:
-                _resolve_child_from_transcript(spawn, stats.get("transcript", ""))
+                real_sid = stats.get("session_id", "")
+                child_file = _find_child_session_by_id(real_sid, agent_id)
+                if child_file:
+                    child_analysis = parse_session(child_file, recursive_subagents=True)
+                    spawn.child_turns = child_analysis.turns
+                    if not spawn.cost_usd and child_analysis.total_cost:
+                        spawn.cost_usd = child_analysis.total_cost
+
+        # --- Old format: no Stats section, just label in text ---
+        if not _ANNOUNCE_RE.search(text):
+            label_m = _ANNOUNCE_LABEL_RE.search(text)
+            sid_m = _ANNOUNCE_SESSION_ID_RE.search(text)
+            if label_m:
+                label = label_m.group(1)
+                candidates = spawns_by_label.get(label)
+                if candidates:
+                    spawn = candidates.pop(0)
+                    stats = {"label": label}
+                    if sid_m:
+                        stats["session_id"] = sid_m.group(1)
+                    if not spawn.announce_stats:
+                        spawn.announce_stats = stats
+
+                    if not spawn.child_turns:
+                        real_sid = stats.get("session_id", "")
+                        child_file = _find_child_session_by_id(real_sid, agent_id)
+                        # Fallback: search by timestamp + label in first user message
+                        if not child_file and turn.timestamp:
+                            child_file = _find_child_session_by_label(
+                                label, spawn.label, agent_id, turn.timestamp
+                            )
+                        if child_file:
+                            child_analysis = parse_session(child_file, recursive_subagents=True)
+                            spawn.child_turns = child_analysis.turns
+                            # Store real session ID for Open Session link
+                            if not spawn.announce_stats.get("session_id"):
+                                sid = child_file.name.split(".jsonl")[0]
+                                spawn.announce_stats["session_id"] = sid
+                            if not spawn.cost_usd and child_analysis.total_cost:
+                                spawn.cost_usd = child_analysis.total_cost
 
 
 # --- Session discovery ---
@@ -1014,6 +1173,13 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
             model = ""
             session_type = "chat"
 
+            last_user_text = ""
+            tool_call_count = 0
+            subagent_count = 0
+            error_count = 0
+            last_user_ts = None
+            last_entry_ts = None
+            turn_durations = []
             for raw_line in f:
                 raw_line = raw_line.strip()
                 if not raw_line:
@@ -1034,15 +1200,24 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                 elif etype == "message":
                     msg = entry.get("message", {})
                     role = msg.get("role", "")
+                    ts = _ts_to_dt(msg.get("timestamp") or entry.get("timestamp"))
+                    if ts:
+                        last_entry_ts = ts
                     if role == "user":
                         user_count += 1
+                        if last_user_ts and ts:
+                            dur = (ts - last_user_ts).total_seconds()
+                            if dur > 0:
+                                turn_durations.append(dur)
+                        last_user_ts = ts
+                        content = msg.get("content", [])
+                        user_text = ""
+                        if isinstance(content, list):
+                            for c in content:
+                                if isinstance(c, dict) and c.get("type") == "text":
+                                    user_text += c.get("text", "")
+                        last_user_text = user_text
                         if user_count == 1:
-                            content = msg.get("content", [])
-                            user_text = ""
-                            if isinstance(content, list):
-                                for c in content:
-                                    if isinstance(c, dict) and c.get("type") == "text":
-                                        user_text += c.get("text", "")
                             src = _detect_source(user_text)
                             if src == "cron":
                                 session_type = "cron"
@@ -1055,6 +1230,22 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                         total_tokens += usage.get("totalTokens", 0)
                         cost = usage.get("cost", {})
                         total_cost += cost.get("total", 0)
+                        content = msg.get("content", [])
+                        if isinstance(content, list):
+                            for c in content:
+                                if isinstance(c, dict) and c.get("type") == "toolCall":
+                                    tool_call_count += 1
+                                    if c.get("name") == "sessions_spawn":
+                                        subagent_count += 1
+                    elif role == "toolResult":
+                        details = msg.get("details", {})
+                        if (msg.get("isError") or
+                                details.get("error") or
+                                details.get("status") == "error"):
+                            error_count += 1
+
+            if last_user_ts and last_entry_ts and last_entry_ts > last_user_ts:
+                turn_durations.append((last_entry_ts - last_user_ts).total_seconds())
 
             if "subagent" in str(file_path):
                 session_type = "subagent"
@@ -1064,6 +1255,11 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
             meta["turns"] = user_count
             meta["cost"] = total_cost
             meta["tokens"] = total_tokens
+            meta["last_message"] = last_user_text[:200] if last_user_text else ""
+            meta["tool_calls"] = tool_call_count
+            meta["subagents"] = subagent_count
+            meta["errors"] = error_count
+            meta["avg_turn_time"] = round(sum(turn_durations) / len(turn_durations), 1) if turn_durations else None
 
     except (IOError, OSError):
         pass
