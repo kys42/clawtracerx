@@ -2,6 +2,7 @@
 /* Depends on app.js: fmtTokens, fmtCost, fmtSize, fmtDuration, fmtDate, truncate, escHtml, shortenPath, toolIcon */
 
 const SYSTEM_SOURCES = new Set(['system', 'subagent_announce', 'cron_announce']);
+const DELIVERY_MIRROR_SOURCE = 'delivery_mirror';
 
 function fmtChars(n) {
   if (!n) return '0';
@@ -50,7 +51,32 @@ function renderTurns(turns, compactionEvents) {
   container.innerHTML = html;
 }
 
+function renderDeliveryMirrorTurn(t, animIdx) {
+  const delay = (animIdx || 0) * 40;
+  const preview = t.assistant_texts.length
+    ? escHtml(truncate(t.assistant_texts[0].replace(/\n/g, ' '), 90))
+    : '(empty)';
+  const ts = t.timestamp ? `<span class="dm-ts">${fmtDate(t.timestamp)}</span>` : '';
+  const fullContent = t.assistant_texts.map(txt =>
+    `<pre class="msg-content">${escHtml(txt)}</pre>`
+  ).join('');
+  return `
+  <div class="turn-card delivery-mirror-card" id="turn-${t.index}" style="animation-delay:${delay}ms">
+    <div class="dm-row" onclick="toggleTurn(${t.index})">
+      <span class="dm-icon">📨</span>
+      <span class="dm-preview">${preview}</span>
+      ${ts}
+    </div>
+    <div class="turn-body" id="turn-body-${t.index}" style="display:none">
+      <div class="turn-detail">${fullContent}</div>
+    </div>
+  </div>`;
+}
+
 function renderTurn(t, animIdx) {
+  if (t.user_source === DELIVERY_MIRROR_SOURCE) {
+    return renderDeliveryMirrorTurn(t, animIdx);
+  }
   const hasErrors = t.tool_calls.some(tc => tc.is_error);
   const isSystem = SYSTEM_SOURCES.has(t.user_source);
   const isCompacted = t.in_context === false;

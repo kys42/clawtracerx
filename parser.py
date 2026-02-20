@@ -591,9 +591,21 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     analysis.provider = current_provider
     analysis.thinking_level = current_thinking_level
 
+    # Build id → message info map for parent-chain lookups
+    id_to_msg_info = {}  # id -> {"role": str, "stop_reason": str, "model": str}
+    for entry in lines:
+        eid = entry.get("id")
+        if eid and entry.get("type") == "message":
+            msg = entry["message"]
+            id_to_msg_info[eid] = {
+                "role": msg.get("role", ""),
+                "stop_reason": msg.get("stopReason", ""),
+                "model": msg.get("model", ""),
+            }
+
     # Second pass: build turns
-    # A turn starts with a user message and includes all assistant messages + tool results
-    # until the next user message
+    # A turn starts with a user message (or a proactive/delivery assistant message)
+    # and includes all assistant messages + tool results until the next boundary.
     turns = []
     current_turn = None
     pending_tool_calls = {}  # id -> ToolCall
@@ -653,7 +665,42 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             turn_raw_lines = [entry]
 
         elif role == "assistant":
-            if current_turn is None:
+            model_name = msg.get("model", "")
+            parent_id = entry.get("parentId")
+            parent_info = id_to_msg_info.get(parent_id, {})
+            parent_role = parent_info.get("role", "")
+            parent_stop = parent_info.get("stop_reason", "")
+            current_stop = msg.get("stopReason", "")
+
+            is_delivery_mirror = (model_name == "delivery-mirror")
+            # Proactive: parent is an assistant that completed normally (not an error retry)
+            is_proactive = (
+                parent_role == "assistant"
+                and not is_delivery_mirror
+                and current_stop != "error"
+                and parent_stop != "error"
+            )
+
+            if is_delivery_mirror or is_proactive:
+                # Close current turn and start a new one
+                if current_turn is not None:
+                    current_turn.raw_lines = turn_raw_lines
+                    _finalize_turn(current_turn, pending_tool_calls)
+                    turns.append(current_turn)
+                new_source = "delivery_mirror" if is_delivery_mirror else "proactive"
+                current_turn = Turn(
+                    index=len(turns),
+                    user_text="",
+                    user_source=new_source,
+                    timestamp=ts,
+                    model=current_model,
+                    provider=current_provider,
+                    api=current_api,
+                    thinking_level=current_thinking_level,
+                )
+                pending_tool_calls = {}
+                turn_raw_lines = []
+            elif current_turn is None:
                 # Assistant message without prior user - create implicit turn
                 current_turn = Turn(
                     index=len(turns),
@@ -850,9 +897,13 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     break
             analysis.total_duration_ms = int((last_ts - first_ts).total_seconds() * 1000)
 
-    # Detect session type from first user message
+    # Detect session type from first user message (skip proactive/delivery_mirror turns)
     if turns:
-        first_source = turns[0].user_source
+        first_real_turn = next(
+            (t for t in turns if t.user_source not in ("proactive", "delivery_mirror")),
+            turns[0],
+        )
+        first_source = first_real_turn.user_source
         if first_source == "cron":
             analysis.session_type = "cron"
         elif first_source == "heartbeat":
@@ -1177,8 +1228,8 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
             tool_call_count = 0
             subagent_count = 0
             error_count = 0
-            last_user_ts = None
-            last_entry_ts = None
+            current_turn_user_ts = None
+            current_turn_last_ts = None
             turn_durations = []
             for raw_line in f:
                 raw_line = raw_line.strip()
@@ -1201,15 +1252,14 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                     msg = entry.get("message", {})
                     role = msg.get("role", "")
                     ts = _ts_to_dt(msg.get("timestamp") or entry.get("timestamp"))
-                    if ts:
-                        last_entry_ts = ts
                     if role == "user":
                         user_count += 1
-                        if last_user_ts and ts:
-                            dur = (ts - last_user_ts).total_seconds()
+                        if current_turn_user_ts and current_turn_last_ts:
+                            dur = (current_turn_last_ts - current_turn_user_ts).total_seconds()
                             if dur > 0:
                                 turn_durations.append(dur)
-                        last_user_ts = ts
+                        current_turn_user_ts = ts
+                        current_turn_last_ts = None
                         content = msg.get("content", [])
                         user_text = ""
                         if isinstance(content, list):
@@ -1223,7 +1273,10 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                                 session_type = "cron"
                             elif src == "heartbeat":
                                 session_type = "heartbeat"
-                    elif role == "assistant":
+                    elif role in ("assistant", "toolResult"):
+                        if ts:
+                            current_turn_last_ts = ts
+                    if role == "assistant":
                         if msg.get("model"):
                             model = msg["model"]
                         usage = msg.get("usage", {})
@@ -1244,8 +1297,10 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                                 details.get("status") == "error"):
                             error_count += 1
 
-            if last_user_ts and last_entry_ts and last_entry_ts > last_user_ts:
-                turn_durations.append((last_entry_ts - last_user_ts).total_seconds())
+            if current_turn_user_ts and current_turn_last_ts:
+                dur = (current_turn_last_ts - current_turn_user_ts).total_seconds()
+                if dur > 0:
+                    turn_durations.append(dur)
 
             if "subagent" in str(file_path):
                 session_type = "subagent"
