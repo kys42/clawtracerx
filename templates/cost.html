@@ -2,6 +2,10 @@
 {% set active = "cost" %}
 {% block title %}Cost Dashboard{% endblock %}
 
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <h1>Cost Dashboard</h1>
@@ -19,39 +23,187 @@
 </div>
 
 <div class="cost-summary" id="cost-summary">
-  <div class="loading">Loading...</div>
+  <div class="summary-card hero skeleton" style="height:112px"></div>
+  <div class="summary-card skeleton" style="height:112px"></div>
+  <div class="summary-card skeleton" style="height:112px"></div>
 </div>
 
 <div class="cost-grid">
   <div class="card">
     <h3>Cost by Agent</h3>
-    <div id="chart-agent" class="bar-chart"></div>
+    <div id="chart-agent"></div>
   </div>
   <div class="card">
     <h3>Cost by Type</h3>
-    <div id="chart-type" class="bar-chart"></div>
+    <div id="chart-type"></div>
   </div>
   <div class="card">
     <h3>Cost by Model</h3>
-    <div id="chart-model" class="bar-chart"></div>
+    <div id="chart-model"></div>
   </div>
   <div class="card full-width">
     <h3>Daily Cost</h3>
-    <div id="chart-daily" class="daily-chart"></div>
+    <div id="chart-daily"></div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+const charts = {};
+
+const APEX_BASE = {
+  theme: { mode: 'dark' },
+  chart: {
+    background: 'transparent',
+    foreColor: '#b0b4c0',
+    fontFamily: "'JetBrains Mono', 'Inter', monospace",
+    toolbar: { show: false },
+    animations: { enabled: true, speed: 450, animateGradually: { enabled: true, delay: 80 } },
+  },
+  grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
+  tooltip: { theme: 'dark' },
+};
+
+function destroyChart(id) {
+  if (charts[id]) {
+    try { charts[id].destroy(); } catch(e) {}
+    delete charts[id];
+  }
+}
+
+function renderApexBar(containerId, dataMap) {
+  const el = qs(`#${containerId}`);
+  destroyChart(containerId);
+  if (!dataMap || !Object.keys(dataMap).length) {
+    el.innerHTML = '<div class="empty">No data</div>';
+    return;
+  }
+  el.innerHTML = '';
+  const entries = Object.entries(dataMap).sort((a, b) => b[1] - a[1]);
+  const categories = entries.map(([l]) => l);
+  const values = entries.map(([, v]) => parseFloat(v.toFixed(6)));
+
+  charts[containerId] = new ApexCharts(el, {
+    ...APEX_BASE,
+    series: [{ name: 'Cost ($)', data: values }],
+    chart: {
+      ...APEX_BASE.chart,
+      type: 'bar',
+      height: Math.max(160, categories.length * 38 + 48),
+    },
+    plotOptions: {
+      bar: {
+        horizontal: true,
+        borderRadius: 5,
+        barHeight: '60%',
+        dataLabels: { position: 'right' },
+      },
+    },
+    dataLabels: {
+      enabled: true,
+      formatter: v => fmtCost(v),
+      style: { fontSize: '11px', colors: ['#b0b4c0'], fontFamily: "'JetBrains Mono', monospace" },
+      offsetX: 6,
+    },
+    xaxis: {
+      categories,
+      labels: {
+        formatter: v => fmtCost(v),
+        style: { colors: '#6b7280', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
+      },
+      axisBorder: { color: 'rgba(255,255,255,0.06)' },
+      axisTicks: { color: 'rgba(255,255,255,0.06)' },
+    },
+    yaxis: {
+      labels: { style: { colors: '#b0b4c0', fontSize: '12px' } },
+    },
+    fill: {
+      type: 'gradient',
+      gradient: {
+        shade: 'dark', type: 'horizontal',
+        gradientToColors: ['#06b6d4'], stops: [0, 100],
+        shadeIntensity: 0.4,
+      },
+    },
+    colors: ['#6366f1'],
+    tooltip: { ...APEX_BASE.tooltip, y: { formatter: v => fmtCost(v) } },
+  });
+  charts[containerId].render();
+}
+
+function renderApexArea(containerId, dataMap) {
+  const el = qs(`#${containerId}`);
+  destroyChart(containerId);
+  if (!dataMap || !Object.keys(dataMap).length) {
+    el.innerHTML = '<div class="empty">No data</div>';
+    return;
+  }
+  el.innerHTML = '';
+  const entries = Object.entries(dataMap).sort((a, b) => a[0].localeCompare(b[0]));
+  const categories = entries.map(([d]) => d);
+  const values = entries.map(([, v]) => parseFloat(v.toFixed(6)));
+
+  charts[containerId] = new ApexCharts(el, {
+    ...APEX_BASE,
+    series: [{ name: 'Cost ($)', data: values }],
+    chart: {
+      ...APEX_BASE.chart,
+      type: 'area',
+      height: 280,
+      toolbar: {
+        show: true,
+        tools: { zoom: true, reset: true, pan: true, download: false, selection: false, zoomin: false, zoomout: false },
+      },
+      zoom: { enabled: true },
+    },
+    stroke: { curve: 'smooth', width: 2, colors: ['#6366f1'] },
+    fill: {
+      type: 'gradient',
+      gradient: {
+        shade: 'dark', type: 'vertical',
+        shadeIntensity: 0.5,
+        gradientToColors: ['#09090b'],
+        opacityFrom: 0.45, opacityTo: 0.02,
+        stops: [0, 100],
+      },
+      colors: ['#6366f1'],
+    },
+    xaxis: {
+      categories,
+      labels: {
+        style: { colors: '#6b7280', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
+        rotate: -45,
+      },
+      axisBorder: { color: 'rgba(255,255,255,0.06)' },
+      axisTicks: { color: 'rgba(255,255,255,0.06)' },
+    },
+    yaxis: {
+      labels: {
+        formatter: v => fmtCost(v),
+        style: { colors: '#6b7280', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
+      },
+    },
+    markers: { size: 4, colors: ['#6366f1'], strokeColors: '#818cf8', strokeWidth: 2, hover: { size: 6 } },
+    tooltip: {
+      ...APEX_BASE.tooltip,
+      x: { show: true },
+      y: { formatter: v => fmtCost(v) },
+      crosshairs: { stroke: { color: '#6366f1', width: 1, dashArray: 3 } },
+    },
+    dataLabels: { enabled: false },
+  });
+  charts[containerId].render();
+}
+
 async function loadCost() {
   const period = qs('#filter-period').value;
   const agent = qs('#filter-agent').value;
   const data = await fetchJSON(`/api/cost?period=${period}&agent=${agent}`);
 
-  // Summary cards
+  // Hero metric cards
   qs('#cost-summary').innerHTML = `
-    <div class="summary-card">
+    <div class="summary-card hero">
       <div class="summary-value cost">${fmtCost(data.total_cost)}</div>
       <div class="summary-label">Total Cost</div>
     </div>
@@ -65,59 +217,10 @@ async function loadCost() {
     </div>
   `;
 
-  renderBarChart('chart-agent', data.by_agent, data.total_cost);
-  renderBarChart('chart-type', data.by_type, data.total_cost);
-  renderBarChart('chart-model', data.by_model, data.total_cost);
-  renderDailyChart('chart-daily', data.by_day);
-}
-
-function renderBarChart(containerId, dataMap, total) {
-  const container = qs(`#${containerId}`);
-  if (!dataMap || !Object.keys(dataMap).length) {
-    container.innerHTML = '<div class="empty">No data</div>';
-    return;
-  }
-  const max = Math.max(...Object.values(dataMap), 0.001);
-  container.innerHTML = Object.entries(dataMap).map(([label, value]) => {
-    const pct = (value / max) * 100;
-    const share = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-    return `
-    <div class="bar-row">
-      <span class="bar-label">${label}</span>
-      <div class="bar-track">
-        <div class="bar-fill" style="width:${pct}%"></div>
-      </div>
-      <span class="bar-value">${fmtCost(value)} <span class="dim">(${share}%)</span></span>
-    </div>`;
-  }).join('');
-}
-
-function renderDailyChart(containerId, dataMap) {
-  const container = qs(`#${containerId}`);
-  if (!dataMap || !Object.keys(dataMap).length) {
-    container.innerHTML = '<div class="empty">No data</div>';
-    return;
-  }
-  const entries = Object.entries(dataMap);
-  const max = Math.max(...entries.map(e => e[1]), 0.001);
-  const barWidth = Math.max(20, Math.min(60, (container.clientWidth - 40) / entries.length - 4));
-
-  container.innerHTML = `
-    <div class="daily-bars">
-      ${entries.map(([day, value]) => {
-        const pct = (value / max) * 100;
-        const shortDay = day.slice(5); // MM-DD
-        return `
-        <div class="daily-bar-col" style="width:${barWidth}px">
-          <div class="daily-bar-value">${fmtCost(value)}</div>
-          <div class="daily-bar-track">
-            <div class="daily-bar-fill" style="height:${pct}%"></div>
-          </div>
-          <div class="daily-bar-label">${shortDay}</div>
-        </div>`;
-      }).join('')}
-    </div>
-  `;
+  renderApexBar('chart-agent', data.by_agent);
+  renderApexBar('chart-type', data.by_type);
+  renderApexBar('chart-model', data.by_model);
+  renderApexArea('chart-daily', data.by_day);
 }
 
 async function loadAgents() {
