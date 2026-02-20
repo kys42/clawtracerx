@@ -1,3 +1,71 @@
+## [2026-02-21] - 버그 수정: 폴링 무한루프, Context 패널, 서브에이전트 세션 매칭
+
+### 작업 내용
+- Lab 폴링 무한루프 수정 (응답 완료 감지 + 속도 전환)
+- Context Injection 패널에 Skills/Tools 크기 바 차트 추가
+- PROJECT vs SYSTEM 개념 명확화 (Tools/Skills는 SYSTEM에 포함됨)
+- 서브에이전트 child session 로딩 전면 수정 (announce 포맷 2종 지원)
+- Open Session 링크 올바른 session ID 사용하도록 수정
+
+### 주요 변경사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `templates/lab.html` | 폴링 2단계 속도 (fast 2s / slow 8s), 완료 시 slow 전환, 무한루프 방지 |
+| `web.py` | poll 응답에 `done` 필드 추가 (마지막 turn stopReason=stop 감지), `_serialize_spawn`에서 `announce_stats.session_id`로 real sessionId 사용 |
+| `templates/detail.html` | Skills/Tools 섹션을 chip → bar chart로 변경 (blockChars, summaryChars+schemaChars) |
+| `static/style.css` | `.ctx-file-fill.skill`, `.tool-summary`, `.tool-schema` 색상 추가, `.ctx-file-bar`에 flex 추가 |
+| `parser.py` | 서브에이전트 announce 파싱 전면 재작성 (아래 상세) |
+
+### 서브에이전트 세션 매칭 수정 (parser.py)
+
+**문제**: `child_session_id`(라우팅 키 UUID) ≠ 실제 JSONL 파일명 UUID → child_turns 항상 빈 배열, Open Session 404
+
+**근본 원인 분석**:
+- OpenClaw `sessions_spawn` 결과: `childSessionKey: agent:aki:subagent:2858690d-...` (라우팅용 UUID)
+- 실제 JSONL 파일: `83aead09-....jsonl.deleted.*` (런타임에 새로 생성된 UUID)
+- 두 UUID는 다른 값. 실제 UUID는 announce 메시지에서만 얻을 수 있음
+- 기존 코드는 announce 처리 전에 파일을 찾으려 해서 항상 실패
+
+**두 가지 announce 포맷**:
+1. **신버전** (`91ed4a28` 같은 최근 세션): `[sessionId: UUID]` prefix + `Stats: runtime • tokens` (inline 필드 없음)
+2. **구버전** (`0ab7efc0` 같은 이전 세션): `Stats: runtime • tokens • sessionKey ... • sessionId UUID • transcript PATH` (inline 필드 있음)
+
+**수정 내역**:
+- `_ANNOUNCE_RE`: Stats+tokens만 매칭 (sessionKey/transcript 옵셔널)
+- `_ANNOUNCE_SESSION_ID_RE`: `[sessionId: UUID]` 추출 (신버전 prefix)
+- `_ANNOUNCE_INLINE_SID_RE`: `• sessionId UUID` 추출 (구버전 Stats inline)
+- `_ANNOUNCE_INLINE_TRANSCRIPT_RE`: `• transcript PATH` 추출 (구버전)
+- `_parse_announce_match(m, full_text)`: 두 포맷 모두 session_id 추출
+- `chunk` 범위를 `m.end()` → 다음 `\n\n`까지 확장 (inline 필드가 match 밖에 있었음)
+- `_find_child_session_by_id(session_id, agent_id)`: 실제 UUID로 파일 탐색
+- `_find_child_session_by_label(...)`: label + timestamp 기반 폴백 (announce에 sessionId 없는 경우)
+- `_enrich_spawns_from_announces`: 구버전 포맷(Stats 없음) 별도 처리 분기
+- `spawns_by_label`: dict → `defaultdict(list)` + pop(0) (같은 label 중복 spawn 순서 매칭)
+- child session 로딩을 announce 처리 후로 이동 (announce가 실제 UUID를 제공하므로)
+
+### 문제 해결
+
+- **문제**: chunk = `text[0: m.end()]` — match 끝에서 잘려서 그 뒤 `• sessionId UUID`가 누락
+- **해결**: `chunk_end = text.find("\n\n", m.end())` 로 확장
+
+- **문제**: 같은 label의 spawn이 여러 개일 때 마지막 것만 매칭됨
+- **해결**: `spawns_by_label[label] = list` → `pop(0)` (순서대로 소비)
+
+- **문제**: 구버전 announce는 Stats 섹션 자체가 없는 케이스 — `_ANNOUNCE_RE` 매칭 실패
+- **해결**: Stats 없는 경우 별도 분기 → label만으로 spawn 매칭 → timestamp fuzzy search
+
+### 검증 결과
+- `0ab7efc0` (구버전): `child_turns=3, open_sid=83aead09-...` ✅
+- `91ed4a28` (신버전): `child_turns=1, open_sid=2684c0a4-...` ✅
+- Open Session → 실제 파일 (`83aead09-...jsonl.deleted.*`) 정상 조회 ✅
+
+### 다음 단계
+- [ ] 서버 재시작 필요 (현재 변경사항 미반영)
+- [ ] subagent_announce source 감지 개선 (구버전 announce는 `[System Message]` prefix 없음)
+
+---
+
 ## [2026-02-20] - Lab 실험실 + OpenClaw 지식 문서화
 
 ### 작업 내용

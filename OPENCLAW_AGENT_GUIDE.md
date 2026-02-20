@@ -304,31 +304,50 @@ Assistant 메시지의 `content` 배열에 들어가는 블록 타입:
 7. subagents/runs.json에 실행 기록 업데이트
 ```
 
-### 4.2 핵심 UUID 구분
+### 4.2 핵심 UUID 구분 ⚠️
 
-서브에이전트에는 **3가지 다른 UUID**가 관여:
+서브에이전트에는 **3가지 다른 UUID**가 관여하며, **모두 다른 값**:
 
 | UUID | 출처 | 용도 |
 |------|------|------|
-| `childSessionKey`의 UUID | toolResult.details.childSessionKey에서 추출 | 세션 파일명 매칭에 사용 (파일명 = 이 UUID.jsonl) |
-| `runId` | toolResult.details.runId | subagents/runs.json의 키 |
-| `sessionId` | announce 메시지의 Stats에 포함 | 실행 세션의 내부 ID (파일명과 다를 수 있음!) |
+| `childSessionKey`의 UUID | `toolResult.details.childSessionKey` | 게이트웨이 라우팅용 — **파일명 아님** |
+| `runId` | `toolResult.details.runId` | `subagents/runs.json`의 키 |
+| **실제 sessionId** | announce 메시지에서만 얻을 수 있음 | **JSONL 파일명 UUID** — 이것으로 파일을 찾아야 함 |
 
-**중요**: `sessionKey`의 UUID가 파일명에 사용됨. `sessionId`는 다른 값이므로 매칭에 사용하면 안 됨!
+```
+childSessionKey: agent:aki:subagent:2858690d-...  ← 라우팅 키 UUID (파일명 아님)
+실제 파일:        83aead09-....jsonl.deleted.*       ← 다른 UUID!
+```
 
-### 4.3 announce 메시지 포맷
+**파일 찾는 방법**: announce 메시지에서 실제 sessionId를 추출해야 함.
 
-**일반:**
+### 4.3 announce 메시지 포맷 (2종)
+
+**구버전** (2026-02 중순 이전): Stats 안에 sessionKey, sessionId, transcript 포함
 ```
 [Mon 2026-02-16 19:16 GMT+9] A subagent task "ys-pr10-dev-review-050" just completed successfully.
 
 Findings:
 (서브에이전트 응답 요약)
 
-Stats: runtime 7s • tokens 37.9k (in 37.9k / out 722) • sessionKey agent:aki:subagent:4b2e01b3-9f2e-4d29-92ab-7d45615ed9d7 • sessionId f8cdd613-46e9-43ad-b2a4-a3f5460d05c7 • transcript /Users/kys/.openclaw/agents/aki/sessions/f8cdd613-46e9-43ad-b2a4-a3f5460d05c7.jsonl
+Stats: runtime 7s • tokens 37.9k (in 37.9k / out 722) • sessionKey agent:aki:subagent:UUID-A • sessionId UUID-C • transcript /path/UUID-C.jsonl
 
 Summarize this naturally for the user...
 ```
+→ `sessionId UUID-C` 부분에서 실제 파일 UUID를 직접 얻을 수 있음
+
+**신버전** (2026-02 중순 이후): sessionId가 prefix에, Stats는 runtime+tokens만
+```
+[Fri 2026-02-20 19:20 GMT+9] [System Message] [sessionId: UUID-C] A subagent task "ys-scraps-detail-body-render-172" just completed successfully.
+
+Result:
+(서브에이전트 응답 요약)
+
+Stats: runtime 4m52s • tokens 69.4k (in 63.4k / out 6.0k)
+
+A completed subagent task is ready for user delivery...
+```
+→ `[sessionId: UUID-C]` prefix에서 실제 파일 UUID를 얻음
 
 **대기 큐 (agent busy 중 쌓인 announces):**
 ```

@@ -6,7 +6,7 @@
 <div class="page-header">
   <h1>Sessions</h1>
   <div class="filters">
-    <select id="filter-agent" class="input-select">
+    <select id="filter-agent" class="input-select" style="display:none">
       <option value="all">All Agents</option>
     </select>
     <select id="filter-type" class="input-select">
@@ -22,67 +22,130 @@
       <option value="100">100</option>
       <option value="200">200</option>
     </select>
-    <button class="btn btn-primary" onclick="loadSessions()">Refresh</button>
   </div>
 </div>
 
-<div class="table-wrap">
-  <table class="data-table" id="sessions-table">
-    <thead>
-      <tr>
-        <th>Session</th>
-        <th>Agent</th>
-        <th>Type</th>
-        <th>Model</th>
-        <th class="num">Turns</th>
-        <th class="num">Tokens</th>
-        <th class="num">Cost</th>
-        <th class="num">Size</th>
-        <th>Date</th>
-      </tr>
-    </thead>
-    <tbody id="sessions-body">
-      <tr><td colspan="9" class="loading">Loading...</td></tr>
-    </tbody>
-  </table>
+<div class="agent-filter-bar" id="agent-chips">
+  <button class="agent-chip active" data-agent="all">All</button>
+</div>
+
+<div id="sessions-list">
+  <div class="loading">Loading...</div>
+</div>
+
+<div id="load-more-wrap" style="text-align:center;margin-top:16px;display:none">
+  <button class="btn btn-outline" id="btn-load-more">더보기</button>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+let activeAgent = 'all';
+let currentLoadCount = 50;
+
+const AGENT_PALETTE = [
+  '#6366f1','#22c55e','#f59e0b','#3b82f6','#ec4899',
+  '#06b6d4','#8b5cf6','#ef4444','#14b8a6','#f97316',
+  '#a855f7','#10b981','#e11d48','#0ea5e9','#84cc16','#d946ef'
+];
+const agentColorMap = {};
+
+function agentColor(agentId) {
+  if (agentColorMap[agentId] !== undefined) return agentColorMap[agentId];
+  const idx = Object.keys(agentColorMap).length;
+  agentColorMap[agentId] = AGENT_PALETTE[idx % AGENT_PALETTE.length];
+  return agentColorMap[agentId];
+}
+
+function fmtRelTime(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now - d;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffSec < 60) return '방금';
+  if (diffMin < 60) return `${diffMin}분 전`;
+  if (diffHr < 24) return `${diffHr}시간 전`;
+  if (diffDay < 7) return `${diffDay}일 전`;
+  return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+}
+
+function typeIcon(type) {
+  const icons = { chat: '💬', cron: '⏰', heartbeat: '💗', subagent: '🤖' };
+  return icons[type] || '📋';
+}
+
+
 async function loadSessions() {
-  const agent = qs('#filter-agent').value;
   const type = qs('#filter-type').value;
-  const last = qs('#filter-count').value;
-  let url = `/api/sessions?agent=${agent}&last=${last}`;
+  const last = currentLoadCount;
+  let url = `/api/sessions?agent=${activeAgent}&last=${last}`;
   if (type) url += `&type=${type}`;
 
   const data = await fetchJSON(url);
-  const tbody = qs('#sessions-body');
-  if (!data.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty">No sessions found</td></tr>';
+  const list = qs('#sessions-list');
+
+  if (!data || !data.length) {
+    list.innerHTML = '<div class="empty">No sessions found</div>';
+    qs('#load-more-wrap').style.display = 'none';
     return;
   }
 
-  tbody.innerHTML = data.map(s => {
-    const isHighCost = (s.cost || 0) > 0.10;
+  list.innerHTML = data.map(s => {
+    const color = agentColor(s.agent_id);
+    const relTime = fmtRelTime(s.modified || s.started_at);
+    const msg = s.last_message ? s.last_message.trim() : '';
+    const modelShort = (s.model || '').replace('claude-', '').replace(/-\d{8}$/, '');
+    const sizeStr = fmtSize(s.file_size);
+    const costStr = fmtCost(s.cost);
+
+    const toolChip = s.tool_calls > 0
+      ? `<span class="stat-chip tools">${s.tool_calls} tools</span>` : '';
+    const subChip = s.subagents > 0
+      ? `<span class="stat-chip subagents">${s.subagents} sub</span>` : '';
+    const errChip = s.errors > 0
+      ? `<span class="stat-chip errors">${s.errors} err</span>` : '';
+    const avgChip = s.avg_turn_time != null
+      ? `<span class="stat-chip">~${s.avg_turn_time}s/턴</span>` : '';
+
     return `
-    <tr class="clickable" data-type="${s.type}" onclick="location.href='/session/${s.session_id}'">
-      <td><code class="session-id">${s.session_id.slice(0, 10)}</code></td>
-      <td><span class="badge badge-agent">${s.agent_id}</span></td>
-      <td><span class="badge badge-${s.type} badge-type">${s.type}</span></td>
-      <td class="model-name">${s.model || '—'}</td>
-      <td class="num">${s.turns}</td>
-      <td class="num">${fmtTokens(s.tokens)}</td>
-      <td class="num ${isHighCost ? 'high-cost-cell' : 'cost'}">${fmtCost(s.cost)}</td>
-      <td class="num">${fmtSize(s.file_size)}</td>
-      <td class="timestamp">${fmtDate(s.modified || s.started_at)}</td>
-    </tr>
+    <div class="session-card"
+         data-type="${s.type}"
+         onclick="location.href='/session/${s.session_id}'">
+      <div class="sc-agent-panel" style="background:${color}15;color:${color}">${s.agent_id}</div>
+      <div class="sc-body">
+        <div class="sc-row1">
+          <div class="sc-left">
+            <code class="sc-sid">${s.session_id.slice(0, 10)}</code>
+            <span class="stat-chip">${modelShort || '—'}</span>
+            <span class="stat-chip turns">${s.turns}턴</span>
+            <span class="stat-chip cost">${costStr}</span>
+            ${toolChip}${subChip}${errChip}${avgChip}
+          </div>
+          <span class="sc-time">${relTime}</span>
+        </div>
+        <div class="sc-row3">
+          <span class="sc-msg">${typeIcon(s.type)} ${msg ? escHtml(msg) : '<span class="sc-no-msg">메시지 없음</span>'}</span>
+          <span class="sc-derived">${sizeStr}</span>
+        </div>
+      </div>
+    </div>
   `}).join('');
+
+  // 더보기 버튼: 받아온 수가 요청한 수와 같으면 더 있을 수 있음
+  qs('#load-more-wrap').style.display = data.length >= currentLoadCount ? '' : 'none';
 }
 
 async function loadAgents() {
   const agents = await fetchJSON('/api/agents');
+
+  // 에이전트 색상 먼저 index 순서대로 할당
+  agents.forEach(a => agentColor(a.id));
+
+  // build hidden select
   const sel = qs('#filter-agent');
   agents.forEach(a => {
     const opt = document.createElement('option');
@@ -90,11 +153,56 @@ async function loadAgents() {
     opt.textContent = `${a.id} (${a.sessions})`;
     sel.appendChild(opt);
   });
+
+  // build chip bar
+  const bar = qs('#agent-chips');
+  agents.forEach(a => {
+    const btn = document.createElement('button');
+    btn.className = 'agent-chip';
+    btn.dataset.agent = a.id;
+    const color = agentColor(a.id);
+    btn.innerHTML = `<span class="ac-dot" style="background:${color}"></span>${a.id} <span class="ac-count">${a.sessions}</span>`;
+    btn.addEventListener('click', () => {
+      qs('#agent-chips .active')?.classList.remove('active');
+      btn.classList.add('active');
+      activeAgent = a.id;
+      currentLoadCount = parseInt(qs('#filter-count').value, 10);
+      loadSessions();
+    });
+    bar.appendChild(btn);
+  });
+
+  // All chip click handler
+  qs('[data-agent="all"]').addEventListener('click', function() {
+    qs('#agent-chips .active')?.classList.remove('active');
+    this.classList.add('active');
+    activeAgent = 'all';
+    currentLoadCount = parseInt(qs('#filter-count').value, 10);
+    loadSessions();
+  });
+
   // Sidebar agent info
   qs('#agent-list').innerHTML = agents.map(a =>
     `<div class="agent-badge">${a.id} <span class="dim">${a.sessions}</span></div>`
   ).join('');
 }
+
+// 더보기 버튼
+qs('#btn-load-more').addEventListener('click', () => {
+  const batchSize = parseInt(qs('#filter-count').value, 10);
+  currentLoadCount += batchSize;
+  loadSessions();
+});
+
+// type/count filter auto-reload (count 변경 시 초기화)
+qs('#filter-type').addEventListener('change', () => {
+  currentLoadCount = parseInt(qs('#filter-count').value, 10);
+  loadSessions();
+});
+qs('#filter-count').addEventListener('change', () => {
+  currentLoadCount = parseInt(qs('#filter-count').value, 10);
+  loadSessions();
+});
 
 loadAgents();
 loadSessions();
