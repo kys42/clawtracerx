@@ -1,3 +1,58 @@
+## [2026-02-20] - 웹 대시보드 — context 패널 + compaction 개선 + turn stat chips
+
+### 작업 내용
+- update_note.md의 "다음 단계" 항목 3개 구현
+- `detail.html` 세션 헤더에 Context Injection 패널 추가 (접이식)
+- Compaction divider에 before→after 토큰 수, summary 텍스트 추가
+- 턴 카드 stat chips에 `cache_hit_rate`, `thinking_level` 표시 추가
+- VSCode tunnel 포트 감지 문제 수정 (`ocmon.py` 출력 포맷)
+
+### 주요 변경사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `static/style.css` | Context 패널 CSS (usage bar, file bars, chips), compaction-info, stat-chip.cache/thinking |
+| `templates/detail.html` | `fmtChars()`, `renderContextPanel()`, `renderHeader()` 확장, compaction divider 개선, turn stat chips 추가 |
+| `ocmon.py` | VSCode tunnel 포트 감지용 출력 포맷 수정 (이모지/화살표 제거) |
+
+### 구현 상세
+
+**Context Injection 패널** (`<details>` 접이식, 세션 헤더 하단)
+- System Prompt 사용량 바: Project context(accent) + System(cyan), 최대 대비 퍼센트 표시
+- Injected Files: 파일명 + 상대 크기 바 차트 + 주입된 chars + truncated(✂) 표시
+- Skills: 이름 chips
+- Tools: 이름 chips
+- `context_tokens` 메타 항목 추가 (sessions.json 데이터)
+- `ctx.workspaceDir` 경로 표시 (`~` 대체)
+
+**Compaction Divider 개선**
+- `tokens_before → tokens_after` 표시 (얼마나 압축됐는지 한눈에)
+- `[hook]` 배지 (hook-triggered compaction 구분)
+- `<details>` Summary 텍스트 — 클릭하여 펼치기
+
+**Turn stat chips (신규)**
+- `cache_hit_rate > 0` → cyan `42% cache` chip
+- `thinking_level` 존재 시 → magenta `💭 high` chip
+
+**VSCode tunnel 포트 감지 수정**
+- 문제: `🔍 ocmon web dashboard → http://localhost:8901` — 이모지/화살표로 VSCode 포트 감지 실패
+- 해결: URL을 별도 줄로 분리 → `http://localhost:8901\n` (VSCode 패턴 매칭 성공)
+
+### helper 함수 추가
+- `fmtChars(n)`: chars → `1.2K` 포맷 (파일 크기 표시용, fmtTokens와 별개)
+
+### 중요 결정사항
+- **`<details>` 네이티브 태그**: context 패널에 JS 토글 대신 `<details>/<summary>` 사용 — JS 없이 접기/펼치기, 상태 자동 유지
+- **compaction summary 위치**: 중앙 `compaction-info` div 안에 배치 — 라인과 수평 배치하되 넓이 제한 없이 표시 가능
+- **context data 조건부 렌더링**: `s.context`가 없는 세션(서브에이전트, 크론 일부)은 패널 자체를 렌더링 안 함
+
+### 다음 단계
+- [ ] `sessions.html`에 `context_tokens` 컬럼 추가 (API에서 list_sessions 레벨에서 불러오려면 별도 파싱 필요 — 현재 미지원)
+- [ ] Context 패널 파일별 hover 시 full path 툴팁 확인
+- [ ] compaction summary 길이 제한 검토 (현재 500자, 일부 세션은 더 긺)
+
+---
+
 ## [2026-02-20] - sessions.json 파싱 추가 — 초기 컨텍스트 + 메타데이터 추적
 
 ### 작업 내용

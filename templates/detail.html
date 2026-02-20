@@ -34,6 +34,13 @@ const SESSION_ID = '{{ session_id }}';
 const SYSTEM_SOURCES = new Set(['system', 'subagent_announce', 'cron_announce']);
 let sessionData = null;
 
+function fmtChars(n) {
+  if (!n) return '0';
+  if (n < 1000) return n + 'ch';
+  if (n < 1000000) return (n / 1000).toFixed(1) + 'K';
+  return (n / 1000000).toFixed(2) + 'M';
+}
+
 async function loadSession() {
   sessionData = await fetchJSON(`/api/session/${SESSION_ID}`);
   renderHeader(sessionData);
@@ -41,12 +48,14 @@ async function loadSession() {
 }
 
 function renderHeader(s) {
+  const contextPanel = s.context ? renderContextPanel(s) : '';
+
   qs('#session-header').innerHTML = `
     <div class="session-meta">
       <h2>
         <code class="session-id">${s.session_id.slice(0,12)}</code>
         <span class="badge badge-agent">${s.agent_id}</span>
-        <span class="badge badge-${s.session_type}">${s.session_type}</span>
+        <span class="badge badge-${s.session_type} badge-type">${s.session_type}</span>
       </h2>
       <div class="meta-grid">
         <div class="meta-item">
@@ -77,10 +86,88 @@ function renderHeader(s) {
           <span class="meta-label">Turns</span>
           <span class="meta-value">${s.turns.length}</span>
         </div>
-        ${s.compactions ? `<div class="meta-item"><span class="meta-label">Compactions</span><span class="meta-value">${s.compactions}</span></div>` : ''}
+        ${s.context_tokens ? `<div class="meta-item">
+          <span class="meta-label">Ctx Tokens</span>
+          <span class="meta-value">${fmtTokens(s.context_tokens)}</span>
+        </div>` : ''}
+        ${s.compactions ? `<div class="meta-item">
+          <span class="meta-label">Compactions</span>
+          <span class="meta-value">${s.compactions}</span>
+        </div>` : ''}
       </div>
+      ${contextPanel}
     </div>
   `;
+}
+
+function renderContextPanel(s) {
+  const ctx = s.context;
+  const maxChars = ctx.bootstrapMaxChars || 1;
+  const usedChars = ctx.systemPromptChars || 0;
+  const usagePct = Math.round(usedChars / maxChars * 100);
+  const pctClass = usagePct > 80 ? 'danger' : usagePct > 60 ? 'warning' : '';
+
+  const maxFileChars = Math.max(...ctx.injectedFiles.map(f => f.rawChars || 0), 1);
+
+  const filesHtml = ctx.injectedFiles.length ? `
+    <div class="context-section">
+      <div class="context-label">Injected Files (${ctx.injectedFiles.length})</div>
+      ${ctx.injectedFiles.map(f => `
+        <div class="ctx-file ${f.missing ? 'missing' : ''}">
+          <span class="ctx-file-name" title="${escHtml(f.path || f.name)}">${f.name}</span>
+          <div class="ctx-file-bar">
+            <div class="ctx-file-fill" style="width:${Math.round((f.injectedChars||0)/maxFileChars*100)}%"></div>
+          </div>
+          <span class="ctx-file-size">${fmtChars(f.injectedChars)}${f.truncated ? ' ✂' : ''}</span>
+        </div>
+      `).join('')}
+    </div>` : '';
+
+  const skillsHtml = ctx.skills && ctx.skills.length ? `
+    <div class="context-section">
+      <div class="context-label">Skills (${ctx.skills.length})</div>
+      <div class="ctx-chips">${ctx.skills.map(sk => `<span class="ctx-chip">${escHtml(sk.name)}</span>`).join('')}</div>
+    </div>` : '';
+
+  const toolsHtml = ctx.tools && ctx.tools.length ? `
+    <div class="context-section">
+      <div class="context-label">Tools (${ctx.tools.length})</div>
+      <div class="ctx-chips">${ctx.tools.map(t => `<span class="ctx-chip">${escHtml(t.name)}</span>`).join('')}</div>
+    </div>` : '';
+
+  const projPct = Math.round((ctx.projectContextChars || 0) / maxChars * 100);
+  const sysPct  = Math.round((ctx.nonProjectContextChars || 0) / maxChars * 100);
+
+  return `
+  <details class="context-panel">
+    <summary>
+      <div class="context-summary-left">
+        <span class="context-title">Context Injection</span>
+        ${ctx.workspaceDir ? `<code style="font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">${ctx.workspaceDir.replace(/^\/Users\/\w+/, '~')}</code>` : ''}
+      </div>
+      <div class="context-meta">
+        <span>${fmtChars(usedChars)} / ${fmtChars(maxChars)}</span>
+        <span class="context-pct ${pctClass}">${usagePct}%</span>
+        <span class="context-chevron">▾</span>
+      </div>
+    </summary>
+    <div class="context-body">
+      <div class="context-section">
+        <div class="context-label">System Prompt Breakdown</div>
+        <div class="ctx-usage-bar">
+          <div class="ctx-usage-seg project" style="width:${projPct}%" title="Project context: ${fmtChars(ctx.projectContextChars)}"></div>
+          <div class="ctx-usage-seg system"  style="width:${sysPct}%"  title="System: ${fmtChars(ctx.nonProjectContextChars)}"></div>
+        </div>
+        <div class="ctx-legend-row">
+          <span><span class="ctx-dot project"></span>Project ${fmtChars(ctx.projectContextChars)}</span>
+          <span><span class="ctx-dot system"></span>System ${fmtChars(ctx.nonProjectContextChars)}</span>
+        </div>
+      </div>
+      ${filesHtml}
+      ${skillsHtml}
+      ${toolsHtml}
+    </div>
+  </details>`;
 }
 
 function renderTurns(turns, compactionEvents) {
@@ -102,9 +189,19 @@ function renderTurns(turns, compactionEvents) {
     if (i === contextBoundaryIdx && i > 0 && compactionEvents.length > 0) {
       const lastCe = compactionEvents[compactionEvents.length - 1];
       const tokensBefore = lastCe.tokens_before ? fmtTokens(lastCe.tokens_before) : '?';
+      const tokensAfter  = lastCe.tokens_after  ? fmtTokens(lastCe.tokens_after)  : null;
+      const hookLabel = lastCe.from_hook ? ' [hook]' : '';
+      const summaryHtml = lastCe.summary ? `
+        <details class="compaction-detail">
+          <summary>Summary ▾</summary>
+          <div class="compaction-summary-text">${escHtml(lastCe.summary)}</div>
+        </details>` : '';
       html += `<div class="compaction-divider">
         <span class="compaction-line"></span>
-        <span class="compaction-label">Context compacted: ${tokensBefore} tokens — kept from turn ${i}</span>
+        <div class="compaction-info">
+          <span class="compaction-label">Compacted${hookLabel}: ${tokensBefore}${tokensAfter ? ' → ' + tokensAfter : ''} tokens — from turn ${i}</span>
+          ${summaryHtml}
+        </div>
         <span class="compaction-line"></span>
       </div>`;
     }
@@ -143,6 +240,8 @@ function renderTurn(t, animIdx) {
         <span class="stat-chip duration">${fmtDuration(t.duration_ms)}</span>
         <span class="stat-chip cost">${fmtCost(t.cost.total || 0)}</span>
         <span class="stat-chip tokens">${fmtTokens(t.usage.totalTokens || 0)}</span>
+        ${(t.cache_hit_rate > 0) ? `<span class="stat-chip cache" title="Cache hit rate">${Math.round(t.cache_hit_rate * 100)}% cache</span>` : ''}
+        ${t.thinking_level ? `<span class="stat-chip thinking" title="Thinking level">💭 ${t.thinking_level}</span>` : ''}
         <button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" title="View raw JSONL">{ }</button>
       </div>
     </div>
