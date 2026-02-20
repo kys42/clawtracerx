@@ -116,16 +116,38 @@ function renderContextPanel(s) {
       `).join('')}
     </div>` : '';
 
+  const maxSkillChars = ctx.skills && ctx.skills.length ? Math.max(...ctx.skills.map(s => s.chars || 0), 1) : 1;
   const skillsHtml = ctx.skills && ctx.skills.length ? `
     <div class="context-section">
-      <div class="context-label">Skills (${ctx.skills.length})</div>
-      <div class="ctx-chips">${ctx.skills.map(sk => `<span class="ctx-chip">${escHtml(sk.name)}</span>`).join('')}</div>
+      <div class="context-label">Skills (${ctx.skills.length}) — ${fmtChars(ctx.skills.reduce((a, s) => a + (s.chars || 0), 0))} total</div>
+      ${ctx.skills.map(sk => `
+        <div class="ctx-file">
+          <span class="ctx-file-name">${escHtml(sk.name)}</span>
+          <div class="ctx-file-bar">
+            <div class="ctx-file-fill skill" style="width:${Math.round((sk.chars||0)/maxSkillChars*100)}%"></div>
+          </div>
+          <span class="ctx-file-size">${fmtChars(sk.chars)}</span>
+        </div>`).join('')}
     </div>` : '';
 
+  const maxToolChars = ctx.tools && ctx.tools.length ? Math.max(...ctx.tools.map(t => (t.summaryChars||0) + (t.schemaChars||0)), 1) : 1;
   const toolsHtml = ctx.tools && ctx.tools.length ? `
     <div class="context-section">
-      <div class="context-label">Tools (${ctx.tools.length})</div>
-      <div class="ctx-chips">${ctx.tools.map(t => `<span class="ctx-chip">${escHtml(t.name)}</span>`).join('')}</div>
+      <div class="context-label">Tools (${ctx.tools.length}) — ${fmtChars(ctx.tools.reduce((a, t) => a + (t.summaryChars||0) + (t.schemaChars||0), 0))} total</div>
+      ${ctx.tools.map(t => {
+        const total = (t.summaryChars||0) + (t.schemaChars||0);
+        const sumPct = Math.round((t.summaryChars||0)/maxToolChars*100);
+        const schemaPct = Math.round((t.schemaChars||0)/maxToolChars*100);
+        return `
+        <div class="ctx-file">
+          <span class="ctx-file-name">${escHtml(t.name)}</span>
+          <div class="ctx-file-bar">
+            <div class="ctx-file-fill tool-summary" style="width:${sumPct}%" title="desc: ${fmtChars(t.summaryChars)}"></div>
+            <div class="ctx-file-fill tool-schema" style="width:${schemaPct}%" title="schema: ${fmtChars(t.schemaChars)}"></div>
+          </div>
+          <span class="ctx-file-size">${fmtChars(total)}</span>
+        </div>`;
+      }).join('')}
     </div>` : '';
 
   const projPct = Math.round((ctx.projectContextChars || 0) / maxChars * 100);

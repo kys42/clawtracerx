@@ -90,6 +90,11 @@ def create_app():
                 "file_size": s.get("file_size", 0),
                 "modified": s.get("modified", "").isoformat() if hasattr(s.get("modified", ""), "isoformat") else "",
                 "started_at": s.get("started_at", "").isoformat() if hasattr(s.get("started_at", ""), "isoformat") else "",
+                "last_message": s.get("last_message", ""),
+                "tool_calls": s.get("tool_calls", 0),
+                "subagents": s.get("subagents", 0),
+                "errors": s.get("errors", 0),
+                "avg_turn_time": s.get("avg_turn_time"),
             })
         return jsonify(result)
 
@@ -302,7 +307,15 @@ def create_app():
         if len(data.get("turns", [])) == since_turns and current_size == prev_size:
             return jsonify({"changed": False})
 
-        return jsonify({"changed": True, "data": data})
+        # Check if agent is done (last assistant turn has stopReason "stop")
+        turns = data.get("turns", [])
+        done = False
+        if turns:
+            last = turns[-1]
+            if last.get("role") == "assistant" and last.get("stop_reason") == "stop":
+                done = True
+
+        return jsonify({"changed": True, "data": data, "done": done})
 
     @app.route("/api/lab/context")
     def api_lab_context():
@@ -313,14 +326,49 @@ def create_app():
             if fp.exists():
                 try:
                     content = fp.read_text(encoding="utf-8")
+                    backup = fp.with_suffix(fp.suffix + ".lab-backup")
                     files.append({
                         "name": name,
                         "size": len(content),
                         "content": content,
+                        "has_backup": backup.exists(),
                     })
                 except Exception:
                     files.append({"name": name, "size": 0, "content": "", "error": "read failed"})
         return jsonify(files)
+
+    @app.route("/api/lab/context/<filename>/diff")
+    def api_lab_context_diff(filename):
+        if filename not in WORKSPACE_FILES:
+            return jsonify({"error": "not allowed"}), 400
+        workspace = _get_workspace_dir()
+        fp = workspace / filename
+        backup = fp.with_suffix(fp.suffix + ".lab-backup")
+        if not backup.exists():
+            return jsonify({"diff": "", "has_backup": False})
+        import difflib
+        old_lines = backup.read_text(encoding="utf-8").splitlines(keepends=True)
+        new_lines = fp.read_text(encoding="utf-8").splitlines(keepends=True)
+        diff = list(difflib.unified_diff(
+            old_lines, new_lines,
+            fromfile=f"{filename} (original)",
+            tofile=f"{filename} (current)",
+            n=3,
+        ))
+        return jsonify({"diff": "".join(diff), "has_backup": True})
+
+    @app.route("/api/lab/context/<filename>/reset", methods=["POST"])
+    def api_lab_context_reset(filename):
+        if filename not in WORKSPACE_FILES:
+            return jsonify({"error": "not allowed"}), 400
+        workspace = _get_workspace_dir()
+        fp = workspace / filename
+        backup = fp.with_suffix(fp.suffix + ".lab-backup")
+        if not backup.exists():
+            return jsonify({"error": "no backup"}), 404
+        shutil.copy2(backup, fp)
+        _log_lab("context_reset", file=filename)
+        return jsonify({"ok": True})
 
     @app.route("/api/lab/context/<filename>", methods=["PUT"])
     def api_lab_context_save(filename):
@@ -524,12 +572,16 @@ def _serialize_tc(tc):
 
 
 def _serialize_spawn(spawn):
+    # Use real session ID from announce if available (key UUID != file UUID)
+    real_sid = spawn.child_session_id
+    if spawn.announce_stats and spawn.announce_stats.get("session_id"):
+        real_sid = spawn.announce_stats["session_id"]
     return {
         "run_id": spawn.run_id,
         "label": spawn.label,
         "task": spawn.task[:500],
         "child_session_key": spawn.child_session_key,
-        "child_session_id": spawn.child_session_id,
+        "child_session_id": real_sid,
         "child_turns": [_serialize_turn(t) for t in spawn.child_turns],
         "duration_ms": spawn.duration_ms,
         "total_tokens": spawn.total_tokens,

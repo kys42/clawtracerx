@@ -31,14 +31,14 @@
 
 <!-- Settings panel -->
 <details class="lab-settings lab-section">
-  <summary>Settings <span class="context-chevron">&#x25BE;</span></summary>
-  <div class="lab-settings-body">
+  <summary>⚙ Settings <span class="context-chevron">&#x25BE;</span></summary>
+  <div class="lab-settings-grid">
     <div class="lab-field">
-      <label>Model</label>
-      <input type="text" class="input-text" id="setting-model" placeholder="e.g. openai-codex/gpt-5.2" style="width:100%">
+      <label><span class="lab-field-icon">⚙</span> Model</label>
+      <input type="text" class="input-text" id="setting-model" placeholder="e.g. claude-sonnet-4-6" style="width:100%">
     </div>
     <div class="lab-field">
-      <label>Thinking Level</label>
+      <label><span class="lab-field-icon">🧠</span> Thinking Level</label>
       <select class="input-select" id="setting-thinking" style="width:100%">
         <option value="">default</option>
         <option value="none">none</option>
@@ -47,20 +47,22 @@
         <option value="high">high</option>
       </select>
     </div>
-    <div class="lab-field full-width">
-      <label>Extra System Prompt</label>
-      <textarea class="input-textarea" id="setting-extra-prompt" rows="3" placeholder="Additional instructions injected into system prompt..."></textarea>
-    </div>
+    <div class="lab-settings-divider"></div>
     <div class="lab-field">
-      <label>Deliver to Channel</label>
+      <label><span class="lab-field-icon">📡</span> Deliver to Channel</label>
       <select class="input-select" id="setting-deliver" style="width:100%">
         <option value="false" selected>No (lab only)</option>
         <option value="true">Yes</option>
       </select>
     </div>
     <div class="lab-field">
-      <label>Timeout (seconds)</label>
+      <label><span class="lab-field-icon">⏱</span> Timeout (seconds)</label>
       <input type="number" class="input-text" id="setting-timeout" value="120" min="10" max="600" style="width:100%">
+    </div>
+    <div class="lab-settings-divider"></div>
+    <div class="lab-field full-width">
+      <label><span class="lab-field-icon">📝</span> Extra System Prompt</label>
+      <textarea class="input-textarea" id="setting-extra-prompt" rows="3" placeholder="Additional instructions injected into system prompt..."></textarea>
     </div>
   </div>
 </details>
@@ -102,6 +104,17 @@
     <div class="loading">Loading...</div>
   </div>
 </details>
+
+<!-- Diff modal -->
+<div id="diff-modal" class="diff-modal-overlay" style="display:none" onclick="if(event.target===this)closeDiff()">
+  <div class="diff-modal-box">
+    <div class="diff-modal-header">
+      <span id="diff-modal-title">Diff</span>
+      <button class="btn-close" onclick="closeDiff()">&#x2715;</button>
+    </div>
+    <pre id="diff-content" class="diff-pre"></pre>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -113,6 +126,10 @@ let currentAgentId = 'main';
 let pollTimer = null;
 let lastTurnCount = 0;
 let isSending = false;
+let noChangeCount = 0;
+const POLL_FAST = 2000;   // active (just sent a message)
+const POLL_SLOW = 8000;   // idle (watching session)
+let pollInterval = POLL_SLOW;
 
 // Gateway session cache: key -> {sessionId, agentId, ...}
 let gwSessions = [];
@@ -174,7 +191,7 @@ function selectSession() {
   qs('#session-key-input').value = currentSessionKey;
   updateSessionInfo();
   loadSessionData();
-  startPolling();
+  startPolling(false);
 }
 
 function attachByKey() {
@@ -200,7 +217,7 @@ function attachByKey() {
   updateSessionInfo();
   if (currentSessionId) {
     loadSessionData();
-    startPolling();
+    startPolling(false);
   }
 }
 
@@ -241,6 +258,7 @@ async function sendMessage() {
   }
 
   isSending = true;
+  noChangeCount = 0;
   setStatus('running');
   qs('#send-btn').disabled = true;
 
@@ -275,7 +293,7 @@ async function sendMessage() {
     pollSession();
   }
 
-  startPolling();
+  startPolling(true);
   loadActivityLog();
 }
 
@@ -291,9 +309,13 @@ async function refreshSessionId() {
 }
 
 // --- Polling ---
-function startPolling() {
+function startPolling(fast) {
+  const ms = fast ? POLL_FAST : POLL_SLOW;
+  // Skip if already running at same speed
+  if (pollTimer && pollInterval === ms) return;
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(pollSession, 2000);
+  pollInterval = ms;
+  pollTimer = setInterval(pollSession, ms);
 }
 
 function stopPolling() {
@@ -315,6 +337,7 @@ async function pollSession() {
   );
 
   if (data.changed && data.data) {
+    noChangeCount = 0;
     qs('#timeline-empty').style.display = 'none';
     renderTurns(data.data.turns, data.data.compaction_events || []);
     const newCount = data.data.turns.length;
@@ -322,6 +345,19 @@ async function pollSession() {
       autoScroll();
     }
     lastTurnCount = newCount;
+
+    // Slow down when agent turn is done
+    if (data.done) {
+      startPolling(false);
+      setStatus('done');
+    }
+  } else {
+    noChangeCount++;
+    // Slow down after 5 unchanged fast polls
+    if (noChangeCount >= 5 && pollInterval === POLL_FAST) {
+      startPolling(false);
+      setStatus('idle');
+    }
   }
 }
 
@@ -351,16 +387,33 @@ async function loadContextFiles() {
     return;
   }
 
+  // Preserve open state of cards
+  const openCards = new Set();
+  container.querySelectorAll('.lab-ctx-file').forEach(el => {
+    const body = el.querySelector('.lab-ctx-file-body');
+    if (body && body.style.display !== 'none' && body.style.display !== '') {
+      openCards.add(el.dataset.name);
+    }
+  });
+
   container.innerHTML = files.map(f => `
-    <div class="lab-ctx-file">
+    <div class="lab-ctx-file ${f.has_backup ? 'modified' : ''}" data-name="${escHtml(f.name)}">
       <div class="lab-ctx-file-header" onclick="toggleEl(this.nextElementSibling)">
-        <span class="lab-ctx-file-name">${escHtml(f.name)}</span>
-        <span class="lab-ctx-file-size">${fmtSize(f.size)}</span>
+        <div style="display:flex;align-items:center;gap:8px;min-width:0">
+          <span class="lab-ctx-file-name">${escHtml(f.name)}</span>
+          <span class="lab-ctx-file-size">${fmtSize(f.size)}</span>
+          ${f.has_backup ? '<span class="lab-ctx-badge-modified">● 수정됨</span>' : ''}
+        </div>
+        <span style="color:var(--text-3);font-size:11px;flex-shrink:0">▾</span>
       </div>
-      <div class="lab-ctx-file-body">
-        <textarea class="input-textarea" id="ctx-${f.name}" rows="10">${escHtml(f.content)}</textarea>
-        <div class="lab-ctx-file-actions">
-          <button class="btn btn-sm btn-outline" onclick="reloadContextFile('${f.name}')">Reload</button>
+      <div class="lab-ctx-file-body" style="display:${openCards.has(f.name) ? 'block' : 'none'}">
+        <textarea class="input-textarea" id="ctx-${f.name}" rows="12">${escHtml(f.content)}</textarea>
+        <div class="lab-ctx-actions">
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-outline" onclick="reloadContextFile('${f.name}')">Reload</button>
+            ${f.has_backup ? `<button class="btn btn-sm btn-outline" onclick="showDiff('${escHtml(f.name)}')">Diff ▸</button>` : ''}
+            ${f.has_backup ? `<button class="btn btn-sm btn-outline" style="color:var(--warning);border-color:rgba(245,158,11,0.3)" onclick="resetContextFile('${escHtml(f.name)}')">↺ 초기화</button>` : ''}
+          </div>
           <button class="btn btn-sm btn-primary" onclick="saveContextFile('${f.name}')">Save</button>
         </div>
       </div>
@@ -374,7 +427,10 @@ async function saveContextFile(name) {
   const result = await putJSON(`/api/lab/context/${name}`, { content: textarea.value });
   if (result.error) {
     alert(`Save failed: ${result.error}`);
+    return;
   }
+  // Reload to update has_backup status
+  loadContextFiles();
   loadActivityLog();
 }
 
@@ -385,6 +441,45 @@ async function reloadContextFile(name) {
     const textarea = qs(`#ctx-${name}`);
     if (textarea) textarea.value = f.content;
   }
+}
+
+async function showDiff(name) {
+  const data = await fetchJSON(`/api/lab/context/${name}/diff`);
+  qs('#diff-modal-title').textContent = `Diff — ${name}`;
+  const pre = qs('#diff-content');
+  if (!data.diff) {
+    pre.innerHTML = '<span style="color:var(--text-2)">변경 없음 (diff 없음)</span>';
+  } else {
+    pre.innerHTML = data.diff.split('\n').map(line => {
+      const escaped = escHtml(line);
+      if (line.startsWith('+++') || line.startsWith('---')) {
+        return `<span class="diff-line-meta">${escaped}</span>`;
+      } else if (line.startsWith('+')) {
+        return `<span class="diff-line-add">${escaped}</span>`;
+      } else if (line.startsWith('-')) {
+        return `<span class="diff-line-del">${escaped}</span>`;
+      } else if (line.startsWith('@@')) {
+        return `<span class="diff-line-meta">${escaped}</span>`;
+      }
+      return escaped;
+    }).join('\n');
+  }
+  qs('#diff-modal').style.display = 'flex';
+}
+
+function closeDiff() {
+  qs('#diff-modal').style.display = 'none';
+}
+
+async function resetContextFile(name) {
+  if (!confirm(`"${name}"을 원본(백업)으로 초기화하시겠습니까?\n현재 내용은 사라집니다.`)) return;
+  const result = await postJSON(`/api/lab/context/${name}/reset`, {});
+  if (result.error) {
+    alert(`Reset failed: ${result.error}`);
+    return;
+  }
+  loadContextFiles();
+  loadActivityLog();
 }
 
 // --- Activity log ---
