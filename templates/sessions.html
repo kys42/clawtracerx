@@ -64,19 +64,21 @@ async function loadSessions() {
     return;
   }
 
-  tbody.innerHTML = data.map(s => `
-    <tr class="clickable" onclick="location.href='/session/${s.session_id}'">
+  tbody.innerHTML = data.map(s => {
+    const isHighCost = (s.cost || 0) > 0.10;
+    return `
+    <tr class="clickable" data-type="${s.type}" onclick="location.href='/session/${s.session_id}'">
       <td><code class="session-id">${s.session_id.slice(0, 10)}</code></td>
       <td><span class="badge badge-agent">${s.agent_id}</span></td>
-      <td><span class="badge badge-${s.type}">${s.type}</span></td>
+      <td><span class="badge badge-${s.type} badge-type">${s.type}</span></td>
       <td class="model-name">${s.model || '—'}</td>
       <td class="num">${s.turns}</td>
       <td class="num">${fmtTokens(s.tokens)}</td>
-      <td class="num cost">${fmtCost(s.cost)}</td>
+      <td class="num ${isHighCost ? 'high-cost-cell' : 'cost'}">${fmtCost(s.cost)}</td>
       <td class="num">${fmtSize(s.file_size)}</td>
       <td class="timestamp">${fmtDate(s.modified || s.started_at)}</td>
     </tr>
-  `).join('');
+  `}).join('');
 }
 
 async function loadAgents() {

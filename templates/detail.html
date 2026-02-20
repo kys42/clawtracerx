@@ -96,6 +96,7 @@ function renderTurns(turns, compactionEvents) {
     }
   }
 
+  let animIdx = 0;
   for (let i = 0; i < turns.length; i++) {
     // Insert compaction divider at the context boundary
     if (i === contextBoundaryIdx && i > 0 && compactionEvents.length > 0) {
@@ -107,30 +108,33 @@ function renderTurns(turns, compactionEvents) {
         <span class="compaction-line"></span>
       </div>`;
     }
-    html += renderTurn(turns[i]);
+    html += renderTurn(turns[i], animIdx++);
   }
   container.innerHTML = html;
 }
 
-function renderTurn(t) {
+function renderTurn(t, animIdx) {
   const hasErrors = t.tool_calls.some(tc => tc.is_error);
   const isSystem = SYSTEM_SOURCES.has(t.user_source);
   const isCompacted = t.in_context === false;
+  const isHighCost = (t.cost?.total || 0) > 0.10;
+  const isSubagentSpawn = t.subagent_spawns && t.subagent_spawns.length > 0;
 
   let classes = 'turn-card';
-  if (hasErrors) classes += ' has-errors';
-  if (isCompacted) classes += ' compacted';
+  if (hasErrors)     classes += ' has-errors';
+  if (isCompacted)   classes += ' compacted';
+  if (isHighCost && !hasErrors) classes += ' high-cost';
+  if (isSubagentSpawn && !hasErrors && !isHighCost) classes += ' spawns-subagent';
 
-  // System messages start collapsed by default
-  const bodyHidden = true;
+  const delay = (animIdx || 0) * 40;
 
   return `
-  <div class="${classes}" id="turn-${t.index}">
+  <div class="${classes}" id="turn-${t.index}" style="animation-delay:${delay}ms">
     <div class="turn-header" onclick="toggleTurn(${t.index})">
       <div class="turn-left">
         <span class="turn-index">Turn ${t.index}</span>
         ${isCompacted ? '<span class="badge badge-compacted">compacted</span>' : ''}
-        <span class="badge badge-${t.user_source}">${t.user_source}</span>
+        <span class="badge badge-${t.user_source} badge-type">${t.user_source}</span>
         <span class="turn-preview">${escHtml(truncate(t.user_text.replace(/\\n/g, ' '), 80))}</span>
       </div>
       <div class="turn-stats">
@@ -146,7 +150,7 @@ function renderTurn(t) {
       <div class="turn-detail">
         <!-- User message -->
         <div class="msg-block user-msg">
-          <div class="msg-role">User <span class="badge badge-${t.user_source}" style="font-size:10px">${t.user_source}</span></div>
+          <div class="msg-role">User <span class="badge badge-${t.user_source} badge-type" style="font-size:10px">${t.user_source}</span></div>
           <pre class="msg-content">${escHtml(t.user_text.slice(0, 2000))}</pre>
         </div>
 
@@ -184,8 +188,17 @@ function renderTurn(t) {
   </div>`;
 }
 
+function getToolCategory(name) {
+  const n = name.toLowerCase();
+  if (/read|write|edit|glob|notebook/.test(n)) return 'file';
+  if (/bash|exec|run|process|command/.test(n)) return 'exec';
+  if (/grep|search|fetch|web/.test(n)) return 'search';
+  return 'other';
+}
+
 function renderToolCall(tc) {
   const icon = toolIcon(tc.name);
+  const category = getToolCategory(tc.name);
   const errorClass = tc.is_error ? 'tc-error' : '';
   const durStr = tc.duration_ms != null ? `<span class="tc-dur">${fmtDuration(tc.duration_ms)}</span>` : '';
   const sizeStr = tc.result_size > 500 ? `<span class="tc-size">${fmtSize(tc.result_size)}</span>` : '';
@@ -196,7 +209,7 @@ function renderToolCall(tc) {
   else if (tc.arguments.pattern) argSummary = tc.arguments.pattern;
 
   return `
-  <div class="tc-row ${errorClass}" onclick="toggleTcResult(this)">
+  <div class="tc-row ${errorClass}" data-category="${category}" onclick="toggleTcResult(this)">
     <span class="tc-icon">${icon}</span>
     <span class="tc-name">${tc.name}</span>
     <span class="tc-args">${escHtml(argSummary)}</span>

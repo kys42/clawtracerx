@@ -1,3 +1,107 @@
+## [2026-02-20] - 웹 대시보드 UI/UX 전면 리뉴얼
+
+### 작업 내용
+- 대시보드 전체를 "Dark Pro" 디자인 시스템으로 전면 리뉴얼
+- 외부 차트 라이브러리 도입: ApexCharts (cost), D3.js (graph)
+- CSS 변수 체계 전면 교체, Inter + JetBrains Mono 폰트 적용
+- 총 6개 파일 수정 (+1162 / -737 lines)
+
+### 주요 변경사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `static/style.css` | 전면 교체 — 새 디자인 시스템 (1082줄) |
+| `templates/base.html` | Google Fonts CDN, SVG 아이콘, 그라디언트 로고 |
+| `templates/sessions.html` | `data-type` 행 border, 고비용(`>$0.10`) amber 강조 |
+| `templates/detail.html` | 타임라인 스파인 + 도트, 턴 카드 차별화, 토큰 바 14px, 도구 카테고리 색상 |
+| `templates/cost.html` | ApexCharts 교체 (horizontal bar + area), hero 메트릭 카드 |
+| `templates/graph.html` | Canvas → D3.js SVG 포스 그래프 전면 교체 |
+
+### 디자인 시스템 변경사항
+
+**컬러 팔레트**
+- 서피스: `#09090b`(bg-0) ~ `#282d3e`(bg-4) 5단계
+- 보더: `rgba()` 기반 분리 (border-subtle / default / emphasis)
+- 시맨틱: success/warning/error/info + muted 변형
+- 강조: `#6366f1` accent + muted(`rgba(99,102,241,0.15)`)
+
+**타이포그래피**
+- sans: Inter (400/500/600/700)
+- mono: JetBrains Mono (400/500) — 코드, 숫자, 타임스탬프
+- 기본 14px, `letter-spacing: -0.011em`, 안티앨리어싱
+
+**레이아웃**
+- 사이드바: 글래스모피즘 (`backdrop-filter: blur(20px)`)
+- 로고: 인디고→퍼플 그라디언트 + SVG 아이콘
+- 내비: active 시 왼쪽 3px accent bar (`::before`)
+
+### Session Detail 개선
+
+**타임라인 스파인**
+- `#turns-container::before` — 2px 수직선 (accent-muted → transparent)
+- `.turn-card::before` — 10px 도트, 타입별 glow 적용:
+  - 에러: 빨강 + `box-shadow: 0 0 16px rgba(239,68,68,0.5)`
+  - subagent spawn: accent + glow
+  - 기본: bg-3 + border-default
+
+**턴 카드 차별화**
+- `has-errors`: 빨간 왼쪽 3px border + error-muted 그라디언트
+- `high-cost` (>`$0.10`): amber 왼쪽 border
+- `compacted`: opacity 0.45, bg-4 border
+- `spawns-subagent`: accent 왼쪽 border + accent-muted 그라디언트
+
+**스태거 애니메이션**
+- 각 턴 카드 `animation-delay: idx * 40ms` → 순차 슬라이드인
+
+**토큰 바**
+- 높이: 6px → **14px**, `border-radius: 9999px`
+- 각 세그먼트: 그라디언트 fill + shimmer 1회 애니메이션
+
+**도구 카테고리 왼쪽 색상 bar**
+- `data-category="file"` → cyan (Read/Write/Edit/Glob)
+- `data-category="exec"` → amber (Bash/exec)
+- `data-category="search"` → green (Grep/Fetch)
+
+### Cost 대시보드 (ApexCharts)
+
+- `renderBarChart()` → `renderApexBar()`: horizontal bar, 그라디언트 fill, 툴팁
+- `renderDailyChart()` → `renderApexArea()`: area chart, 줌 가능, 마커, crosshair
+- 공통 dark 테마: `background: transparent`, `foreColor: #b0b4c0`
+- 요약 카드: hero card (2fr) + 일반 카드 (1fr × 2), hover lift `-2px`
+- 차트 인스턴스 관리: `charts{}` 딕셔너리, `destroyChart()` 재생성 방식
+
+### Graph 페이지 (D3.js)
+
+- Canvas API → **D3.js v7 SVG** 완전 교체
+- `d3.forceSimulation()` — 노드 타입별 charge 강도 조정
+  - session: -900, turn: -380, tool: -100
+- `d3.zoom()` — 줌/팬, `scaleExtent([0.05, 5])`
+- `d3.drag()` — 드래그 후 노드 핀 고정
+- SVG defs:
+  - 도트 그리드 패턴 (24×24, opacity 0.07)
+  - 방사형 그라디언트 (session/turn/tool/subagent)
+  - glow filter (feGaussianBlur stdDeviation=4)
+  - 화살표 마커 (일반 / spawn 색상 구분)
+- 링크: 베지어 곡선, 노드 반지름 기준 시작/끝점 계산
+- 클릭: circle에 glow filter, 패널 표시
+- 더블클릭: child session으로 이동
+- Tree/Force 토글: BFS 레이아웃 ↔ 포스 시뮬레이션
+
+### 중요 결정사항
+
+- **ApexCharts destroy+recreate 방식**: 필터 변경 시 `chart.updateOptions()`보다 카테고리 수가 바뀔 때 더 안정적
+- **D3 노드 드래그 핀 고정**: `dragEnded`에서 `fx/fy`를 null로 해제하지 않음 → 의도적 핀
+- **타임라인 스파인 padding-left: 36px**: 도트 중심(14px) + 여유 공간으로 계산
+- **Turn 카드 클래스 우선순위**: has-errors > high-cost > spawns-subagent (에러가 최우선)
+
+### 다음 단계
+- [ ] 반응형 768px 이하 모바일 실제 테스트
+- [ ] ApexCharts 툴팁 한국어 포맷 확인
+- [ ] D3 그래프 노드 수가 많을 때(300+) 성능 확인
+- [ ] 브라우저 캐시 문제 시 `?v=2` 쿼리스트링 버전 처리
+
+---
+
 ## [2026-02-20] - 웹 대시보드 버그 수정 및 기능 개선 (5개 이슈)
 
 ### 작업 내용
