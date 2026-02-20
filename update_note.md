@@ -1,3 +1,50 @@
+## [2026-02-20] - sessions.json 파싱 추가 — 초기 컨텍스트 + 메타데이터 추적
+
+### 작업 내용
+- OpenClaw `sessions.json`의 `systemPromptReport`를 파싱하여 세션 초기 컨텍스트 추적 기능 추가
+- JSONL에 있지만 미추출이던 `compaction.summary`, `thinking_level_change` 이벤트 파싱 추가
+- 턴별 캐시 히트율 계산 추가
+- 새 CLI 커맨드 `ocmon context <session-id>` 추가
+
+### 배경 조사
+- OpenClaw 소스코드(`~/openclaw/`) 분석으로 세션 초기화 시 컨텍스트 파일 로딩 경로 추적
+  - `src/agents/bootstrap-files.ts` → `resolveBootstrapContextForRun()`
+  - `src/agents/workspace.ts` → `loadWorkspaceBootstrapFiles()` (AGENTS.md, SOUL.md 등 8개 파일)
+  - `src/agents/system-prompt.ts` → `buildAgentSystemPrompt()` (Project Context 섹션에 주입)
+  - `src/agents/system-prompt-report.ts` → `buildSystemPromptReport()` (주입 결과 리포트 생성)
+- 핵심 발견: `SystemPromptReport`가 `sessions.json`에 이미 저장됨 (JSONL에는 없음)
+  - `injectedWorkspaceFiles[]`: name, path, missing, rawChars, injectedChars, truncated
+  - `systemPrompt`: chars, projectContextChars, nonProjectContextChars
+  - `skills.entries[]`, `tools.entries[]`
+
+### 주요 변경사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `parser.py` | +141줄 — `InjectedFile`, `SkillEntry`, `ToolEntry`, `SessionContext` 데이터클래스 추가. `CompactionEvent`에 summary/tokens_after/from_hook 확장. `Turn`에 thinking_level/cache_hit_rate 추가. `load_session_metadata()`, `_parse_session_context()` 함수 추가. `parse_session()`에서 sessions.json 통합, thinking_level_change 추적, 캐시 히트율 계산 |
+| `cli.py` | +100줄 — `_print_analysis()` 헤더에 System Prompt/Context Files/Skills 표시. 턴별 cache_hit 표시. compaction 요약 미리보기. `cmd_context()` 새 커맨드 |
+| `ocmon.py` | +12줄 — `context` (alias `ctx`) 서브커맨드 추가 |
+| `web.py` | +45줄 — API에 `context`, `compaction_events`, `context_tokens` 등 필드 추가. 턴별 `thinking_level`, `cache_hit_rate` 직렬화 |
+
+### 중요 결정사항
+- **sessions.json 파싱 방식 선택**: OpenClaw 소스 수정(커스텀 JSONL 이벤트 추가) vs sessions.json 읽기 vs API payload 로깅 3가지 옵션 중, OpenClaw 수정 없이 기존 데이터를 활용하는 sessions.json 파싱으로 결정
+- **systemPromptReport는 모든 세션에 있지 않음**: 크론 세션 일부는 report 없음 → graceful fallback 처리
+- **서브에이전트 컨텍스트 제한 추적 가능**: OpenClaw은 서브에이전트에 AGENTS.md + TOOLS.md만 허용 → 세션 타입으로 추론 가능
+
+### 테스트 및 검증
+- `python3 -c "from parser import ..."` — 전체 임포트 성공
+- `load_session_metadata('main', '5e57f3cb')` — injectedFiles 8개, skills 18개, tools 24개 정상 파싱
+- `ocmon analyze cc52d980` — `cache_hit=35%`, `cache_hit=42%` 턴별 표시 확인
+- `ocmon context 5e57f3cb` — 전체 컨텍스트 상세 출력 정상 (System Prompt 32.7KB, 8 files, 18 skills, 24 tools)
+- 웹 API: `/api/session/5e57f3cb` → context 필드 정상 반환 (Flask test_client 검증)
+
+### 다음 단계
+- [ ] `templates/detail.html`에 컨텍스트 주입 패널 UI 추가 (접이식, 파일 크기 바 차트)
+- [ ] compaction 타임라인 UI (요약 텍스트 펼치기)
+- [ ] sessions.json 기반 세션 목록에 context_tokens 컬럼 추가
+
+---
+
 ## [2026-02-20] - 웹 대시보드 UI/UX 전면 리뉴얼
 
 ### 작업 내용
