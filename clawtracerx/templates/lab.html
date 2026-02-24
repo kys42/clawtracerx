@@ -3,107 +3,119 @@
 {% block title %}Lab{% endblock %}
 
 {% block content %}
-<div class="lab-header">
-  <h1>
-    <span class="lab-icon">&#x1F9EA;</span>
-    Lab
-  </h1>
-  <span class="lab-status idle" id="lab-status">idle</span>
-</div>
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
 
-<!-- Session selector -->
-<div class="lab-section">
-  <div class="lab-session-bar">
+<!-- Top bar: header + status + elapsed + selectors + buttons -->
+<div class="lab-topbar">
+  <div class="lab-topbar-left">
+    <h1>
+      <span class="lab-icon">&#x1F9EA;</span>
+      Lab
+    </h1>
+    <span class="lab-status idle" id="lab-status">idle</span>
+    <span class="lab-elapsed" id="lab-elapsed" style="display:none"></span>
+  </div>
+  <div class="lab-topbar-right">
     <select class="input-select" id="agent-select" onchange="loadGatewaySessions()">
       <option value="all">All Agents</option>
     </select>
-    <select class="input-select" id="session-select" onchange="selectSession()" style="min-width:360px">
+    <select class="input-select" id="session-select" onchange="selectSession()" style="min-width:300px">
       <option value="">Select session...</option>
     </select>
-  </div>
-  <div class="lab-session-bar" style="margin-top:6px">
-    <span style="color:var(--text-3);font-size:12px">or key:</span>
-    <input type="text" class="input-text" id="session-key-input" placeholder="Session key (e.g. agent:main:chat:lab-test)" style="min-width:320px">
-    <button class="btn btn-outline" onclick="attachByKey()">Attach</button>
-    <button class="btn btn-outline" onclick="resetSession()" title="Reset session transcript">Reset</button>
+    <button class="btn btn-outline btn-sm" onclick="startNewSession()" title="New session">+ New</button>
+    <button class="btn btn-outline btn-sm" onclick="resetSession()" title="Reset transcript">Reset</button>
   </div>
 </div>
 
-<!-- Settings panel -->
-<details class="lab-settings lab-section">
-  <summary>⚙ Settings <span class="context-chevron">&#x25BE;</span></summary>
-  <div class="lab-settings-grid">
-    <div class="lab-field">
-      <label><span class="lab-field-icon">⚙</span> Model</label>
-      <input type="text" class="input-text" id="setting-model" placeholder="e.g. claude-sonnet-4-6" style="width:100%">
-    </div>
-    <div class="lab-field">
-      <label><span class="lab-field-icon">🧠</span> Thinking Level</label>
-      <select class="input-select" id="setting-thinking" style="width:100%">
-        <option value="">default</option>
-        <option value="none">none</option>
-        <option value="low">low</option>
-        <option value="medium">medium</option>
-        <option value="high">high</option>
-      </select>
-    </div>
-    <div class="lab-settings-divider"></div>
-    <div class="lab-field">
-      <label><span class="lab-field-icon">📡</span> Deliver to Channel</label>
-      <select class="input-select" id="setting-deliver" style="width:100%">
-        <option value="false" selected>No (lab only)</option>
-        <option value="true">Yes</option>
-      </select>
-    </div>
-    <div class="lab-field">
-      <label><span class="lab-field-icon">⏱</span> Timeout (seconds)</label>
-      <input type="number" class="input-text" id="setting-timeout" value="120" min="10" max="600" style="width:100%">
-    </div>
-    <div class="lab-settings-divider"></div>
-    <div class="lab-field full-width">
-      <label><span class="lab-field-icon">📝</span> Extra System Prompt</label>
-      <textarea class="input-textarea" id="setting-extra-prompt" rows="3" placeholder="Additional instructions injected into system prompt..."></textarea>
-    </div>
-  </div>
-</details>
+<!-- Manual key input (toggle-hidden) -->
+<div class="lab-key-row" id="lab-key-row" style="display:none">
+  <span style="color:var(--text-3);font-size:12px">Key:</span>
+  <input type="text" class="input-text" id="session-key-input" placeholder="Session key (e.g. agent:main:chat:lab-test)">
+  <button class="btn btn-outline btn-sm" onclick="attachByKey()">Attach</button>
+</div>
 
-<!-- Context files -->
-<details class="lab-context lab-section">
-  <summary>Context Files <span class="context-chevron">&#x25BE;</span></summary>
-  <div class="lab-context-body" id="context-files">
-    <div class="loading">Loading context files...</div>
+<!-- Two-column layout -->
+<div class="lab-columns">
+  <!-- Main: Timeline -->
+  <div class="lab-main">
+    <div class="lab-section-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Execution Timeline</span>
+      <button class="btn btn-outline btn-sm" onclick="toggleKeyRow()" style="font-size:11px">Key...</button>
+    </div>
+    <div id="turns-container" class="lab-timeline"></div>
+    <div id="timeline-empty" class="empty" style="display:none">No turns yet. Send a message to get started.</div>
   </div>
-</details>
 
-<!-- Message input -->
-<div class="lab-section">
-  <div class="lab-section-title">Message</div>
-  <div class="lab-input-bar">
-    <div class="lab-input-row">
-      <textarea class="input-textarea" id="message-input" rows="3" placeholder="Type a message to send to the agent..." onkeydown="if(event.ctrlKey && event.key==='Enter') sendMessage()"></textarea>
-      <button class="btn btn-primary" onclick="sendMessage()" id="send-btn">Send</button>
-    </div>
-    <div class="lab-input-meta">
-      <span id="input-hint">Ctrl+Enter to send</span>
-      <span id="current-session-info">No session attached</span>
-    </div>
+  <!-- Sidebar -->
+  <div class="lab-sidebar">
+    <!-- Settings panel -->
+    <details class="lab-settings" id="settings-panel">
+      <summary>&#x2699; Settings <span class="context-chevron">&#x25BE;</span></summary>
+      <div class="lab-settings-grid">
+        <div class="lab-field">
+          <label><span class="lab-field-icon">&#x2699;</span> Model</label>
+          <input type="text" class="input-text" id="setting-model" placeholder="e.g. claude-sonnet-4-6" style="width:100%">
+        </div>
+        <div class="lab-field">
+          <label><span class="lab-field-icon">&#x1F9E0;</span> Thinking Level</label>
+          <select class="input-select" id="setting-thinking" style="width:100%">
+            <option value="">default</option>
+            <option value="none">none</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+        </div>
+        <div class="lab-settings-divider"></div>
+        <div class="lab-field">
+          <label><span class="lab-field-icon">&#x1F4E1;</span> Deliver to Channel</label>
+          <select class="input-select" id="setting-deliver" style="width:100%">
+            <option value="false" selected>No (lab only)</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
+        <div class="lab-field">
+          <label><span class="lab-field-icon">&#x23F1;</span> Timeout (seconds)</label>
+          <input type="number" class="input-text" id="setting-timeout" value="120" min="10" max="600" style="width:100%">
+        </div>
+        <div class="lab-settings-divider"></div>
+        <div class="lab-field full-width">
+          <label><span class="lab-field-icon">&#x1F4DD;</span> Extra System Prompt</label>
+          <textarea class="input-textarea" id="setting-extra-prompt" rows="3" placeholder="Additional instructions injected into system prompt..."></textarea>
+        </div>
+      </div>
+    </details>
+
+    <!-- Context files -->
+    <details class="lab-context">
+      <summary>Context Files <span class="context-chevron">&#x25BE;</span></summary>
+      <div class="lab-context-body" id="context-files">
+        <div class="loading">Loading context files...</div>
+      </div>
+    </details>
+
+    <!-- Activity log -->
+    <details class="lab-settings">
+      <summary>Activity Log <span class="context-chevron">&#x25BE;</span></summary>
+      <div id="activity-log" style="padding:12px;max-height:300px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-2)">
+        <div class="loading">Loading...</div>
+      </div>
+    </details>
   </div>
 </div>
 
-<!-- Execution timeline -->
-<div class="lab-section">
-  <div class="lab-section-title">Execution Timeline</div>
-  <div id="turns-container" class="lab-timeline"></div>
-  <div id="timeline-empty" class="empty" style="display:none">No turns yet. Send a message to get started.</div>
-</div>
-
-<!-- Activity log -->
-<details class="lab-settings lab-section">
-  <summary>Activity Log <span class="context-chevron">&#x25BE;</span></summary>
-  <div id="activity-log" style="padding:12px;max-height:300px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-2)">
-    <div class="loading">Loading...</div>
+<!-- Fixed bottom message input -->
+<div class="lab-input-sticky" id="lab-input-sticky">
+  <div class="lab-input-row">
+    <textarea class="input-textarea" id="message-input" rows="1" placeholder="Type a message to send to the agent..." onkeydown="handleInputKeydown(event)" oninput="autoResizeTextarea(this)"></textarea>
+    <button class="btn btn-primary" onclick="sendMessage()" id="send-btn">Send</button>
   </div>
-</details>
+  <div class="lab-input-meta">
+    <span id="input-hint"></span>
+    <span id="current-session-info">No session attached</span>
+  </div>
+</div>
 
 <!-- Diff modal -->
 <div id="diff-modal" class="diff-modal-overlay" style="display:none" onclick="if(event.target===this)closeDiff()">
@@ -130,9 +142,168 @@ let isSending = false;
 // Gateway session cache: key -> {sessionId, agentId, ...}
 let gwSessions = [];
 
+// Elapsed timer state
+let elapsedTimer = null;
+let elapsedStart = null;
+
+// Unsaved context files tracker
+const unsavedContextFiles = new Set();
+
+// Settings localStorage key
+const SETTINGS_KEY = 'clawtracerx-lab-settings';
+
+// --- Toast notification ---
+function showToast(message, type) {
+  type = type || 'info';
+  const container = qs('#toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + type;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(function() {
+    toast.classList.add('removing');
+    setTimeout(function() { toast.remove(); }, 250);
+  }, 3000);
+}
+
+// --- Elapsed timer ---
+function startElapsedTimer() {
+  stopElapsedTimer();
+  elapsedStart = Date.now();
+  const el = qs('#lab-elapsed');
+  el.style.display = '';
+  el.textContent = '0s';
+  elapsedTimer = setInterval(function() {
+    const sec = Math.floor((Date.now() - elapsedStart) / 1000);
+    if (sec < 60) {
+      el.textContent = sec + 's';
+    } else {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      el.textContent = m + 'm ' + s + 's';
+    }
+  }, 1000);
+}
+
+function stopElapsedTimer() {
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer);
+    elapsedTimer = null;
+  }
+}
+
+function hideElapsedAfterDelay() {
+  stopElapsedTimer();
+  setTimeout(function() {
+    const el = qs('#lab-elapsed');
+    if (!elapsedTimer) el.style.display = 'none';
+  }, 5000);
+}
+
+// --- Pending message ---
+function insertPendingMessage(text) {
+  removePendingMessage();
+  const container = qs('#turns-container');
+  qs('#timeline-empty').style.display = 'none';
+  const card = document.createElement('div');
+  card.className = 'pending-msg-card';
+  card.id = 'pending-msg';
+  card.innerHTML = '<div class="pending-role">YOU</div>' +
+    '<div class="pending-text">' + escHtml(text) + '</div>' +
+    '<div class="pending-status"><span class="pending-spinner"></span> Sending to agent...</div>';
+  container.appendChild(card);
+  autoScroll();
+}
+
+function removePendingMessage() {
+  const el = qs('#pending-msg');
+  if (el) el.remove();
+}
+
+// --- Textarea auto-resize + keyboard ---
+function autoResizeTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+function handleInputKeydown(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+// --- Toggle key row ---
+function toggleKeyRow() {
+  const row = qs('#lab-key-row');
+  row.style.display = row.style.display === 'none' ? 'flex' : 'none';
+  if (row.style.display === 'flex') qs('#session-key-input').focus();
+}
+
+// --- Settings localStorage ---
+function saveSettingsToStorage() {
+  const data = {
+    model: qs('#setting-model').value,
+    thinking: qs('#setting-thinking').value,
+    deliver: qs('#setting-deliver').value,
+    timeout: qs('#setting-timeout').value,
+    extraPrompt: qs('#setting-extra-prompt').value,
+    lastAgent: qs('#agent-select').value,
+  };
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(data)); } catch(e) {}
+}
+
+function loadSettingsFromStorage() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.model) qs('#setting-model').value = data.model;
+    if (data.thinking) qs('#setting-thinking').value = data.thinking;
+    if (data.deliver) qs('#setting-deliver').value = data.deliver;
+    if (data.timeout) qs('#setting-timeout').value = data.timeout;
+    if (data.extraPrompt) qs('#setting-extra-prompt').value = data.extraPrompt;
+    // lastAgent is restored after loadAgents
+  } catch(e) {}
+}
+
+function getStoredLastAgent() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw).lastAgent || null;
+  } catch(e) { return null; }
+}
+
 // --- Init ---
 async function init() {
+  // Detect OS for keyboard hint
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  qs('#input-hint').textContent = isMac ? '\u2318+Enter to send' : 'Ctrl+Enter to send';
+
+  // Load settings from localStorage
+  loadSettingsFromStorage();
+
+  // Bind settings auto-save
+  ['setting-model', 'setting-thinking', 'setting-deliver', 'setting-timeout', 'setting-extra-prompt', 'agent-select'].forEach(function(id) {
+    const el = qs('#' + id);
+    if (el) {
+      el.addEventListener('change', saveSettingsToStorage);
+      el.addEventListener('input', saveSettingsToStorage);
+    }
+  });
+
   await loadAgents();
+
+  // Restore last agent selection
+  const lastAgent = getStoredLastAgent();
+  if (lastAgent) {
+    const agentSel = qs('#agent-select');
+    if (agentSel.querySelector('option[value="' + lastAgent + '"]')) {
+      agentSel.value = lastAgent;
+    }
+  }
+
   await loadGatewaySessions();
   loadContextFiles();
   loadActivityLog();
@@ -141,32 +312,33 @@ async function init() {
 async function loadAgents() {
   const agents = await fetchJSON('/api/agents');
   const sel = qs('#agent-select');
-  agents.forEach(a => {
+  agents.forEach(function(a) {
     const opt = document.createElement('option');
     opt.value = a.id;
-    opt.textContent = `${a.id} (${a.sessions})`;
+    opt.textContent = a.id + ' (' + a.sessions + ')';
     sel.appendChild(opt);
   });
 }
 
 async function loadGatewaySessions() {
   const agent = qs('#agent-select').value;
-  const param = agent === 'all' ? '' : `?agent=${agent}`;
-  gwSessions = await fetchJSON(`/api/lab/sessions${param}&last=50`);
+  const param = agent === 'all' ? '' : '?agent=' + agent;
+  const separator = param ? '&' : '?';
+  gwSessions = await fetchJSON('/api/lab/sessions' + param + separator + 'last=50');
 
   const sel = qs('#session-select');
   sel.innerHTML = '<option value="">Select session...</option>';
 
-  gwSessions.forEach((s, i) => {
+  gwSessions.forEach(function(s, i) {
     const opt = document.createElement('option');
     opt.value = i; // index into gwSessions
     const keyShort = s.session_key.length > 40
       ? '...' + s.session_key.slice(-35)
       : s.session_key;
     const display = s.display_name
-      ? `${s.agent_id} / ${s.display_name}`
-      : `${s.agent_id} / ${s.session_id.slice(0,10)}`;
-    opt.textContent = `${display}  ${fmtTokens(s.tokens)} ${fmtCost(s.cost)}  [${keyShort}]`;
+      ? s.agent_id + ' / ' + s.display_name
+      : s.agent_id + ' / ' + s.session_id.slice(0,10);
+    opt.textContent = display + '  ' + fmtTokens(s.tokens) + ' ' + fmtCost(s.cost) + '  [' + keyShort + ']';
     sel.appendChild(opt);
   });
 }
@@ -201,7 +373,7 @@ function attachByKey() {
   }
 
   // Try to find the session_id from our cached gateway sessions
-  const match = gwSessions.find(s => s.session_key === key);
+  const match = gwSessions.find(function(s) { return s.session_key === key; });
   if (match) {
     currentSessionId = match.session_id;
   } else {
@@ -213,13 +385,31 @@ function attachByKey() {
   if (currentSessionId) {
     startStream();
   }
+  showToast('Attached to session', 'info');
 }
 
 function updateSessionInfo() {
   const idPart = currentSessionId ? currentSessionId.slice(0, 10) : 'new';
   qs('#current-session-info').textContent = currentSessionKey
-    ? `${currentAgentId} / ${idPart}  key: ${currentSessionKey}`
+    ? currentAgentId + ' / ' + idPart + '  key: ' + currentSessionKey
     : 'No session attached';
+}
+
+// --- New Session ---
+function startNewSession() {
+  stopStream();
+  const ts = Date.now().toString(36);
+  currentSessionKey = 'agent:' + currentAgentId + ':chat:lab-' + ts;
+  currentSessionId = null;
+
+  qs('#session-key-input').value = currentSessionKey;
+  qs('#turns-container').innerHTML = '';
+  qs('#timeline-empty').style.display = 'block';
+  lastTurnCount = 0;
+  setStatus('idle');
+  updateSessionInfo();
+  qs('#message-input').focus();
+  showToast('New session: ' + currentSessionKey, 'info');
 }
 
 // --- Send message ---
@@ -231,13 +421,19 @@ async function sendMessage() {
   if (!currentSessionKey) {
     // Auto-generate session key for new lab session
     const ts = Date.now().toString(36);
-    currentSessionKey = `agent:${currentAgentId}:chat:lab-${ts}`;
+    currentSessionKey = 'agent:' + currentAgentId + ':chat:lab-' + ts;
     qs('#session-key-input').value = currentSessionKey;
   }
 
   isSending = true;
   setStatus('running');
+  startElapsedTimer();
   qs('#send-btn').disabled = true;
+  qs('#message-input').value = '';
+  autoResizeTextarea(qs('#message-input'));
+
+  // Insert pending message card immediately
+  insertPendingMessage(message);
 
   const payload = {
     message: message,
@@ -257,9 +453,10 @@ async function sendMessage() {
 
   if (result.error) {
     setStatus('error');
+    showToast('Send failed: ' + result.error, 'error');
+    removePendingMessage();
     console.error('Send failed:', result.error);
   } else {
-    qs('#message-input').value = '';
     setStatus('running');
 
     // If we didn't have a session_id yet, refresh gateway sessions to find it
@@ -275,8 +472,8 @@ async function sendMessage() {
 
 async function refreshSessionId() {
   // Re-fetch gateway sessions to get the session_id for our key
-  const sessions = await fetchJSON(`/api/lab/sessions?last=50`);
-  const match = sessions.find(s => s.session_key === currentSessionKey);
+  const sessions = await fetchJSON('/api/lab/sessions?last=50');
+  const match = sessions.find(function(s) { return s.session_key === currentSessionKey; });
   if (match) {
     currentSessionId = match.session_id;
     gwSessions = sessions;
@@ -291,20 +488,23 @@ function startStream() {
 
   setStatus('connecting');
   console.log('[SSE] connecting to', currentSessionId);
-  eventSource = new EventSource(`/api/lab/stream/${currentSessionId}`);
+  eventSource = new EventSource('/api/lab/stream/' + currentSessionId);
 
-  eventSource.onopen = () => {
+  eventSource.onopen = function() {
     console.log('[SSE] connection opened');
   };
 
   // Initial full load
-  eventSource.addEventListener('init', (e) => {
+  eventSource.addEventListener('init', function(e) {
     const data = JSON.parse(e.data);
     console.log('[SSE] init:', data.turns?.length, 'turns');
+    removePendingMessage();
     if (data.turns && data.turns.length > 0) {
       qs('#timeline-empty').style.display = 'none';
       renderTurns(data.turns, data.compaction_events || []);
       lastTurnCount = data.turns.length;
+      // Auto-expand latest turn
+      autoExpandLatestTurn();
       autoScroll();
     } else {
       qs('#turns-container').innerHTML = '';
@@ -315,28 +515,31 @@ function startStream() {
   });
 
   // New turns delta
-  eventSource.addEventListener('update', (e) => {
+  eventSource.addEventListener('update', function(e) {
     const delta = JSON.parse(e.data);
     console.log('[SSE] update:', delta.new_turns.length, 'new turns, total', delta.total_turns);
+    removePendingMessage();
     const container = qs('#turns-container');
     qs('#timeline-empty').style.display = 'none';
-    delta.new_turns.forEach((t, i) => {
+    delta.new_turns.forEach(function(t, i) {
       // Use 0-based animIdx so new turns appear instantly (no stale delay)
       const html = renderTurn(t, i);
       container.insertAdjacentHTML('beforeend', html);
     });
     lastTurnCount = delta.total_turns;
     setStatus('running');
+    // Auto-expand latest turn
+    autoExpandLatestTurn();
     autoScroll();
   });
 
   // Last turn patched (tool results added, etc.)
-  eventSource.addEventListener('patch', (e) => {
-    const { index, turn } = JSON.parse(e.data);
-    console.log('[SSE] patch: turn', index);
-    const card = qs(`#turn-${index}`);
+  eventSource.addEventListener('patch', function(e) {
+    const data = JSON.parse(e.data);
+    console.log('[SSE] patch: turn', data.index);
+    const card = qs('#turn-' + data.index);
     if (card) {
-      const html = renderTurn(turn, 0);
+      const html = renderTurn(data.turn, 0);
       card.outerHTML = html;
     }
     setStatus('running');
@@ -344,13 +547,17 @@ function startStream() {
   });
 
   // Agent completed
-  eventSource.addEventListener('done', () => {
+  eventSource.addEventListener('done', function() {
     console.log('[SSE] done');
+    removePendingMessage();
     setStatus('done');
+    showToast('Agent completed', 'success');
+    // Auto-expand last turn
+    autoExpandLatestTurn();
   });
 
   // Error / reconnect
-  eventSource.addEventListener('error', (e) => {
+  eventSource.addEventListener('error', function() {
     console.warn('[SSE] error, readyState:', eventSource.readyState);
     if (eventSource.readyState === EventSource.CLOSED) {
       setStatus('idle');
@@ -358,7 +565,7 @@ function startStream() {
   });
 
   // Server timeout
-  eventSource.addEventListener('timeout', () => {
+  eventSource.addEventListener('timeout', function() {
     console.log('[SSE] timeout');
     setStatus('idle');
   });
@@ -374,17 +581,31 @@ function stopStream() {
 function autoScroll() {
   const container = qs('#turns-container');
   if (container.lastElementChild) {
-    setTimeout(() => {
+    setTimeout(function() {
       container.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }, 100);
+  }
+}
+
+function autoExpandLatestTurn() {
+  const container = qs('#turns-container');
+  const lastCard = container.querySelector('.turn-card:last-child');
+  if (lastCard) {
+    const idx = lastCard.id.replace('turn-', '');
+    const body = qs('#turn-body-' + idx);
+    if (body) body.style.display = 'block';
   }
 }
 
 // --- Status ---
 function setStatus(status) {
   const el = qs('#lab-status');
-  el.className = `lab-status ${status}`;
+  el.className = 'lab-status ' + status;
   el.textContent = status;
+
+  if (status === 'done' || status === 'error' || status === 'idle') {
+    hideElapsedAfterDelay();
+  }
 }
 
 // --- Context files ---
@@ -399,46 +620,52 @@ async function loadContextFiles() {
 
   // Preserve open state of cards
   const openCards = new Set();
-  container.querySelectorAll('.lab-ctx-file').forEach(el => {
+  container.querySelectorAll('.lab-ctx-file').forEach(function(el) {
     const body = el.querySelector('.lab-ctx-file-body');
     if (body && body.style.display !== 'none' && body.style.display !== '') {
       openCards.add(el.dataset.name);
     }
   });
 
-  container.innerHTML = files.map(f => `
-    <div class="lab-ctx-file ${f.has_backup ? 'modified' : ''}" data-name="${escHtml(f.name)}">
-      <div class="lab-ctx-file-header" onclick="toggleEl(this.nextElementSibling)">
-        <div style="display:flex;align-items:center;gap:8px;min-width:0">
-          <span class="lab-ctx-file-name">${escHtml(f.name)}</span>
-          <span class="lab-ctx-file-size">${fmtSize(f.size)}</span>
-          ${f.has_backup ? '<span class="lab-ctx-badge-modified">● 수정됨</span>' : ''}
-        </div>
-        <span style="color:var(--text-3);font-size:11px;flex-shrink:0">▾</span>
-      </div>
-      <div class="lab-ctx-file-body" style="display:${openCards.has(f.name) ? 'block' : 'none'}">
-        <textarea class="input-textarea" id="ctx-${f.name}" rows="12">${escHtml(f.content)}</textarea>
-        <div class="lab-ctx-actions">
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-sm btn-outline" onclick="reloadContextFile('${f.name}')">Reload</button>
-            ${f.has_backup ? `<button class="btn btn-sm btn-outline" onclick="showDiff('${escHtml(f.name)}')">Diff ▸</button>` : ''}
-            ${f.has_backup ? `<button class="btn btn-sm btn-outline" style="color:var(--warning);border-color:rgba(245,158,11,0.3)" onclick="resetContextFile('${escHtml(f.name)}')">↺ 초기화</button>` : ''}
-          </div>
-          <button class="btn btn-sm btn-primary" onclick="saveContextFile('${f.name}')">Save</button>
-        </div>
-      </div>
-    </div>
-  `).join('');
+  container.innerHTML = files.map(function(f) {
+    return '<div class="lab-ctx-file ' + (f.has_backup ? 'modified' : '') + '" data-name="' + escHtml(f.name) + '">' +
+      '<div class="lab-ctx-file-header" onclick="toggleEl(this.nextElementSibling)">' +
+        '<div style="display:flex;align-items:center;gap:8px;min-width:0">' +
+          '<span class="lab-ctx-file-name">' + escHtml(f.name) + '</span>' +
+          '<span class="lab-ctx-file-size">' + fmtSize(f.size) + '</span>' +
+          (f.has_backup ? '<span class="lab-ctx-badge-modified">\u25CF \uC218\uC815\uB428</span>' : '') +
+        '</div>' +
+        '<span style="color:var(--text-3);font-size:11px;flex-shrink:0">\u25BE</span>' +
+      '</div>' +
+      '<div class="lab-ctx-file-body" style="display:' + (openCards.has(f.name) ? 'block' : 'none') + '">' +
+        '<textarea class="input-textarea" id="ctx-' + f.name + '" rows="12" oninput="markContextUnsaved(\'' + f.name + '\')">' + escHtml(f.content) + '</textarea>' +
+        '<div class="lab-ctx-actions">' +
+          '<div style="display:flex;gap:6px">' +
+            '<button class="btn btn-sm btn-outline" onclick="reloadContextFile(\'' + f.name + '\')">Reload</button>' +
+            (f.has_backup ? '<button class="btn btn-sm btn-outline" onclick="showDiff(\'' + escHtml(f.name) + '\')">Diff \u25B8</button>' : '') +
+            (f.has_backup ? '<button class="btn btn-sm btn-outline" style="color:var(--warning);border-color:rgba(245,158,11,0.3)" onclick="resetContextFile(\'' + escHtml(f.name) + '\')">\u21BA \uCD08\uAE30\uD654</button>' : '') +
+          '</div>' +
+          '<button class="btn btn-sm btn-primary" onclick="saveContextFile(\'' + f.name + '\')">Save</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function markContextUnsaved(name) {
+  unsavedContextFiles.add(name);
 }
 
 async function saveContextFile(name) {
-  const textarea = qs(`#ctx-${name}`);
+  const textarea = qs('#ctx-' + name);
   if (!textarea) return;
-  const result = await putJSON(`/api/lab/context/${name}`, { content: textarea.value });
+  const result = await putJSON('/api/lab/context/' + name, { content: textarea.value });
   if (result.error) {
-    alert(`Save failed: ${result.error}`);
+    showToast('Save failed: ' + result.error, 'error');
     return;
   }
+  unsavedContextFiles.delete(name);
+  showToast(name + ' saved', 'success');
   // Reload to update has_backup status
   loadContextFiles();
   loadActivityLog();
@@ -446,30 +673,32 @@ async function saveContextFile(name) {
 
 async function reloadContextFile(name) {
   const files = await fetchJSON('/api/lab/context');
-  const f = files.find(x => x.name === name);
+  const f = files.find(function(x) { return x.name === name; });
   if (f) {
-    const textarea = qs(`#ctx-${name}`);
+    const textarea = qs('#ctx-' + name);
     if (textarea) textarea.value = f.content;
+    unsavedContextFiles.delete(name);
+    showToast(name + ' reloaded', 'info');
   }
 }
 
 async function showDiff(name) {
-  const data = await fetchJSON(`/api/lab/context/${name}/diff`);
-  qs('#diff-modal-title').textContent = `Diff — ${name}`;
+  const data = await fetchJSON('/api/lab/context/' + name + '/diff');
+  qs('#diff-modal-title').textContent = 'Diff \u2014 ' + name;
   const pre = qs('#diff-content');
   if (!data.diff) {
-    pre.innerHTML = '<span style="color:var(--text-2)">변경 없음 (diff 없음)</span>';
+    pre.innerHTML = '<span style="color:var(--text-2)">\uBCC0\uACBD \uC5C6\uC74C (diff \uC5C6\uC74C)</span>';
   } else {
-    pre.innerHTML = data.diff.split('\n').map(line => {
-      const escaped = escHtml(line);
+    pre.innerHTML = data.diff.split('\n').map(function(line) {
+      var escaped = escHtml(line);
       if (line.startsWith('+++') || line.startsWith('---')) {
-        return `<span class="diff-line-meta">${escaped}</span>`;
+        return '<span class="diff-line-meta">' + escaped + '</span>';
       } else if (line.startsWith('+')) {
-        return `<span class="diff-line-add">${escaped}</span>`;
+        return '<span class="diff-line-add">' + escaped + '</span>';
       } else if (line.startsWith('-')) {
-        return `<span class="diff-line-del">${escaped}</span>`;
+        return '<span class="diff-line-del">' + escaped + '</span>';
       } else if (line.startsWith('@@')) {
-        return `<span class="diff-line-meta">${escaped}</span>`;
+        return '<span class="diff-line-meta">' + escaped + '</span>';
       }
       return escaped;
     }).join('\n');
@@ -482,12 +711,14 @@ function closeDiff() {
 }
 
 async function resetContextFile(name) {
-  if (!confirm(`"${name}"을 원본(백업)으로 초기화하시겠습니까?\n현재 내용은 사라집니다.`)) return;
-  const result = await postJSON(`/api/lab/context/${name}/reset`, {});
+  if (!confirm('"' + name + '"\uC744 \uC6D0\uBCF8(\uBC31\uC5C5)\uC73C\uB85C \uCD08\uAE30\uD654\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?\n\uD604\uC7AC \uB0B4\uC6A9\uC740 \uC0AC\uB77C\uC9D1\uB2C8\uB2E4.')) return;
+  const result = await postJSON('/api/lab/context/' + name + '/reset', {});
   if (result.error) {
-    alert(`Reset failed: ${result.error}`);
+    showToast('Reset failed: ' + result.error, 'error');
     return;
   }
+  unsavedContextFiles.delete(name);
+  showToast(name + ' reset to original', 'success');
   loadContextFiles();
   loadActivityLog();
 }
@@ -500,18 +731,18 @@ async function loadActivityLog() {
     container.innerHTML = '<span class="dim">No activity yet</span>';
     return;
   }
-  container.innerHTML = entries.map(e => {
-    const ts = e.ts ? e.ts.split('T')[1]?.split('+')[0]?.slice(0,8) : '';
-    const action = e.action || '';
-    const key = e.sessionKey ? ` key=${e.sessionKey}` : '';
-    const msg = e.message ? ` msg="${truncate(e.message, 60)}"` : '';
-    const err = e.error ? ` <span style="color:var(--error)">ERR: ${escHtml(truncate(e.error,80))}</span>` : '';
-    const file = e.file ? ` file=${e.file}` : '';
-    const rid = e.runId ? ` run=${e.runId.slice(0,8)}` : '';
-    return `<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle)">
-      <span style="color:var(--text-3)">${ts}</span>
-      <span style="color:var(--accent);font-weight:600">${escHtml(action)}</span>${key}${msg}${rid}${file}${err}
-    </div>`;
+  container.innerHTML = entries.map(function(e) {
+    var ts = e.ts ? e.ts.split('T')[1]?.split('+')[0]?.slice(0,8) : '';
+    var action = e.action || '';
+    var key = e.sessionKey ? ' key=' + e.sessionKey : '';
+    var msg = e.message ? ' msg="' + truncate(e.message, 60) + '"' : '';
+    var err = e.error ? ' <span style="color:var(--error)">ERR: ' + escHtml(truncate(e.error,80)) + '</span>' : '';
+    var file = e.file ? ' file=' + e.file : '';
+    var rid = e.runId ? ' run=' + e.runId.slice(0,8) : '';
+    return '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle)">' +
+      '<span style="color:var(--text-3)">' + ts + '</span> ' +
+      '<span style="color:var(--accent);font-weight:600">' + escHtml(action) + '</span>' + key + msg + rid + file + err +
+    '</div>';
   }).join('');
 }
 
@@ -525,10 +756,17 @@ async function resetSession() {
   qs('#timeline-empty').style.display = 'block';
   lastTurnCount = 0;
   setStatus('idle');
+  showToast('Session reset', 'info');
 }
 
-// --- Cleanup ---
-window.addEventListener('beforeunload', () => { stopStream(); });
+// --- Cleanup + unsaved warning ---
+window.addEventListener('beforeunload', function(e) {
+  stopStream();
+  if (unsavedContextFiles.size > 0) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 // Boot
 init();

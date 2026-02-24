@@ -1,3 +1,50 @@
+## [2026-02-24] - Lab 페이지 UX 전면 개선 (9개 변경사항)
+
+### 작업 내용
+- Lab 페이지 레이아웃을 수직 스택에서 2단 레이아웃으로 재구성
+- Toast 알림 시스템 도입 (모든 alert() 교체)
+- 즉시 메시지 피드백 (pending card), 경과 시간 타이머
+- Settings localStorage 저장/복원, 새 세션 생성 버튼
+- Textarea 자동 높이 + Cmd+Enter/Ctrl+Enter 지원
+- 미저장 컨텍스트 파일 경고 + 최신 턴 자동 펼침
+- 기존 버그 수정 (URL 파라미터, missing CSS)
+
+### 주요 변경사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `static/style.css` | +248줄 — Toast 시스템, 2단 레이아웃 (`.lab-topbar`, `.lab-columns`, `.lab-sidebar`), fixed bottom input (`.lab-input-sticky`), pending card 스타일, elapsed timer, `.lab-status.connecting/.watching` 추가, `@media (max-width: 1024px)` 반응형 |
+| `templates/lab.html` | 전면 재구성 — HTML: topbar(헤더+셀렉터+버튼 한 줄), columns(타임라인 좌 + 사이드바 우), sticky input(fixed bottom). JS: `showToast()`, `startElapsedTimer()`/`stopElapsedTimer()`, `insertPendingMessage()`/`removePendingMessage()`, `autoResizeTextarea()`, `handleInputKeydown()`, `saveSettingsToStorage()`/`loadSettingsFromStorage()`, `startNewSession()`, `markContextUnsaved()`, `autoExpandLatestTurn()` |
+
+### 9개 변경사항 상세
+
+1. **버그 수정**: `loadGatewaySessions()` URL `?`/`&` 분기 처리, `.lab-status.connecting/.watching` CSS
+2. **Toast 알림**: slide-in/out 애니메이션, 4타입(success/error/info/warning), 3초 자동 제거
+3. **2단 레이아웃**: `grid-template-columns: 1fr 340px`, 사이드바 sticky, 1024px 이하 1단 폴백
+4. **즉시 피드백**: 파란 pending card + spinner, SSE init/update/done에서 자동 제거
+5. **경과 타이머**: 전송→완료 시간 카운트, done/error 시 정지 + 5초 후 숨김
+6. **Settings 저장**: localStorage에 model/thinking/deliver/timeout/extraPrompt/lastAgent 자동 저장
+7. **New Session**: `+ New` 버튼 → 새 세션 키 + 타임라인 초기화 + toast
+8. **Textarea 개선**: scrollHeight 기반 자동 높이(max 200px), OS 감지 키보드 힌트
+9. **미저장 경고**: `unsavedContextFiles` Set 추적, beforeunload 경고, 최신 턴 auto-expand
+
+### 중요 결정사항
+- **수정 파일 최소화**: `turns.js`, `app.js`, `base.html`, `web.py` 미수정 — 기존 API/유틸 그대로 활용
+- **`#turns-container` ID 유지**: `renderTurns()` 호환성 보장
+- **Fixed bottom input**: `position: fixed` + `backdrop-filter: blur(16px)` — 항상 하단 고정, 배경 블러
+- **Manual key input 토글**: Timeline 헤더의 "Key..." 버튼으로 숨김/표시 (공간 절약)
+
+### 검증
+- `restart.sh` 실행 → http://localhost:8901/lab 정상 로드
+- 전체 검증 에이전트로 19개 기존 함수 + 14개 신규 함수 + 23개 DOM ID 매칭 확인
+
+### 다음 단계
+- [ ] 1440px+ 2단 레이아웃 실사용 테스트
+- [ ] 메시지 전송 → pending card → SSE 실제 동작 확인
+- [ ] 모바일 768px 이하 반응형 확인
+
+---
+
 ## [2026-02-21] - 서브에이전트 UI 개선, delivery_mirror 자식 세션 로딩, 워크플로우 그루핑 명세화
 
 ### 작업 내용
