@@ -1,5 +1,5 @@
 """
-ocmon gateway — WebSocket RPC client for OpenClaw gateway.
+ClawTracerX gateway — WebSocket RPC client for OpenClaw gateway.
 
 Protocol (v3):
   1. Client opens WS to ws://host:port

@@ -1,29 +1,113 @@
 """
-ocmon web — Flask web dashboard for OpenClaw agent monitoring.
+ClawTracerX web — Flask web dashboard for OpenClaw agent monitoring.
 """
 from __future__ import annotations
 
+import glob as _glob
 import json
 import logging
 import os
+import re
 import shutil
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, render_template, jsonify, request, abort
+from flask import Flask, Response, render_template, jsonify, request, abort, stream_with_context
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from parser import (
+from clawtracerx.session_parser import (
     parse_session, list_sessions, load_cron_runs, load_subagent_runs,
     get_raw_turn_lines, KST, _ts_to_dt, _truncate, AGENTS_DIR,
     OPENCLAW_DIR,
 )
-import gateway
+from clawtracerx import gateway
+
+
+def _get_base_path() -> str:
+    """Return package base path (handles PyInstaller frozen bundles)."""
+    if getattr(sys, "frozen", False):
+        return sys._MEIPASS  # type: ignore[attr-defined]
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+# --- OpenClaw source discovery ---
+
+def _get_openclaw_src() -> Path | None:
+    """pnpm wrapper 스크립트에서 openclaw 소스 경로를 파생."""
+    wrapper = Path.home() / "Library/pnpm/openclaw"
+    if not wrapper.exists():
+        return None
+    try:
+        content = wrapper.read_text()
+        m = re.search(r'"?\$basedir/([^"]+openclaw\.mjs)"?', content)
+        if not m:
+            return None
+        rel = m.group(1)  # e.g. ../../sources/openclaw/openclaw.mjs
+        src = (wrapper.parent / rel).resolve().parent
+        return src if src.is_dir() else None
+    except Exception:
+        return None
+
+
+_tool_desc_cache: dict | None = None
+
+
+def _build_tool_desc_map() -> dict:
+    """pi-coding-agent dist + openclaw src/agents/tools TS에서 tool description 추출."""
+    global _tool_desc_cache
+    if _tool_desc_cache is not None:
+        return _tool_desc_cache
+
+    result: dict[str, str] = {}
+    openclaw_src = _get_openclaw_src()
+
+    # 1. pi-coding-agent dist/core/tools/*.js
+    if openclaw_src:
+        pattern = str(openclaw_src / "node_modules/.pnpm/@mariozechner+pi-coding-agent*/node_modules/@mariozechner/pi-coding-agent/dist/core/tools")
+        matches = _glob.glob(pattern)
+        if matches:
+            pi_tools_dir = Path(matches[0])
+            tool_name_map = {
+                "bash": "exec", "find": "glob", "ls": "ls",
+                "grep": "grep", "read": "read", "write": "write",
+                "edit": "edit",
+            }
+            for js_file in pi_tools_dir.glob("*.js"):
+                if js_file.suffix == ".map":
+                    continue
+                stem = js_file.stem
+                content = js_file.read_text(errors="replace")
+                # 가장 긴 description 찾기 (파라미터 설명 제외)
+                descs = re.findall(r'description:\s*`([\s\S]+?)`', content)
+                descs += re.findall(r'description:\s*"((?:[^"\\]|\\.)*)"', content)
+                best = max(descs, key=len, default="")
+                if len(best) > 30:
+                    tool_name = tool_name_map.get(stem, stem)
+                    result[tool_name] = best.strip()
+
+    # 2. openclaw src/agents/tools/*.ts
+    if openclaw_src:
+        ts_dir = openclaw_src / "src/agents/tools"
+        if ts_dir.is_dir():
+            for ts_file in ts_dir.glob("*.ts"):
+                if ".test." in ts_file.name or ".e2e." in ts_file.name:
+                    continue
+                content = ts_file.read_text(errors="replace")
+                name_m = re.search(r'\bname:\s*["`]([a-z_][a-z0-9_]*)["`]', content)
+                descs = re.findall(r'description:\s*`([\s\S]+?)`', content)
+                descs += re.findall(r'description:\s*"((?:[^"\\]|\\.)*)"', content)
+                best = max(descs, key=len, default="")
+                if name_m and len(best) > 30:
+                    result[name_m.group(1)] = best.strip()
+
+    _tool_desc_cache = result
+    return result
+
 
 # --- Lab activity logger ---
-_lab_log_file = Path(__file__).parent / "lab.log"
-_lab_logger = logging.getLogger("ocmon.lab")
+_lab_log_file = Path(_get_base_path()).parent / "lab.log"
+_lab_logger = logging.getLogger("ctrace.lab")
 _lab_logger.setLevel(logging.INFO)
 _lab_handler = logging.FileHandler(_lab_log_file, encoding="utf-8")
 _lab_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
@@ -41,9 +125,10 @@ def _log_lab(action: str, **kwargs):
 
 
 def create_app():
+    _base = _get_base_path()
     app = Flask(__name__,
-                template_folder=os.path.join(os.path.dirname(__file__), "templates"),
-                static_folder=os.path.join(os.path.dirname(__file__), "static"))
+                template_folder=os.path.join(_base, "templates"),
+                static_folder=os.path.join(_base, "static"))
 
     # --- Pages ---
 
@@ -118,6 +203,56 @@ def create_app():
         nodes, edges = _build_graph(analysis)
         return jsonify({"nodes": nodes, "edges": edges})
 
+    @app.route("/api/skill-content")
+    def api_skill_content():
+        name = request.args.get("name", "").strip()
+        if not name or "/" in name or ".." in name:
+            abort(400, "Invalid skill name")
+        openclaw_src = _get_openclaw_src()
+        search_dirs = [
+            OPENCLAW_DIR / "workspace" / "skills" / name,
+            OPENCLAW_DIR / "workspace" / name,
+        ]
+        if openclaw_src:
+            search_dirs.append(openclaw_src / "skills" / name)
+        for skill_dir in search_dirs:
+            skill_file = skill_dir / "SKILL.md"
+            if skill_file.exists():
+                content = skill_file.read_text(encoding="utf-8", errors="replace")
+                label = "bundled" if openclaw_src and skill_dir.is_relative_to(openclaw_src) else "workspace"
+                return jsonify({"content": content, "size": skill_file.stat().st_size,
+                                "name": name, "path": str(skill_file), "label": label})
+        abort(404, f"'{name}' SKILL.md not found")
+
+    @app.route("/api/tool-content")
+    def api_tool_content():
+        name = request.args.get("name", "").strip()
+        if not name:
+            abort(400, "name required")
+        tool_map = _build_tool_desc_map()
+        desc = tool_map.get(name) or tool_map.get(name.replace("-", "_"))
+        if not desc:
+            abort(404, f"No description found for tool '{name}'")
+        return jsonify({"name": name, "description": desc})
+
+    @app.route("/api/file-content")
+    def api_file_content():
+        path_str = request.args.get("path", "").strip()
+        if not path_str:
+            abort(400, "path required")
+        path = Path(path_str).resolve()
+        try:
+            path.relative_to(OPENCLAW_DIR.resolve())
+        except ValueError:
+            abort(403, "Access denied: path outside ~/.openclaw/")
+        if not path.is_file():
+            abort(404, "File not found")
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            return jsonify({"content": content, "size": path.stat().st_size, "name": path.name})
+        except Exception as e:
+            abort(500, str(e))
+
     @app.route("/api/session/<session_id>/raw/<int:turn_index>")
     def api_raw_turn(session_id, turn_index):
         file_path = _resolve(session_id)
@@ -153,6 +288,7 @@ def create_app():
         by_type = {}
         by_model = {}
         by_day = {}
+        by_agent_type = {}  # {agent_id: {type: cost}}
         total_cost = 0
         total_tokens = 0
 
@@ -168,6 +304,8 @@ def create_app():
             by_type[stype] = by_type.get(stype, 0) + cost
             by_model[model] = by_model.get(model, 0) + cost
             by_day[day] = by_day.get(day, 0) + cost
+            by_agent_type.setdefault(aid, {})
+            by_agent_type[aid][stype] = by_agent_type[aid].get(stype, 0) + cost
             total_cost += cost
             total_tokens += tokens
 
@@ -180,6 +318,10 @@ def create_app():
             "by_type": {k: round(v, 6) for k, v in sorted(by_type.items(), key=lambda x: -x[1])},
             "by_model": {k: round(v, 6) for k, v in sorted(by_model.items(), key=lambda x: -x[1])},
             "by_day": dict(sorted(by_day.items())),
+            "by_agent_type": {
+                aid: {t: round(c, 6) for t, c in types.items()}
+                for aid, types in sorted(by_agent_type.items(), key=lambda x: -sum(x[1].values()))
+            },
         })
 
     @app.route("/api/crons")
@@ -316,6 +458,99 @@ def create_app():
                 done = True
 
         return jsonify({"changed": True, "data": data, "done": done})
+
+    @app.route("/api/lab/stream/<session_id>")
+    def api_lab_stream(session_id):
+        """SSE stream for real-time session monitoring."""
+        file_path = _resolve(session_id)
+        if not file_path:
+            return jsonify({"error": "session not found"}), 404
+
+        def generate():
+            last_size = 0
+            last_turn_count = 0
+            event_id = 0
+            idle_count = 0
+
+            # Initial full load
+            try:
+                analysis = parse_session(file_path, recursive_subagents=True)
+                data = _serialize_analysis(analysis)
+                last_size = file_path.stat().st_size
+                last_turn_count = len(data.get("turns", []))
+                event_id += 1
+                yield f"id: {event_id}\nevent: init\ndata: {json.dumps(data)}\n\n"
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+                return
+
+            # Change detection loop
+            while True:
+                time.sleep(0.5)
+
+                try:
+                    current_size = file_path.stat().st_size
+                except OSError:
+                    idle_count += 1
+                    if idle_count >= 600:  # 5 min timeout
+                        yield f"event: timeout\ndata: {{}}\n\n"
+                        return
+                    if idle_count % 30 == 0:
+                        yield f": heartbeat\n\n"
+                    continue
+
+                if current_size == last_size:
+                    idle_count += 1
+                    if idle_count % 30 == 0:
+                        yield f": heartbeat\n\n"
+                    continue
+
+                # File changed
+                idle_count = 0
+                last_size = current_size
+
+                try:
+                    analysis = parse_session(file_path, recursive_subagents=True)
+                    data = _serialize_analysis(analysis)
+                    turns = data.get("turns", [])
+                    new_count = len(turns)
+
+                    if new_count > last_turn_count:
+                        # Delta: new turns only
+                        delta = {
+                            "new_turns": turns[last_turn_count:],
+                            "total_turns": new_count,
+                            "compaction_events": data.get("compaction_events", []),
+                        }
+                        last_turn_count = new_count
+                        event_id += 1
+                        yield f"id: {event_id}\nevent: update\ndata: {json.dumps(delta)}\n\n"
+
+                        # Check agent completion
+                        last_turn = turns[-1]
+                        if last_turn.get("stop_reason") == "stop":
+                            yield f"event: done\ndata: {{}}\n\n"
+
+                    elif new_count == last_turn_count and turns:
+                        # Same turn count but file changed — patch last turn
+                        event_id += 1
+                        yield f"id: {event_id}\nevent: patch\ndata: {json.dumps({'index': turns[-1]['index'], 'turn': turns[-1]})}\n\n"
+
+                        if turns[-1].get("stop_reason") == "stop":
+                            yield f"event: done\ndata: {{}}\n\n"
+
+                except Exception as e:
+                    yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+        return Response(
+            stream_with_context(generate()),
+            content_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.route("/api/lab/context")
     def api_lab_context():
@@ -549,6 +784,7 @@ def _serialize_turn(turn):
         "in_context": turn.in_context,
         "thinking_level": turn.thinking_level,
         "cache_hit_rate": round(turn.cache_hit_rate, 4),
+        "workflow_group_id": turn.workflow_group_id,
     }
 
 

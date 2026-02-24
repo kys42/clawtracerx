@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clawtracerx"
+version = "0.1.0"
+description = "ClawTracerX — OpenClaw agent session monitor"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+web = ["flask>=2.0"]
+gateway = ["flask>=2.0", "websocket-client>=1.0", "cryptography>=3.0"]
+dev = [
+    "flask>=2.0", "websocket-client>=1.0", "cryptography>=3.0",
+    "pytest>=7.0", "ruff>=0.1.0",
+]
+
+[project.scripts]
+ctrace = "clawtracerx.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["clawtracerx*"]
+
+[tool.setuptools.package-data]
+clawtracerx = ["templates/*.html", "static/*.js", "static/*.css"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]

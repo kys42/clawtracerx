@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: macos-14,       platform: darwin, arch: arm64 }
+          - { os: macos-13,       platform: darwin, arch: x64   }
+          - { os: ubuntu-latest,  platform: linux,  arch: x64   }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies and build binary
+        run: |
+          pip install pyinstaller flask websocket-client cryptography
+          pyinstaller --onefile --name ctrace \
+            --add-data "clawtracerx/templates:clawtracerx/templates" \
+            --add-data "clawtracerx/static:clawtracerx/static" \
+            --exclude-module tkinter --exclude-module unittest \
+            clawtracerx/__main__.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ctrace-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/ctrace
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+      - name: Create GitHub Release with binaries
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          for dir in artifacts/ctrace-*/; do
+            name=$(basename "$dir")
+            mv "$dir/ctrace" "$name"
+            chmod +x "$name"
+          done
+          gh release create "$VERSION" ctrace-* \
+            --title "$VERSION" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-npm:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish npm package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd npm
+          node -e "
+            const p = require('./package.json');
+            p.version = '$VERSION';
+            require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2));
+          "
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

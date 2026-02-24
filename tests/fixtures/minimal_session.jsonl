@@ -1,0 +1,4 @@
+{"type":"session","timestamp":1740000000000,"cwd":"/tmp/test"}
+{"type":"model_change","modelId":"claude-test","provider":"anthropic"}
+{"type":"message","id":"msg-u1","message":{"role":"user","timestamp":1740000001000,"content":[{"type":"text","text":"Hello, what can you do?"}]}}
+{"type":"message","id":"msg-a1","parentId":"msg-u1","message":{"role":"assistant","timestamp":1740000005000,"model":"claude-test","provider":"anthropic","stopReason":"stop","content":[{"type":"text","text":"I can help you with many tasks."}],"usage":{"input":100,"output":20,"cacheRead":0,"cacheWrite":0,"totalTokens":120,"cost":{"input":0.0003,"output":0.0001,"cacheRead":0,"cacheWrite":0,"total":0.0004}}}}

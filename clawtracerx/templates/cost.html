@@ -41,6 +41,10 @@
     <h3>Cost by Model</h3>
     <div id="chart-model"></div>
   </div>
+  <div class="card">
+    <h3>Agent × Type</h3>
+    <div id="agent-type-table"><div class="empty">Loading...</div></div>
+  </div>
   <div class="card full-width">
     <h3>Daily Cost</h3>
     <div id="chart-daily"></div>
@@ -220,7 +224,62 @@ async function loadCost() {
   renderApexBar('chart-agent', data.by_agent);
   renderApexBar('chart-type', data.by_type);
   renderApexBar('chart-model', data.by_model);
+  renderAgentTypeTable('agent-type-table', data.by_agent_type, data.by_type);
   renderApexArea('chart-daily', data.by_day);
+}
+
+function renderAgentTypeTable(containerId, byAgentType, byType) {
+  const el = qs(`#${containerId}`);
+  if (!byAgentType || !Object.keys(byAgentType).length) {
+    el.innerHTML = '<div class="empty">No data</div>';
+    return;
+  }
+
+  // 실제로 존재하는 타입만 컬럼으로
+  const allTypes = ['chat', 'cron', 'heartbeat', 'subagent'];
+  const activeTypes = allTypes.filter(t =>
+    Object.values(byAgentType).some(row => row[t] > 0)
+  );
+
+  const typeLabels = { chat: '💬 Chat', cron: '⏰ Cron', heartbeat: '💗 HB', subagent: '🤖 Sub' };
+  const typeColors = { chat: '#60a5fa', cron: '#fbbf24', heartbeat: '#f472b6', subagent: '#a78bfa' };
+
+  const agents = Object.keys(byAgentType);
+  const colTotal = (t) => agents.reduce((s, a) => s + (byAgentType[a][t] || 0), 0);
+  const rowTotal = (a) => activeTypes.reduce((s, t) => s + (byAgentType[a][t] || 0), 0);
+  const grandTotal = agents.reduce((s, a) => s + rowTotal(a), 0);
+
+  const fmtCell = (v) => v > 0 ? `<span style="color:var(--text-0);font-weight:500">${fmtCost(v)}</span>` : `<span style="color:var(--text-3)">—</span>`;
+
+  el.innerHTML = `
+    <div class="cost-breakdown-wrap">
+      <table class="cost-breakdown-table">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            ${activeTypes.map(t => `<th style="color:${typeColors[t]}">${typeLabels[t]}</th>`).join('')}
+            <th style="color:var(--text-1)">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${agents.map(a => `
+            <tr>
+              <td class="cbt-agent">${a}</td>
+              ${activeTypes.map(t => `<td class="cbt-val">${fmtCell(byAgentType[a][t] || 0)}</td>`).join('')}
+              <td class="cbt-total">${fmtCost(rowTotal(a))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="cbt-agent" style="color:var(--text-3);font-style:italic">Total</td>
+            ${activeTypes.map(t => `<td class="cbt-val">${fmtCell(colTotal(t))}</td>`).join('')}
+            <td class="cbt-total" style="color:var(--success)">${fmtCost(grandTotal)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
 }
 
 async function loadAgents() {

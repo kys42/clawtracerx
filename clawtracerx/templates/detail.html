@@ -93,6 +93,12 @@ function renderHeader(s) {
   `;
 }
 
+function fmtK(n) {
+  if (!n) return '—';
+  if (n < 1e6) return (n / 1000).toFixed(2) + 'K';
+  return (n / 1e6).toFixed(2) + 'M';
+}
+
 function renderContextPanel(s) {
   const ctx = s.context;
   const maxChars = ctx.bootstrapMaxChars || 1;
@@ -100,54 +106,99 @@ function renderContextPanel(s) {
   const usagePct = Math.round(usedChars / maxChars * 100);
   const pctClass = usagePct > 80 ? 'danger' : usagePct > 60 ? 'warning' : '';
 
-  const maxFileChars = Math.max(...ctx.injectedFiles.map(f => f.rawChars || 0), 1);
-
   const filesHtml = ctx.injectedFiles.length ? `
     <div class="context-section">
       <div class="context-label">Injected Files (${ctx.injectedFiles.length})</div>
-      ${ctx.injectedFiles.map(f => `
-        <div class="ctx-file ${f.missing ? 'missing' : ''}">
-          <span class="ctx-file-name" title="${escHtml(f.path || f.name)}">${f.name}</span>
-          <div class="ctx-file-bar">
-            <div class="ctx-file-fill" style="width:${Math.round((f.injectedChars||0)/maxFileChars*100)}%"></div>
-          </div>
-          <span class="ctx-file-size">${fmtChars(f.injectedChars)}${f.truncated ? ' ✂' : ''}</span>
-        </div>
-      `).join('')}
+      <table class="ctx-table">
+        <thead>
+          <tr><th>Name</th><th>Injected</th><th></th></tr>
+        </thead>
+        <tbody>
+          ${ctx.injectedFiles.map(f => {
+            let injCell, badge;
+            const rawTip = f.rawChars ? ` title="${fmtK(f.rawChars)} raw"` : '';
+            if (f.missing) {
+              injCell = `<span style="color:var(--error)">✕</span>`;
+              badge = '';
+            } else if (f.truncated) {
+              injCell = `<span style="color:var(--warning)"${rawTip}>${fmtK(f.injectedChars)}</span>`;
+              badge = `<span class="ctx-badge-trunc" title="truncated">✂</span>`;
+            } else {
+              injCell = `<span style="color:var(--success)"${rawTip}>${fmtK(f.injectedChars)}</span>`;
+              badge = '';
+            }
+            const fp = f.path ? `data-filepath="${escHtml(f.path)}"` : '';
+            return `<tr style="${f.missing ? 'opacity:0.45' : ''}">
+              <td class="ctx-name ctx-file-link" ${fp} title="${escHtml(f.path || f.name)}">${escHtml(f.name)}</td>
+              <td class="ctx-num">${injCell}</td>
+              <td class="ctx-num ctx-badge-cell">${badge}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="ctx-name" style="color:var(--text-3)">${ctx.injectedFiles.length}개 파일</td>
+            <td class="ctx-num" style="color:var(--success);font-weight:600">${fmtK(ctx.injectedFiles.reduce((a,f) => a+(f.injectedChars||0), 0))} total</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
     </div>` : '';
 
-  const maxSkillChars = ctx.skills && ctx.skills.length ? Math.max(...ctx.skills.map(s => s.chars || 0), 1) : 1;
   const skillsHtml = ctx.skills && ctx.skills.length ? `
     <div class="context-section">
-      <div class="context-label">Skills (${ctx.skills.length}) — ${fmtChars(ctx.skills.reduce((a, s) => a + (s.chars || 0), 0))} total</div>
-      ${ctx.skills.map(sk => `
-        <div class="ctx-file">
-          <span class="ctx-file-name">${escHtml(sk.name)}</span>
-          <div class="ctx-file-bar">
-            <div class="ctx-file-fill skill" style="width:${Math.round((sk.chars||0)/maxSkillChars*100)}%"></div>
-          </div>
-          <span class="ctx-file-size">${fmtChars(sk.chars)}</span>
-        </div>`).join('')}
+      <div class="context-label">Skills (${ctx.skills.length})</div>
+      <table class="ctx-table">
+        <thead>
+          <tr><th>Name</th><th>Chars</th></tr>
+        </thead>
+        <tbody>
+          ${ctx.skills.map(sk => `<tr>
+            <td class="ctx-name ctx-skill-link" data-skillname="${escHtml(sk.name)}" title="${escHtml(sk.name)}">${escHtml(sk.name)}</td>
+            <td class="ctx-num" style="color:var(--accent)">${fmtK(sk.chars)}</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="ctx-name" style="color:var(--text-3)">Total</td>
+            <td class="ctx-num" style="color:var(--accent);font-weight:700">${fmtK(ctx.skills.reduce((a,s) => a+(s.chars||0), 0))}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>` : '';
 
-  const maxToolChars = ctx.tools && ctx.tools.length ? Math.max(...ctx.tools.map(t => (t.summaryChars||0) + (t.schemaChars||0)), 1) : 1;
   const toolsHtml = ctx.tools && ctx.tools.length ? `
     <div class="context-section">
-      <div class="context-label">Tools (${ctx.tools.length}) — ${fmtChars(ctx.tools.reduce((a, t) => a + (t.summaryChars||0) + (t.schemaChars||0), 0))} total</div>
-      ${ctx.tools.map(t => {
-        const total = (t.summaryChars||0) + (t.schemaChars||0);
-        const sumPct = Math.round((t.summaryChars||0)/maxToolChars*100);
-        const schemaPct = Math.round((t.schemaChars||0)/maxToolChars*100);
-        return `
-        <div class="ctx-file">
-          <span class="ctx-file-name">${escHtml(t.name)}</span>
-          <div class="ctx-file-bar">
-            <div class="ctx-file-fill tool-summary" style="width:${sumPct}%" title="desc: ${fmtChars(t.summaryChars)}"></div>
-            <div class="ctx-file-fill tool-schema" style="width:${schemaPct}%" title="schema: ${fmtChars(t.schemaChars)}"></div>
-          </div>
-          <span class="ctx-file-size">${fmtChars(total)}</span>
-        </div>`;
-      }).join('')}
+      <div class="context-label">Tools (${ctx.tools.length})</div>
+      <table class="ctx-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th><span style="color:var(--warning)">●</span> Desc</th>
+            <th><span style="color:rgba(251,191,36,0.6)">●</span> Schema</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${ctx.tools.map(t => {
+            const total = (t.summaryChars||0) + (t.schemaChars||0);
+            return `<tr>
+              <td class="ctx-name ctx-tool-link" data-toolname="${escHtml(t.name)}" title="${escHtml(t.name)}">${escHtml(t.name)}</td>
+              <td class="ctx-num" style="color:var(--warning)">${fmtK(t.summaryChars)}</td>
+              <td class="ctx-num" style="color:rgba(251,191,36,0.6)">${fmtK(t.schemaChars)}</td>
+              <td class="ctx-num" style="color:var(--text-0);font-weight:600">${fmtK(total)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="ctx-name" style="color:var(--text-3)">Total</td>
+            <td class="ctx-num" style="color:var(--warning);font-weight:700">${fmtK(ctx.tools.reduce((a,t) => a+(t.summaryChars||0), 0))}</td>
+            <td class="ctx-num" style="color:rgba(251,191,36,0.6);font-weight:700">${fmtK(ctx.tools.reduce((a,t) => a+(t.schemaChars||0), 0))}</td>
+            <td class="ctx-num" style="color:var(--text-0);font-weight:700">${fmtK(ctx.tools.reduce((a,t) => a+(t.summaryChars||0)+(t.schemaChars||0), 0))}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>` : '';
 
   const projPct = Math.round((ctx.projectContextChars || 0) / maxChars * 100);
@@ -200,6 +251,41 @@ function closeRawModal() {
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRawModal(); });
+
+// Context panel click handlers (file / skill preview)
+document.addEventListener('click', e => {
+  const fileCell = e.target.closest('.ctx-file-link');
+  if (fileCell && fileCell.dataset.filepath) {
+    openRawModal(fileCell.textContent.trim(), fetchJSON(`/api/file-content?path=${encodeURIComponent(fileCell.dataset.filepath)}`));
+    return;
+  }
+  const skillCell = e.target.closest('.ctx-skill-link');
+  if (skillCell && skillCell.dataset.skillname) {
+    openRawModal(skillCell.dataset.skillname + ' (SKILL.md)', fetchJSON(`/api/skill-content?name=${encodeURIComponent(skillCell.dataset.skillname)}`));
+    return;
+  }
+  const toolCell = e.target.closest('.ctx-tool-link');
+  if (toolCell && toolCell.dataset.toolname) {
+    openRawModal(
+      toolCell.dataset.toolname + ' (description)',
+      fetchJSON(`/api/tool-content?name=${encodeURIComponent(toolCell.dataset.toolname)}`).then(d => ({content: d.description}))
+    );
+  }
+});
+
+async function openRawModal(title, fetchPromise) {
+  const modal = qs('#raw-modal');
+  qs('#raw-title').textContent = title;
+  qs('#raw-content').textContent = 'Loading...';
+  modal.style.display = 'flex';
+  try {
+    const data = await fetchPromise;
+    qs('#raw-content').textContent = data.content;
+  } catch(e) {
+    qs('#raw-content').textContent = `Error: ${e.message}`;
+  }
+}
+
 loadSession();
 </script>
 {% endblock %}

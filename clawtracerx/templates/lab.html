@@ -120,16 +120,12 @@
 {% block scripts %}
 <script src="/static/turns.js"></script>
 <script>
-let currentSessionId = null;   // JSONL file UUID — for polling/viewing
+let currentSessionId = null;   // JSONL file UUID — for streaming/viewing
 let currentSessionKey = null;  // gateway routing key — for sending
 let currentAgentId = 'main';
-let pollTimer = null;
+let eventSource = null;        // SSE connection
 let lastTurnCount = 0;
 let isSending = false;
-let noChangeCount = 0;
-const POLL_FAST = 2000;   // active (just sent a message)
-const POLL_SLOW = 8000;   // idle (watching session)
-let pollInterval = POLL_SLOW;
 
 // Gateway session cache: key -> {sessionId, agentId, ...}
 let gwSessions = [];
@@ -190,8 +186,7 @@ function selectSession() {
 
   qs('#session-key-input').value = currentSessionKey;
   updateSessionInfo();
-  loadSessionData();
-  startPolling(false);
+  startStream();
 }
 
 function attachByKey() {
@@ -216,8 +211,7 @@ function attachByKey() {
 
   updateSessionInfo();
   if (currentSessionId) {
-    loadSessionData();
-    startPolling(false);
+    startStream();
   }
 }
 
@@ -226,22 +220,6 @@ function updateSessionInfo() {
   qs('#current-session-info').textContent = currentSessionKey
     ? `${currentAgentId} / ${idPart}  key: ${currentSessionKey}`
     : 'No session attached';
-}
-
-async function loadSessionData() {
-  if (!currentSessionId) return;
-
-  const data = await fetchJSON(`/api/session/${currentSessionId}`);
-  if (data && data.turns && data.turns.length > 0) {
-    qs('#timeline-empty').style.display = 'none';
-    renderTurns(data.turns, data.compaction_events || []);
-    lastTurnCount = data.turns.length;
-    autoScroll();
-  } else {
-    qs('#turns-container').innerHTML = '';
-    qs('#timeline-empty').style.display = 'block';
-    lastTurnCount = 0;
-  }
 }
 
 // --- Send message ---
@@ -258,7 +236,6 @@ async function sendMessage() {
   }
 
   isSending = true;
-  noChangeCount = 0;
   setStatus('running');
   qs('#send-btn').disabled = true;
 
@@ -282,18 +259,17 @@ async function sendMessage() {
     setStatus('error');
     console.error('Send failed:', result.error);
   } else {
-    setStatus('done');
     qs('#message-input').value = '';
+    setStatus('running');
 
     // If we didn't have a session_id yet, refresh gateway sessions to find it
     if (!currentSessionId && result.result) {
       await refreshSessionId();
+      if (currentSessionId) startStream();
     }
-    // Poll immediately
-    pollSession();
+    // SSE will auto-detect changes within 500ms
   }
 
-  startPolling(true);
   loadActivityLog();
 }
 
@@ -308,56 +284,90 @@ async function refreshSessionId() {
   }
 }
 
-// --- Polling ---
-function startPolling(fast) {
-  const ms = fast ? POLL_FAST : POLL_SLOW;
-  // Skip if already running at same speed
-  if (pollTimer && pollInterval === ms) return;
-  if (pollTimer) clearInterval(pollTimer);
-  pollInterval = ms;
-  pollTimer = setInterval(pollSession, ms);
-}
+// --- SSE Streaming ---
+function startStream() {
+  stopStream();
+  if (!currentSessionId) return;
 
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
-}
+  setStatus('connecting');
+  console.log('[SSE] connecting to', currentSessionId);
+  eventSource = new EventSource(`/api/lab/stream/${currentSessionId}`);
 
-async function pollSession() {
-  if (!currentSessionId) {
-    // Try to find session_id if we only have a key
-    if (currentSessionKey) await refreshSessionId();
-    return;
-  }
+  eventSource.onopen = () => {
+    console.log('[SSE] connection opened');
+  };
 
-  const data = await fetchJSON(
-    `/api/lab/poll/${currentSessionId}?since_turns=${lastTurnCount}`
-  );
-
-  if (data.changed && data.data) {
-    noChangeCount = 0;
-    qs('#timeline-empty').style.display = 'none';
-    renderTurns(data.data.turns, data.data.compaction_events || []);
-    const newCount = data.data.turns.length;
-    if (newCount > lastTurnCount) {
+  // Initial full load
+  eventSource.addEventListener('init', (e) => {
+    const data = JSON.parse(e.data);
+    console.log('[SSE] init:', data.turns?.length, 'turns');
+    if (data.turns && data.turns.length > 0) {
+      qs('#timeline-empty').style.display = 'none';
+      renderTurns(data.turns, data.compaction_events || []);
+      lastTurnCount = data.turns.length;
       autoScroll();
+    } else {
+      qs('#turns-container').innerHTML = '';
+      qs('#timeline-empty').style.display = 'block';
+      lastTurnCount = 0;
     }
-    lastTurnCount = newCount;
+    setStatus('watching');
+  });
 
-    // Slow down when agent turn is done
-    if (data.done) {
-      startPolling(false);
-      setStatus('done');
+  // New turns delta
+  eventSource.addEventListener('update', (e) => {
+    const delta = JSON.parse(e.data);
+    console.log('[SSE] update:', delta.new_turns.length, 'new turns, total', delta.total_turns);
+    const container = qs('#turns-container');
+    qs('#timeline-empty').style.display = 'none';
+    delta.new_turns.forEach((t, i) => {
+      // Use 0-based animIdx so new turns appear instantly (no stale delay)
+      const html = renderTurn(t, i);
+      container.insertAdjacentHTML('beforeend', html);
+    });
+    lastTurnCount = delta.total_turns;
+    setStatus('running');
+    autoScroll();
+  });
+
+  // Last turn patched (tool results added, etc.)
+  eventSource.addEventListener('patch', (e) => {
+    const { index, turn } = JSON.parse(e.data);
+    console.log('[SSE] patch: turn', index);
+    const card = qs(`#turn-${index}`);
+    if (card) {
+      const html = renderTurn(turn, 0);
+      card.outerHTML = html;
     }
-  } else {
-    noChangeCount++;
-    // Slow down after 5 unchanged fast polls
-    if (noChangeCount >= 5 && pollInterval === POLL_FAST) {
-      startPolling(false);
+    setStatus('running');
+    autoScroll();
+  });
+
+  // Agent completed
+  eventSource.addEventListener('done', () => {
+    console.log('[SSE] done');
+    setStatus('done');
+  });
+
+  // Error / reconnect
+  eventSource.addEventListener('error', (e) => {
+    console.warn('[SSE] error, readyState:', eventSource.readyState);
+    if (eventSource.readyState === EventSource.CLOSED) {
       setStatus('idle');
     }
+  });
+
+  // Server timeout
+  eventSource.addEventListener('timeout', () => {
+    console.log('[SSE] timeout');
+    setStatus('idle');
+  });
+}
+
+function stopStream() {
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
   }
 }
 
@@ -509,14 +519,16 @@ async function loadActivityLog() {
 async function resetSession() {
   if (!currentSessionKey) return;
   if (!confirm('Reset session transcript? This cannot be undone.')) return;
+  stopStream();
   // Clear local state
   qs('#turns-container').innerHTML = '';
   qs('#timeline-empty').style.display = 'block';
   lastTurnCount = 0;
+  setStatus('idle');
 }
 
 // --- Cleanup ---
-window.addEventListener('beforeunload', () => { stopPolling(); });
+window.addEventListener('beforeunload', () => { stopStream(); });
 
 // Boot
 init();

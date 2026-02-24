@@ -1,5 +1,5 @@
 """
-ocmon parser — OpenClaw session JSONL parser.
+ClawTracerX parser — OpenClaw session JSONL parser.
 
 Parses session transcripts into structured Turn objects
 with tool calls, subagent spawns, token usage, and cost tracking.
@@ -109,6 +109,7 @@ class Turn:
     in_context: bool = True  # whether this turn is still in context window
     thinking_level: str = ""      # thinking level at the time of this turn
     cache_hit_rate: float = 0.0   # cacheRead / (input + cacheRead)
+    workflow_group_id: Optional[int] = None  # set if this turn is part of a multi-turn workflow chain
 
 
 @dataclass
@@ -873,6 +874,14 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     # Enrich subagent spawns from announce messages (uses real sessionId from announce prefix)
     _enrich_spawns_from_announces(turns, agent_id=agent_id)
 
+    # Last-resort: load child sessions for spawns still missing child_turns
+    # (handles delivery_mirror case where routing UUID ≠ file UUID, no announce turn)
+    if recursive_subagents:
+        _try_load_missing_children(turns, agent_id=agent_id)
+
+    # Group consecutive turns that form a continuous workflow chain
+    _assign_workflow_groups(turns)
+
     # Compute in_context based on compaction events
     if analysis.compaction_events:
         _compute_context_status(turns, lines, analysis.compaction_events)
@@ -1016,12 +1025,17 @@ def _find_child_session_by_id(session_id: str, agent_id: str) -> Optional[Path]:
 
 
 def _find_child_session_by_label(label: str, spawn_label: str, agent_id: str,
-                                  announce_ts: datetime) -> Optional[Path]:
+                                  announce_ts: datetime,
+                                  window_after_secs: int = 60) -> Optional[Path]:
     """Fallback: find child session by scanning files near announce timestamp.
 
     Used for old announce format that lacks [sessionId:] and Stats: sections.
     Searches JSONL files modified within 30 minutes before the announce, and
     checks if the first user message contains the spawn label.
+
+    window_after_secs: how many seconds after announce_ts to include in the window.
+    Use a larger value (e.g. 7200) when searching for sessions that completed
+    after the spawn time (delivery_mirror case, no announce).
     """
     target_ts = announce_ts.timestamp()
     window_start = target_ts - 1800  # 30 min before announce
@@ -1046,7 +1060,7 @@ def _find_child_session_by_label(label: str, spawn_label: str, agent_id: str,
                 continue
             try:
                 mtime = f.stat().st_mtime
-                if not (window_start <= mtime <= target_ts + 60):
+                if not (window_start <= mtime <= target_ts + window_after_secs):
                     continue
                 candidates.append((mtime, f))
             except OSError:
@@ -1069,6 +1083,106 @@ def _find_child_session_by_label(label: str, spawn_label: str, agent_id: str,
         except Exception:
             continue
     return None
+
+
+def _try_load_missing_children(turns: list, agent_id: str) -> None:
+    """Last-resort: load child sessions for spawns that have no child_turns yet.
+
+    This handles the delivery_mirror case where the subagent result bypasses the
+    announce mechanism (no subagent_announce turn). The routing UUID in childSessionKey
+    does not match the real file UUID, so find_subagent_child_session() fails.
+    We fall back to label/task keyword matching near the parent turn's timestamp.
+    """
+    for turn in turns:
+        if not turn.timestamp:
+            continue
+        for spawn in turn.subagent_spawns:
+            if spawn.child_turns:
+                continue  # already loaded
+            turn_end_ts = turn.timestamp + timedelta(milliseconds=turn.duration_ms or 0)
+            kw_window = 14400  # 4 hours — subagent may run long
+
+            # Try 1: search by label
+            child_file = None
+            if spawn.label:
+                child_file = _find_child_session_by_label(
+                    spawn.label, spawn.label, agent_id, turn_end_ts,
+                    window_after_secs=kw_window,
+                )
+            # Try 2: search by task text (useful when label is English but task is Korean)
+            if not child_file and spawn.task:
+                task_text = " ".join(spawn.task.split()[:15])
+                child_file = _find_child_session_by_label(
+                    task_text, spawn.label, agent_id, turn_end_ts,
+                    window_after_secs=kw_window,
+                )
+            if not child_file:
+                continue
+            if not child_file:
+                continue
+            try:
+                child_analysis = parse_session(child_file, recursive_subagents=False)
+                spawn.child_turns = child_analysis.turns
+                if not spawn.cost_usd:
+                    spawn.cost_usd = child_analysis.total_cost
+                if not spawn.total_tokens:
+                    spawn.total_tokens = child_analysis.total_tokens
+                # Update child_session_id to the real UUID (stem of the found file)
+                real_sid = child_file.name.split(".jsonl")[0]
+                if real_sid and real_sid != spawn.child_session_id:
+                    spawn.child_session_id = real_sid
+            except Exception:
+                pass
+
+
+def _assign_workflow_groups(turns: list) -> None:
+    """Group consecutive turns that form a continuous workflow chain.
+
+    A workflow group starts when a turn spawns a subagent. Subsequent
+    subagent_announce turns whose [sessionId:] matches a pending spawn's
+    real child_session_id are chained into the same group.
+
+    Sets turn.workflow_group_id (int) for each turn in a multi-turn chain.
+    Single-turn spawns are NOT grouped (workflow_group_id stays None).
+    """
+    group_id = 0
+    # child_session_id → workflow_group_id for spawns awaiting their announce
+    pending: dict = {}
+
+    for turn in turns:
+        matched_group = None
+
+        # Announce turn: check if it continues a pending workflow
+        if turn.user_source in ("subagent_announce", "cron_announce"):
+            m = _ANNOUNCE_SESSION_ID_RE.search(turn.user_text)
+            if m:
+                sid = m.group(1)
+                if sid in pending:
+                    matched_group = pending.pop(sid)
+
+        # Turn with spawns but not yet matched: start a new group
+        if matched_group is None and turn.subagent_spawns:
+            group_id += 1
+            matched_group = group_id
+
+        if matched_group is not None:
+            turn.workflow_group_id = matched_group
+            # Register this turn's spawns so future announce turns can chain in
+            for spawn in turn.subagent_spawns:
+                real_sid = (
+                    (spawn.announce_stats or {}).get("session_id")
+                    or spawn.child_session_id
+                )
+                if real_sid:
+                    pending[real_sid] = matched_group
+
+    # Clear workflow_group_id from turns that ended up alone in their group
+    # (spawned but no announce ever came — no need to show a workflow block)
+    from collections import Counter
+    counts = Counter(t.workflow_group_id for t in turns if t.workflow_group_id is not None)
+    for turn in turns:
+        if turn.workflow_group_id is not None and counts[turn.workflow_group_id] < 2:
+            turn.workflow_group_id = None
 
 
 def _enrich_spawns_from_announces(turns: list, agent_id: str = ""):
@@ -1274,7 +1388,9 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                             elif src == "heartbeat":
                                 session_type = "heartbeat"
                     elif role in ("assistant", "toolResult"):
-                        if ts:
+                        # delivery-mirror는 실제 LLM 응답이 아니라 채널 미러링
+                        # → 포함시키면 세션 전체 기간이 turn 시간으로 측정됨
+                        if ts and msg.get("model") != "delivery-mirror":
                             current_turn_last_ts = ts
                     if role == "assistant":
                         if msg.get("model"):

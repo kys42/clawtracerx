@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+const { execFileSync } = require("child_process");
+const path = require("path");
+const fs = require("fs");
+
+const binary = path.join(__dirname, "..", "binary", "ctrace");
+if (!fs.existsSync(binary)) {
+  console.error("ctrace binary not found. Try reinstalling: npm install -g clawtracerx");
+  process.exit(1);
+}
+try {
+  execFileSync(binary, process.argv.slice(2), { stdio: "inherit" });
+} catch (e) {
+  process.exit(e.status || 1);
+}

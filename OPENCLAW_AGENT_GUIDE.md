@@ -1,6 +1,6 @@
 # OpenClaw Agent 내부 구조 완전 가이드
 
-> ocmon 개발 과정에서 실제 데이터 탐색을 통해 확인한 OpenClaw 에이전트 플랫폼의 내부 동작, 데이터 구조, 이벤트 흐름에 대한 상세 문서.
+> ClawTracerX 개발 과정에서 실제 데이터 탐색을 통해 확인한 OpenClaw 에이전트 플랫폼의 내부 동작, 데이터 구조, 이벤트 흐름에 대한 상세 문서.
 > 작성일: 2026-02-20 (sessions.json 메타데이터, 부트스트랩 체인, 디버그 인터페이스 추가)
 
 ---
@@ -967,7 +967,7 @@ resolveBootstrapContextForRun()          # bootstrap-files.ts
 | **SYSTEM** | 플랫폼 기본 지시 + **스킬 블록** + **도구 스키마** | `systemPrompt.nonProjectContextChars` |
 
 **핵심**: 스킬과 도구는 PROJECT가 아닌 **SYSTEM** 영역에 포함됨.
-- ocmon detail 페이지의 "Context Injection" 패널에서 두 바가 이 구분을 표시함
+- ClawTracerX detail 페이지의 "Context Injection" 패널에서 두 바가 이 구분을 표시함
 - `projectContextChars + nonProjectContextChars ≈ systemPrompt.chars` (전체 시스템 프롬프트 크기)
 
 ### 17.5 파일 탐색 경로
@@ -1022,7 +1022,7 @@ JSONL 트랜스크립트에 커스텀 이벤트를 주입하는 API:
 현재 확인된 `customType`:
 - `model-snapshot`: 모델/provider 스냅샷 (런타임 모델 상태 기록)
 
-이 API를 활용하면 ocmon에서 추적하고 싶은 추가 정보를 JSONL에 주입 가능 (OpenClaw 소스 수정 필요).
+이 API를 활용하면 ClawTracerX에서 추적하고 싶은 추가 정보를 JSONL에 주입 가능 (OpenClaw 소스 수정 필요).
 
 ### 18.3 데이터 소스별 가용 정보 비교
 
@@ -1044,6 +1044,8 @@ JSONL 트랜스크립트에 커스텀 이벤트를 주입하는 API:
 ---
 
 ## 19. 파싱 팁 및 주의사항
+
+> 상세 분류·그루핑 명세는 별도 문서 참조: **[SESSION_ANALYSIS_SPEC.md](./SESSION_ANALYSIS_SPEC.md)**
 
 ### 19.1 파싱 시 주의
 
@@ -1077,9 +1079,55 @@ total_cost = sum(turn.cost["total"] for turn in turns)
 # 서브에이전트 비용은 별도로 자식 세션을 파싱하여 합산해야 함
 ```
 
+### 19.4 delivery_mirror vs cron_announce — 두 가지는 다른 목적
+
+같은 cron job 실행에서 `delivery_mirror` 턴과 `cron_announce` 턴이 **동시에** 생길 수 있다. 이건 일관성 없는 게 아니라 서로 다른 일이 일어난 것.
+
+#### delivery_mirror
+- **정체**: 외부 채널(텔레그램/디스코드 등)로 나간 메시지의 **세션 기록 사본**
+- **생성**: `transcript.ts:appendAssistantMessageToSessionTranscript()` — outbound 채널 발송 완료 직후 호출
+- **특징**: `model: "delivery-mirror"`, usage/cost 전부 0 (실제 추론 없음)
+- **의미**: "이 내용이 채널로 발송됐어요"라는 로그
+
+#### cron_announce
+- **정체**: cron isolated agent 결과를 **에이전트가 읽고 처리하도록** 주입하는 user 메시지
+- **생성**: `isolated-agent/run.ts → runSubagentAnnounceFlow()` → gateway `agent` 메서드
+- **특징**: `user_source: "cron_announce"`, 실제 추론 발생 (에이전트가 응답함)
+- **의미**: "에이전트야, cron 결과가 이거야, 처리해봐"
+
+#### 동시 생성 조건
+
+```
+cron isolated agent 실행 완료
+    │
+    ├─ 결과를 텔레그램/디스코드로 발송
+    │   └─ outbound deliver 완료 → delivery_mirror turn 기록 (채널 발송 설정 시 항상)
+    │
+    └─ delivery.mode = "announce" 설정 시
+        └─ main session에 user 메시지 주입 → cron_announce turn
+```
+
+채널 발송(`delivery_mirror`)과 에이전트 알림(`cron_announce`) 두 가지가 **독립적**으로 동작하기 때문에, 둘 다 설정되어 있으면 같은 cron job에서 두 turn이 모두 생긴다.
+
+#### 파싱 시 처리
+- `delivery_mirror` turn: `user_source = "delivery_mirror"`, `user_text = ""`  — 별도 turn으로 분리, duration/cost 계산 제외
+- 부모 turn의 duration에 delivery_mirror 타임스탬프가 포함되면 duration이 수십 분으로 부풀려짐 (fix: delivery_mirror는 자체 turn으로 분리)
+
+### 19.5 워크플로우 그루핑
+
+오토파일럿 연쇄 흐름(cron → 서브에이전트 → announce → 서브에이전트 → ...)을 하나의 작업 단위로 묶어 표시.
+
+**그루핑 조건**: spawn의 `child_session_id` ↔ 다음 announce의 `[sessionId: UUID]` 매칭 시 같은 `workflow_group_id` 부여.
+
+**비연속 그룹 주의**: 같은 크론이 워크플로우 도중 재트리거(no spawns)되면 `wf=None` 갭 turn이 같은 그룹 범위 사이에 낄 수 있음. 갭 turn은 workflow 블록 **밖**에 따로 렌더링해야 함.
+
+**단일 turn 제외**: 체인이 이어지지 않은 경우(1개 turn만 있는 그룹)는 그루핑 해제.
+
+자세한 알고리즘 및 엣지 케이스: [SESSION_ANALYSIS_SPEC.md § 3. 워크플로우 그루핑](./SESSION_ANALYSIS_SPEC.md)
+
 ---
 
-## 20. ocmon Lab — 에이전트 인터랙티브 테스트
+## 20. ClawTracerX Lab — 에이전트 인터랙티브 테스트
 
 > `~/.openclaw/tools/ocmon/` 내장. 웹 UI: http://localhost:8901/lab
 
@@ -1133,15 +1181,15 @@ agent:{agentId}:chat:{임의식별자}
 
 ---
 
-## 부록: ocmon 분석 도구
+## 부록: ClawTracerX 분석 도구
 
-이 문서의 데이터 소스인 `ocmon` 도구:
+이 문서의 데이터 소스인 `ClawTracerX` 도구:
 - 경로: `~/.openclaw/tools/ocmon/`
-- CLI: `ocmon sessions|analyze|raw|crons|subagents|cost|context`
-- 웹: `ocmon web` → http://localhost:8901
+- CLI: `ctrace sessions|analyze|raw|crons|subagents|cost|context`
+- 웹: `ctrace web` → http://localhost:8901
 - 파서: `parser.py` — 이 문서에 기술된 모든 구조를 파싱
 
-### ocmon이 활용하는 데이터 소스
+### ClawTracerX이 활용하는 데이터 소스
 
 | 소스 | 경로 | 용도 |
 |------|------|------|
@@ -1151,10 +1199,10 @@ agent:{agentId}:chat:{임의식별자}
 | 크론 실행 로그 | `cron/runs/*.jsonl` | 크론 이력 |
 | 크론 잡 정의 | `cron/jobs.json` | 잡 메타데이터 |
 
-### ocmon context 커맨드
+### ctrace context 커맨드
 
 ```bash
-ocmon context <session-id>
+ctrace context <session-id>
 ```
 
 출력 예시:

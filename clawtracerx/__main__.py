@@ -1,30 +1,25 @@
 #!/usr/bin/env python3
 """
-ocmon — OpenClaw Agent Monitor
+ClawTracerX — OpenClaw Agent Monitor
 
 Usage:
-  ocmon sessions [--agent NAME] [--last N] [--type TYPE]
-  ocmon analyze SESSION [--no-subagents]
-  ocmon raw SESSION --turn N
-  ocmon crons [--last N] [--job ID]
-  ocmon subagents [--parent SESSION] [--last N]
-  ocmon cost [--period PERIOD] [--agent NAME]
-  ocmon context SESSION
-  ocmon web [--port PORT]
+  ctrace sessions [--agent NAME] [--last N] [--type TYPE]
+  ctrace analyze SESSION [--no-subagents]
+  ctrace raw SESSION --turn N
+  ctrace crons [--last N] [--job ID]
+  ctrace subagents [--parent SESSION] [--last N]
+  ctrace cost [--period PERIOD] [--agent NAME]
+  ctrace context SESSION
+  ctrace web [--port PORT]
 """
 
 import argparse
-import sys
-import os
-
-# Add script directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="ocmon",
-        description="OpenClaw Agent Monitor — Analyze agent sessions, tool calls, and costs",
+        prog="ctrace",
+        description="ClawTracerX — Analyze agent sessions, tool calls, and costs",
     )
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
@@ -75,7 +70,7 @@ def main():
         parser.print_help()
         return
 
-    from cli import (
+    from clawtracerx.cli import (
         cmd_sessions, cmd_analyze, cmd_raw,
         cmd_crons, cmd_subagents, cmd_cost, cmd_context,
     )
@@ -95,11 +90,11 @@ def main():
     elif args.command in ("context", "ctx"):
         cmd_context(session_ref=args.session)
     elif args.command == "web":
-        from web import create_app
+        from clawtracerx.web import create_app
         app = create_app()
-        print(f"\nocmon web dashboard")
+        print(f"\nClawTracerX web dashboard")
         print(f"http://localhost:{args.port}\n")
-        app.run(host=args.host, port=args.port, debug=args.debug)
+        app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 
 if __name__ == "__main__":

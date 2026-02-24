@@ -1,4 +1,4 @@
-/* === ocmon — shared JS utilities === */
+/* === ClawTracerX — shared JS utilities === */
 
 function qs(sel) { return document.querySelector(sel); }
 function qsa(sel) { return document.querySelectorAll(sel); }

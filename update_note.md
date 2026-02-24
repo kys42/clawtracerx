@@ -1,3 +1,45 @@
+## [2026-02-21] - 서브에이전트 UI 개선, delivery_mirror 자식 세션 로딩, 워크플로우 그루핑 명세화
+
+### 작업 내용
+- `SESSION_ANALYSIS_SPEC.md` 신규 생성 — 세션 로그 분류·분석·그루핑 전체 명세
+- delivery_mirror 스폰 자식 세션 로딩 수정 (`_try_load_missing_children`)
+- 서브에이전트 블록 UX 개선: 에이전트 이름 배지 + 클릭 시 즉시 전체 펼침
+- 워크플로우 그루핑 구현 (section 3 in spec), 비연속 그룹 처리 (gap turns)
+
+### 주요 변경사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `SESSION_ANALYSIS_SPEC.md` | 신규 — user_source 타입, delivery_mirror 상세, workflow 그루핑 알고리즘, 자식 세션 로딩 문제/해결 전체 명세 |
+| `parser.py` | `_try_load_missing_children()` 추가, `_assign_workflow_groups()` 추가, Turn dataclass에 `workflow_group_id` 추가 |
+| `static/turns.js` | `extractAgentId()` 헬퍼 추가, `renderSubagent()` 에이전트 배지 표시 + child turns 즉시 펼침, `renderChildTurn()` body 기본 오픈 |
+| `static/style.css` | `.badge-agent-named`, `.badge-agent-sub` 추가, workflow group 스타일, delivery_mirror muted 스타일 |
+| `web.py` | `_serialize_turn()`에 `workflow_group_id` 추가 |
+| `OPENCLAW_AGENT_GUIDE.md` | SESSION_ANALYSIS_SPEC 링크, delivery_mirror vs cron_announce 섹션 추가 |
+
+### 중요 결정사항
+
+- **delivery_mirror 스폰 폴백**: `childSessionKey` UUID는 라우팅 UUID (파일 UUID와 다름). announce 없는 경우 타임스탬프 + label/task 키워드로 4시간 윈도우 탐색
+- **레이블 영어 + 세션 내용 한국어** 케이스: `spawn.label`로 실패 시 `spawn.task.split()[:15]`로 2차 시도
+- **자식 턴 즉시 펼침**: 클릭 횟수 줄이기 위해 subagent body 열리면 child turns/tool calls 모두 바로 보임. tc-result (결과 텍스트)만 클릭 필요
+- **에이전트 구분**: `child_session_key`에서 agentId 추출 → `main` 이면 "서브세션" 배지, 명명 에이전트면 `🤖 {agentId}` 배지
+- **워크플로우 비연속 그룹**: bounds(first~last) 범위 내 wf=None 갭 turn은 블록 밖 뒤에 렌더
+
+### 문제 해결
+
+- **문제**: opacity:0 + fadeSlide 미정의 애니메이션 → 워크플로우 블록 전부 검게 보임
+  - **해결**: animation 제거, opacity:0 제거
+- **문제**: 갭 turn(wf=None)이 워크플로우 블록 안에 포함됨
+  - **해결**: bounds 범위 loop에서 gid 일치/불일치로 분리, gap turns를 블록 뒤에 렌더
+- **문제**: delivery_mirror 완료 서브에이전트 child_turns 빈 배열
+  - **해결**: `_try_load_missing_children()` — label → task text 순서로 파일 탐색
+
+### 다음 단계
+- [ ] sessions.html 변경사항 검토/커밋
+- [ ] Lab 페이지에서도 서브에이전트 즉시 펼침 동작 확인
+
+---
+
 ## [2026-02-21] - 버그 수정: 폴링 무한루프, Context 패널, 서브에이전트 세션 매칭
 
 ### 작업 내용
@@ -113,7 +155,7 @@
 ### 문서화 (Claude Code memory)
 - `openclaw-gateway-protocol.md` — WS RPC 프로토콜 v3, 프레임 타입, connect 파라미터, Ed25519 디바이스 인증, scope 시스템, RPC 메서드 전체
 - `openclaw-internals.md` — 디렉토리 레이아웃, 에이전트 설정, 세션 키 형식, sessions.json 구조, JSONL 트랜스크립트 형식, 워크스페이스 파일, 채널 바인딩, 크론 작업
-- `MEMORY.md` — 핵심 함정 3가지 + ocmon 프로젝트 구조 요약 + 문서 링크
+- `MEMORY.md` — 핵심 함정 3가지 + ClawTracerX 프로젝트 구조 요약 + 문서 링크
 
 ### 다음 단계
 - [ ] SSE 스트리밍으로 폴링 대체 (실시간 업데이트)
@@ -130,7 +172,7 @@
 - `detail.html` 세션 헤더에 Context Injection 패널 추가 (접이식)
 - Compaction divider에 before→after 토큰 수, summary 텍스트 추가
 - 턴 카드 stat chips에 `cache_hit_rate`, `thinking_level` 표시 추가
-- VSCode tunnel 포트 감지 문제 수정 (`ocmon.py` 출력 포맷)
+- VSCode tunnel 포트 감지 문제 수정 (`ctrace.py` 출력 포맷)
 
 ### 주요 변경사항
 
@@ -138,7 +180,7 @@
 |------|----------|
 | `static/style.css` | Context 패널 CSS (usage bar, file bars, chips), compaction-info, stat-chip.cache/thinking |
 | `templates/detail.html` | `fmtChars()`, `renderContextPanel()`, `renderHeader()` 확장, compaction divider 개선, turn stat chips 추가 |
-| `ocmon.py` | VSCode tunnel 포트 감지용 출력 포맷 수정 (이모지/화살표 제거) |
+| `ctrace.py` | VSCode tunnel 포트 감지용 출력 포맷 수정 (이모지/화살표 제거) |
 
 ### 구현 상세
 
@@ -160,7 +202,7 @@
 - `thinking_level` 존재 시 → magenta `💭 high` chip
 
 **VSCode tunnel 포트 감지 수정**
-- 문제: `🔍 ocmon web dashboard → http://localhost:8901` — 이모지/화살표로 VSCode 포트 감지 실패
+- 문제: `🔍 ClawTracerX web dashboard → http://localhost:8901` — 이모지/화살표로 VSCode 포트 감지 실패
 - 해결: URL을 별도 줄로 분리 → `http://localhost:8901\n` (VSCode 패턴 매칭 성공)
 
 ### helper 함수 추가
@@ -184,7 +226,7 @@
 - OpenClaw `sessions.json`의 `systemPromptReport`를 파싱하여 세션 초기 컨텍스트 추적 기능 추가
 - JSONL에 있지만 미추출이던 `compaction.summary`, `thinking_level_change` 이벤트 파싱 추가
 - 턴별 캐시 히트율 계산 추가
-- 새 CLI 커맨드 `ocmon context <session-id>` 추가
+- 새 CLI 커맨드 `ctrace context <session-id>` 추가
 
 ### 배경 조사
 - OpenClaw 소스코드(`~/openclaw/`) 분석으로 세션 초기화 시 컨텍스트 파일 로딩 경로 추적
@@ -203,7 +245,7 @@
 |------|----------|
 | `parser.py` | +141줄 — `InjectedFile`, `SkillEntry`, `ToolEntry`, `SessionContext` 데이터클래스 추가. `CompactionEvent`에 summary/tokens_after/from_hook 확장. `Turn`에 thinking_level/cache_hit_rate 추가. `load_session_metadata()`, `_parse_session_context()` 함수 추가. `parse_session()`에서 sessions.json 통합, thinking_level_change 추적, 캐시 히트율 계산 |
 | `cli.py` | +100줄 — `_print_analysis()` 헤더에 System Prompt/Context Files/Skills 표시. 턴별 cache_hit 표시. compaction 요약 미리보기. `cmd_context()` 새 커맨드 |
-| `ocmon.py` | +12줄 — `context` (alias `ctx`) 서브커맨드 추가 |
+| `ctrace.py` | +12줄 — `context` (alias `ctx`) 서브커맨드 추가 |
 | `web.py` | +45줄 — API에 `context`, `compaction_events`, `context_tokens` 등 필드 추가. 턴별 `thinking_level`, `cache_hit_rate` 직렬화 |
 
 ### 중요 결정사항
@@ -214,8 +256,8 @@
 ### 테스트 및 검증
 - `python3 -c "from parser import ..."` — 전체 임포트 성공
 - `load_session_metadata('main', '5e57f3cb')` — injectedFiles 8개, skills 18개, tools 24개 정상 파싱
-- `ocmon analyze cc52d980` — `cache_hit=35%`, `cache_hit=42%` 턴별 표시 확인
-- `ocmon context 5e57f3cb` — 전체 컨텍스트 상세 출력 정상 (System Prompt 32.7KB, 8 files, 18 skills, 24 tools)
+- `ctrace analyze cc52d980` — `cache_hit=35%`, `cache_hit=42%` 턴별 표시 확인
+- `ctrace context 5e57f3cb` — 전체 컨텍스트 상세 출력 정상 (System Prompt 32.7KB, 8 files, 18 skills, 24 tools)
 - 웹 API: `/api/session/5e57f3cb` → context 필드 정상 반환 (Flask test_client 검증)
 
 ### 다음 단계
@@ -397,10 +439,10 @@
 
 ---
 
-## [2026-02-20] - ocmon (OpenClaw Agent Monitor) 전체 구현
+## [2026-02-20] - ClawTracerX (OpenClaw Agent Monitor) 전체 구현
 
 ### 작업 내용
-- OpenClaw 에이전트 모니터링 도구 `ocmon` 신규 개발
+- OpenClaw 에이전트 모니터링 도구 `ClawTracerX` 신규 개발
 - JSONL 세션 트랜스크립트 파서, CLI 분석 도구, Flask 웹 대시보드 완성
 - 실제 에이전트 세션 데이터(aki, main, guardian, ddokddoki)로 전체 기능 검증
 
@@ -421,7 +463,7 @@
   - `subagents`: 서브에이전트 실행 이력
   - `cost`: 에이전트/타입/모델별 비용 요약
 
-- `ocmon.py`: CLI 엔트리포인트 (argparse, web 서브커맨드 포함)
+- `ctrace.py`: CLI 엔트리포인트 (argparse, web 서브커맨드 포함)
 
 - `web.py`: Flask 웹 서버
   - REST API: `/api/sessions`, `/api/session/<id>`, `/api/session/<id>/graph`, `/api/cost`, `/api/crons`
@@ -455,7 +497,7 @@
 
 ### 테스트 및 검증
 
-- **CLI 테스트**: `ocmon sessions`, `analyze`, `raw`, `crons`, `subagents`, `cost` 모두 실제 데이터로 정상 동작
+- **CLI 테스트**: `ctrace sessions`, `analyze`, `raw`, `crons`, `subagents`, `cost` 모두 실제 데이터로 정상 동작
 - **서브에이전트 추적**: Nightly Review 크론(a6604d70) → 3개 서브에이전트(batch-0, batch-1, batch-1-retry) 추적 확인
 - **웹 API 테스트**: Flask test_client로 7개 API 엔드포인트 전체 200 응답 확인
 - **비용 검증**: 주간 비용 $621.66, 511개 세션, 에이전트별/모델별 분류 정상
@@ -469,7 +511,7 @@
 ### 참고사항
 
 - 웹 서버 포트: 8901 (clawmetry 8900과 충돌 방지)
-- `~/.zshrc`에 `alias ocmon="python3 $HOME/.openclaw/tools/ocmon/ocmon.py"` 등록됨
+- `~/.zshrc`에 `alias ctrace="python3 $HOME/.openclaw/tools/ocmon/ctrace.py"` 등록됨
 - 배포 예정 프로젝트 — UI/UX 프로덕션 레벨로 구현 (다크 테마, 반응형, 인터랙티브 그래프)
 
 ### 다음 단계

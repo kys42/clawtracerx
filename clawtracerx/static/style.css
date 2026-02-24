@@ -1,4 +1,4 @@
-/* === ocmon — OpenClaw Monitor === */
+/* === ClawTracerX — OpenClaw Monitor === */
 /* Design System v2 — Dark Pro */
 
 /* --- Reset --- */
@@ -372,6 +372,8 @@ body {
 }
 
 .badge-agent { background: var(--bg-3); color: var(--text-1); }
+.badge-agent-named { background: rgba(99,102,241,0.18); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.35); font-weight: 700; letter-spacing: 0.03em; }
+.badge-agent-sub   { background: var(--bg-3); color: var(--text-3); border: 1px solid var(--border-subtle); font-style: italic; }
 .badge-cron { background: var(--info-muted); color: var(--info); border: 1px solid rgba(59,130,246,0.2); }
 .badge-cron.badge-type::before { background: var(--info); }
 .badge-cron_announce { background: var(--info-muted); color: var(--info); border: 1px solid rgba(59,130,246,0.2); }
@@ -518,41 +520,52 @@ body {
   box-shadow: var(--shadow-glow-accent);
 }
 
-/* Delivery mirror turns */
-.delivery-mirror-card {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin: 2px 0 !important;
+/* Delivery mirror turns — same card structure, muted styling */
+.turn-card.delivery-mirror {
+  opacity: 0.55;
+  border-color: transparent;
+  background: var(--bg-0);
 }
-.delivery-mirror-card::before { display: none !important; }
-.dm-row {
+.turn-card.delivery-mirror:hover { opacity: 0.85; border-color: var(--border); }
+.badge-delivery_mirror { background: #3a3a4a !important; color: #9090b0 !important; }
+
+/* Workflow groups */
+.workflow-group {
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  margin: 10px 0;
+  background: var(--bg-0);
+}
+.workflow-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px 4px 12px;
-  border-radius: 6px;
+  gap: 10px;
+  padding: 10px 14px;
   cursor: pointer;
+  border-radius: 10px;
   transition: background 0.15s;
+  user-select: none;
 }
-.dm-row:hover { background: var(--bg-1); }
-.dm-icon { font-size: 12px; flex-shrink: 0; opacity: 0.5; }
-.dm-preview {
-  font-size: 11px;
-  color: var(--fg-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.workflow-header:hover { background: var(--bg-1); }
+.workflow-icon { font-size: 14px; flex-shrink: 0; }
+.workflow-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--fg);
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.dm-ts {
-  font-size: 10px;
+.workflow-meta {
+  font-size: 11px;
   color: var(--fg-muted);
-  opacity: 0.5;
   flex-shrink: 0;
 }
+.workflow-stats { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+.workflow-body { padding: 0 8px 8px; }
+.workflow-body .turn-card { margin: 6px 0; }
 
 /* Compaction divider */
 .compaction-divider {
@@ -856,17 +869,15 @@ body {
   font-family: 'JetBrains Mono', monospace;
 }
 .subagent-children { margin-top: 10px; }
-.subagent-children-header {
-  font-size: 11px;
-  color: var(--text-2);
-  cursor: pointer;
-  padding: 6px 0;
+.subagent-children-label {
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 2px 0 6px;
   font-weight: 500;
-  display: flex; align-items: center; gap: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
-.subagent-children-header:hover { color: var(--text-0); }
 .subagent-turns {
-  margin-top: 8px;
   padding-left: 14px;
   border-left: 2px solid rgba(245,158,11,0.25);
 }
@@ -1080,6 +1091,58 @@ body {
 /* ApexCharts containers */
 #chart-agent, #chart-type, #chart-model { min-height: 160px; }
 #chart-daily { min-height: 280px; }
+
+/* Agent × Type breakdown table */
+.cost-breakdown-wrap {
+  overflow-x: auto;
+}
+.cost-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.cost-breakdown-table thead th {
+  text-align: right;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.cost-breakdown-table thead th:first-child { text-align: left; }
+.cost-breakdown-table tbody tr:hover { background: rgba(255,255,255,0.025); }
+.cost-breakdown-table tfoot tr { border-top: 1px solid var(--border-subtle); }
+.cbt-agent {
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cost-breakdown-table tfoot .cbt-agent { border-bottom: none; }
+.cbt-val {
+  padding: 7px 10px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.cost-breakdown-table tfoot .cbt-val { border-bottom: none; }
+.cbt-total {
+  padding: 7px 10px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-0);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.cost-breakdown-table tfoot .cbt-total { border-bottom: none; }
 .apexcharts-canvas { background: transparent !important; }
 
 /* --- Context panel --- */
@@ -1234,6 +1297,61 @@ body {
   text-align: right;
   flex-shrink: 0;
 }
+
+/* Context injection tables */
+.ctx-table {
+  width: auto;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.ctx-table thead th {
+  text-align: right;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.ctx-table thead th:first-child { text-align: left; }
+.ctx-table td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.ctx-table tbody tr:last-child td { border-bottom: none; }
+.ctx-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+.ctx-table tfoot td {
+  padding: 4px 8px;
+  border-top: 1px solid var(--border-subtle);
+  font-weight: 600;
+}
+.ctx-table .ctx-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-1);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-table .ctx-num {
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ctx-file-link, .ctx-skill-link, .ctx-tool-link {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  transition: color 0.1s;
+}
+.ctx-file-link:hover, .ctx-skill-link:hover, .ctx-tool-link:hover { color: var(--accent-hover) !important; }
+.ctx-badge-cell { width: 18px; padding-left: 0 !important; }
+.ctx-badge-trunc { color: var(--warning); font-size: 11px; }
 
 /* Skills / Tools chips */
 .ctx-chips {
@@ -1492,7 +1610,15 @@ body {
 /* Named chip variants */
 .stat-chip.turns { color: var(--magenta); border-color: rgba(192,132,252,0.15); background: rgba(192,132,252,0.08); }
 .stat-chip.errors { color: var(--error, #ef4444); border-color: rgba(239,68,68,0.15); background: rgba(239,68,68,0.08); }
-.stat-chip.model { color: var(--accent, #3b82f6); border-color: rgba(59,130,246,0.2); background: rgba(59,130,246,0.08); }
+.stat-chip.model {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  border-radius: 4px;
+  padding: 2px 6px;
+  /* color/border/background set via inline style from JS */
+}
 
 /* Row 2 — separated by border */
 .sc-row3 {
