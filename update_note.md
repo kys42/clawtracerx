@@ -1,3 +1,73 @@
+## [2026-02-24] - Settings/Health Dashboard + 6-Agent 보안/안정성 리뷰 수정
+
+### 작업 내용
+
+**Phase 1: Settings + Health Dashboard 구현**
+- `config.py` 신규 모듈 — 설정 로드/저장/적용, `apply_paths()`로 런타임 경로 오버라이드
+- Settings 페이지 (`/settings`) — OPENCLAW_DIR 설정 + System Status 대시보드
+- Health API (`/api/health`) — config, gateway, agents, device, workspace 5종 체크 (30초 캐시)
+- 사이드바 health dots — 모든 페이지에서 상태 점 표시
+- `--openclaw-dir` CLI 인자 + config.json 우선순위 체계
+- 모든 `AGENTS_DIR`/`OPENCLAW_DIR` 직접 import → `_sp.AGENTS_DIR` 모듈 참조로 변경
+
+**Phase 2: 6-Agent 멀티 관점 리뷰 + Critical/High 수정**
+- UX/Design, Backend, Frontend JS, Product, QA, Extensibility 6개 에이전트 동시 리뷰
+- Critical/High 이슈 일괄 수정 (아래 상세)
+
+### 주요 변경사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `config.py` | **신규** — `load()`, `save()`, `apply_paths()`. 모듈 레벨 글로벌 덮어쓰기로 런타임 경로 변경 |
+| `templates/settings.html` | **신규** — OpenClaw Directory 설정 + Health 카드 (5종 체크 결과 시각화) |
+| `__main__.py` | `--openclaw-dir` 인자, config 로드 → `apply_paths()` 호출 |
+| `web.py` | import 변경 (`_sp.AGENTS_DIR`), `/api/settings` GET/POST, `/api/health`, `_tool_desc_cache` 스레드 안전, `_lab_activity_log` → `deque(maxlen=100)` + Lock, SSE done 후 `return`, `_backup_context_file()` try-except, 메시지 100KB 제한, Settings 경로 검증, symlink 보호 |
+| `session_parser.py` | `_subagent_cache` → `threading.Lock()`, 빈 세션 안전 처리 |
+| `static/app.js` | `fetchJSON()` → 에러 throw로 변경, `fetchJSONSafe()` 추가 (호환용) |
+| `static/style.css` | health dots, settings 페이지, health 카드/그리드, `.lab-timeline` padding-bottom 120px |
+| `templates/base.html` | Settings 네비 링크 + 사이드바 health 표시 |
+| `templates/lab.html` | XSS 수정 (`escHtml`), `fetchJSON` → `fetchJSONSafe` (7곳) |
+| `templates/sessions.html` | XSS 수정 (`escHtml(a.id)`), `fetchJSON` → `fetchJSONSafe` (2곳) |
+| `templates/cost.html` | `fetchJSON` → `fetchJSONSafe` (2곳) |
+| `templates/detail.html` | `fetchJSON` → `fetchJSONSafe` (1곳), `showRaw()` try-catch 추가 |
+| `templates/graph.html` | `fetchJSON` → `fetchJSONSafe` (1곳) |
+
+### 보안/안정성 수정 상세
+
+**Critical**
+1. **SSE 무한루프**: done 이벤트 yield 후 `return` 누락 → generator가 계속 실행. 2곳 수정
+2. **`_lab_activity_log` 스레드 안전**: list → `deque(maxlen=100)` + `threading.Lock()`
+3. **`_backup_context_file()` 예외**: 백업 실패 시 전체 컨텍스트 저장이 중단됨 → try-except 래핑
+
+**High**
+4. **XSS 방지**: `sessions.html` agent chip innerHTML, `lab.html` context file onclick — `escHtml()` 적용
+5. **`_tool_desc_cache` 스레드 안전**: `threading.Lock()` + double-check locking 패턴
+6. **`_subagent_cache` 스레드 안전**: `threading.Lock()` 추가
+7. **메시지 길이 제한**: `/api/lab/send`에 100KB 제한 → 413 응답
+8. **Settings 경로 검증**: 존재하지 않는 디렉토리 저장 시 400 에러
+9. **Symlink 보호**: `/api/skill-content`에서 `resolve(strict=True)` + workspace_dir 하위 검증
+10. **`fetchJSON` 에러 전파**: 기존 silent `[]` 반환 → 명시적 throw. 기존 callers는 `fetchJSONSafe()`로 마이그레이션 (13곳)
+11. **Lab 입력 가림 방지**: `.lab-timeline` padding-bottom: 120px
+
+### 중요 결정사항
+- **모듈 참조 패턴**: `from ... import AGENTS_DIR`(값 복사)에서 `_sp.AGENTS_DIR`(모듈 참조)로 변경 → `config.apply_paths()`가 런타임에 새 값 반영 가능
+- **Double-check locking**: `_tool_desc_cache`/`_subagent_cache` — lock 밖에서 먼저 체크 → 대부분 lock 없이 반환 (성능)
+- **`fetchJSONSafe` 도입**: `fetchJSON` throwing으로 바꾸면서, 기존 callers가 깨지지 않도록 `fetchJSONSafe(url, fallback)` 래퍼 제공
+
+### 검증
+- IDE 진단: web.py, session_parser.py, config.py 0 errors
+- pytest: **69 tests passed** (0.18s)
+
+### 다음 단계
+- [ ] `--text-3` 대비 개선 (WCAG AA 미달, 현재 #454954)
+- [ ] 키보드 내비게이션 (Tab order, Escape 닫기 등)
+- [ ] 모바일 768px 이하 반응형 개선
+- [ ] API 응답 형식 통일 (`{ok, data}` 패턴)
+- [ ] `parse_session()` 분리 (1446줄 → 모듈화)
+- [ ] 환경변수 `OPENCLAW_DIR` 지원
+
+---
+
 ## [2026-02-24] - Lab 페이지 UX 전면 개선 (9개 변경사항)
 
 ### 작업 내용
