@@ -49,8 +49,18 @@
         </span>
         <span class="nav-label">Lab</span>
       </a></li>
+      <li><a href="/settings" class="nav-link {% if active == 'settings' %}active{% endif %}">
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </span>
+        <span class="nav-label">Settings</span>
+      </a></li>
     </ul>
     <div class="sidebar-footer">
+      <div class="sidebar-health" id="sidebar-health"></div>
       <div class="sidebar-info" id="agent-list"></div>
     </div>
   </nav>
@@ -60,6 +70,19 @@
   </main>
 
   <script src="/static/app.js"></script>
+  <script>
+  fetch('/api/health').then(function(r){return r.json()}).then(function(h){
+    var el=document.getElementById('sidebar-health');
+    if(!el)return;
+    var c=h.checks;
+    function dot(ok){return '<span class="health-dot '+(ok?'ok':'err')+'"></span>'}
+    el.innerHTML=
+      '<div class="health-row">'+dot(c.config&&c.config.ok)+' Config</div>'+
+      '<div class="health-row">'+dot(c.gateway&&c.gateway.ok)+' Gateway</div>'+
+      '<div class="health-row">'+dot(c.agents&&c.agents.ok)+' Agents'+(c.agents&&c.agents.ok?' ('+c.agents.agents+')':'')+'</div>'+
+      '<div class="health-row">'+dot(c.device&&c.device.ok)+' Device</div>';
+  }).catch(function(){});
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

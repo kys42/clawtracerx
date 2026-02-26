@@ -63,11 +63,31 @@ def main():
     p_web.add_argument("--port", "-p", type=int, default=8901, help="Port number")
     p_web.add_argument("--host", default="0.0.0.0", help="Host to bind")
     p_web.add_argument("--debug", action="store_true", help="Debug mode")
+    p_web.add_argument("--openclaw-dir", help="Override OpenClaw data directory")
 
     args = parser.parse_args()
 
     if not args.command:
         parser.print_help()
+        return
+
+    # Load config and apply path overrides before any command
+    from clawtracerx import config
+    cfg = config.load()
+
+    if args.command == "web":
+        # CLI --openclaw-dir takes priority over config.json
+        ocdir = getattr(args, "openclaw_dir", None) or cfg.get("openclaw_dir", "")
+    else:
+        ocdir = cfg.get("openclaw_dir", "")
+    config.apply_paths(ocdir)
+
+    if args.command == "web":
+        from clawtracerx.web import create_app
+        app = create_app()
+        print(f"\nClawTracerX web dashboard")
+        print(f"http://localhost:{args.port}\n")
+        app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
         return
 
     from clawtracerx.cli import (
@@ -89,12 +109,6 @@ def main():
         cmd_cost(period=args.period, agent=args.agent)
     elif args.command in ("context", "ctx"):
         cmd_context(session_ref=args.session)
-    elif args.command == "web":
-        from clawtracerx.web import create_app
-        app = create_app()
-        print(f"\nClawTracerX web dashboard")
-        print(f"http://localhost:{args.port}\n")
-        app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 
 if __name__ == "__main__":

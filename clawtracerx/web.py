@@ -10,7 +10,9 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
+from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -18,9 +20,9 @@ from flask import Flask, Response, render_template, jsonify, request, abort, str
 
 from clawtracerx.session_parser import (
     parse_session, list_sessions, load_cron_runs, load_subagent_runs,
-    get_raw_turn_lines, KST, _ts_to_dt, _truncate, AGENTS_DIR,
-    OPENCLAW_DIR,
+    get_raw_turn_lines, KST, _ts_to_dt, _truncate,
 )
+from clawtracerx import session_parser as _sp
 from clawtracerx import gateway
 
 
@@ -51,6 +53,7 @@ def _get_openclaw_src() -> Path | None:
 
 
 _tool_desc_cache: dict | None = None
+_tool_desc_lock = threading.Lock()
 
 
 def _build_tool_desc_map() -> dict:
@@ -58,51 +61,55 @@ def _build_tool_desc_map() -> dict:
     global _tool_desc_cache
     if _tool_desc_cache is not None:
         return _tool_desc_cache
+    with _tool_desc_lock:
+        # Double-check after acquiring lock
+        if _tool_desc_cache is not None:
+            return _tool_desc_cache
 
-    result: dict[str, str] = {}
-    openclaw_src = _get_openclaw_src()
+        result: dict[str, str] = {}
+        openclaw_src = _get_openclaw_src()
 
-    # 1. pi-coding-agent dist/core/tools/*.js
-    if openclaw_src:
-        pattern = str(openclaw_src / "node_modules/.pnpm/@mariozechner+pi-coding-agent*/node_modules/@mariozechner/pi-coding-agent/dist/core/tools")
-        matches = _glob.glob(pattern)
-        if matches:
-            pi_tools_dir = Path(matches[0])
-            tool_name_map = {
-                "bash": "exec", "find": "glob", "ls": "ls",
-                "grep": "grep", "read": "read", "write": "write",
-                "edit": "edit",
-            }
-            for js_file in pi_tools_dir.glob("*.js"):
-                if js_file.suffix == ".map":
-                    continue
-                stem = js_file.stem
-                content = js_file.read_text(errors="replace")
-                # 가장 긴 description 찾기 (파라미터 설명 제외)
-                descs = re.findall(r'description:\s*`([\s\S]+?)`', content)
-                descs += re.findall(r'description:\s*"((?:[^"\\]|\\.)*)"', content)
-                best = max(descs, key=len, default="")
-                if len(best) > 30:
-                    tool_name = tool_name_map.get(stem, stem)
-                    result[tool_name] = best.strip()
+        # 1. pi-coding-agent dist/core/tools/*.js
+        if openclaw_src:
+            pattern = str(openclaw_src / "node_modules/.pnpm/@mariozechner+pi-coding-agent*/node_modules/@mariozechner/pi-coding-agent/dist/core/tools")
+            matches = _glob.glob(pattern)
+            if matches:
+                pi_tools_dir = Path(matches[0])
+                tool_name_map = {
+                    "bash": "exec", "find": "glob", "ls": "ls",
+                    "grep": "grep", "read": "read", "write": "write",
+                    "edit": "edit",
+                }
+                for js_file in pi_tools_dir.glob("*.js"):
+                    if js_file.suffix == ".map":
+                        continue
+                    stem = js_file.stem
+                    content = js_file.read_text(errors="replace")
+                    # 가장 긴 description 찾기 (파라미터 설명 제외)
+                    descs = re.findall(r'description:\s*`([\s\S]+?)`', content)
+                    descs += re.findall(r'description:\s*"((?:[^"\\]|\\.)*)"', content)
+                    best = max(descs, key=len, default="")
+                    if len(best) > 30:
+                        tool_name = tool_name_map.get(stem, stem)
+                        result[tool_name] = best.strip()
 
-    # 2. openclaw src/agents/tools/*.ts
-    if openclaw_src:
-        ts_dir = openclaw_src / "src/agents/tools"
-        if ts_dir.is_dir():
-            for ts_file in ts_dir.glob("*.ts"):
-                if ".test." in ts_file.name or ".e2e." in ts_file.name:
-                    continue
-                content = ts_file.read_text(errors="replace")
-                name_m = re.search(r'\bname:\s*["`]([a-z_][a-z0-9_]*)["`]', content)
-                descs = re.findall(r'description:\s*`([\s\S]+?)`', content)
-                descs += re.findall(r'description:\s*"((?:[^"\\]|\\.)*)"', content)
-                best = max(descs, key=len, default="")
-                if name_m and len(best) > 30:
-                    result[name_m.group(1)] = best.strip()
+        # 2. openclaw src/agents/tools/*.ts
+        if openclaw_src:
+            ts_dir = openclaw_src / "src/agents/tools"
+            if ts_dir.is_dir():
+                for ts_file in ts_dir.glob("*.ts"):
+                    if ".test." in ts_file.name or ".e2e." in ts_file.name:
+                        continue
+                    content = ts_file.read_text(errors="replace")
+                    name_m = re.search(r'\bname:\s*["`]([a-z_][a-z0-9_]*)["`]', content)
+                    descs = re.findall(r'description:\s*`([\s\S]+?)`', content)
+                    descs += re.findall(r'description:\s*"((?:[^"\\]|\\.)*)"', content)
+                    best = max(descs, key=len, default="")
+                    if name_m and len(best) > 30:
+                        result[name_m.group(1)] = best.strip()
 
-    _tool_desc_cache = result
-    return result
+        _tool_desc_cache = result
+        return result
 
 
 # --- Lab activity logger ---
@@ -113,15 +120,15 @@ _lab_handler = logging.FileHandler(_lab_log_file, encoding="utf-8")
 _lab_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
 _lab_logger.addHandler(_lab_handler)
 
-# In-memory log for UI display (last 100 entries)
-_lab_activity_log: list[dict] = []
+# In-memory log for UI display (last 100 entries) — thread-safe deque
+_lab_activity_log: deque = deque(maxlen=100)
+_lab_log_lock = threading.Lock()
 
 def _log_lab(action: str, **kwargs):
     entry = {"ts": datetime.now(KST).isoformat(), "action": action, **kwargs}
     _lab_logger.info(json.dumps(entry, ensure_ascii=False, default=str))
-    _lab_activity_log.append(entry)
-    if len(_lab_activity_log) > 100:
-        _lab_activity_log.pop(0)
+    with _lab_log_lock:
+        _lab_activity_log.append(entry)
 
 
 def create_app():
@@ -210,15 +217,20 @@ def create_app():
             abort(400, "Invalid skill name")
         openclaw_src = _get_openclaw_src()
         search_dirs = [
-            OPENCLAW_DIR / "workspace" / "skills" / name,
-            OPENCLAW_DIR / "workspace" / name,
+            _sp.OPENCLAW_DIR / "workspace" / "skills" / name,
+            _sp.OPENCLAW_DIR / "workspace" / name,
         ]
         if openclaw_src:
             search_dirs.append(openclaw_src / "skills" / name)
         for skill_dir in search_dirs:
             skill_file = skill_dir / "SKILL.md"
-            if skill_file.exists():
-                content = skill_file.read_text(encoding="utf-8", errors="replace")
+            # Resolve symlinks and verify path stays within allowed dirs
+            try:
+                resolved = skill_file.resolve(strict=True)
+            except (OSError, ValueError):
+                continue
+            if resolved.exists():
+                content = resolved.read_text(encoding="utf-8", errors="replace")
                 label = "bundled" if openclaw_src and skill_dir.is_relative_to(openclaw_src) else "workspace"
                 return jsonify({"content": content, "size": skill_file.stat().st_size,
                                 "name": name, "path": str(skill_file), "label": label})
@@ -242,7 +254,7 @@ def create_app():
             abort(400, "path required")
         path = Path(path_str).resolve()
         try:
-            path.relative_to(OPENCLAW_DIR.resolve())
+            path.relative_to(_sp.OPENCLAW_DIR.resolve())
         except ValueError:
             abort(403, "Access denied: path outside ~/.openclaw/")
         if not path.is_file():
@@ -342,8 +354,8 @@ def create_app():
     @app.route("/api/agents")
     def api_agents():
         agents = []
-        if AGENTS_DIR.exists():
-            for d in sorted(AGENTS_DIR.iterdir()):
+        if _sp.AGENTS_DIR.exists():
+            for d in sorted(_sp.AGENTS_DIR.iterdir()):
                 if d.is_dir():
                     sessions_dir = d / "sessions"
                     count = len(list(sessions_dir.glob("*.jsonl"))) if sessions_dir.exists() else 0
@@ -396,6 +408,8 @@ def create_app():
         session_key = data.get("sessionKey", "").strip()
         if not message or not session_key:
             return jsonify({"error": "message and sessionKey required"}), 400
+        if len(message) > 100_000:
+            return jsonify({"error": "message too long (max 100KB)"}), 413
         agent_id = data.get("agentId", "main")
         model = data.get("model") or None
         _log_lab("send", sessionKey=session_key, agentId=agent_id,
@@ -530,6 +544,7 @@ def create_app():
                         last_turn = turns[-1]
                         if last_turn.get("stop_reason") == "stop":
                             yield f"event: done\ndata: {{}}\n\n"
+                            return
 
                     elif new_count == last_turn_count and turns:
                         # Same turn count but file changed — patch last turn
@@ -538,6 +553,7 @@ def create_app():
 
                         if turns[-1].get("stop_reason") == "stop":
                             yield f"event: done\ndata: {{}}\n\n"
+                            return
 
                 except Exception as e:
                     yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
@@ -632,7 +648,104 @@ def create_app():
     @app.route("/api/lab/activity")
     def api_lab_activity():
         """Return recent lab activity log entries."""
-        return jsonify(list(reversed(_lab_activity_log)))
+        with _lab_log_lock:
+            return jsonify(list(reversed(_lab_activity_log)))
+
+    # --- Settings ---
+
+    @app.route("/settings")
+    def settings_page():
+        return render_template("settings.html")
+
+    @app.route("/api/settings", methods=["GET"])
+    def api_settings_get():
+        from clawtracerx import config
+        cfg = config.load()
+        cfg["effective_openclaw_dir"] = str(_sp.OPENCLAW_DIR)
+        cfg["effective_agents_dir"] = str(_sp.AGENTS_DIR)
+        return jsonify(cfg)
+
+    @app.route("/api/settings", methods=["POST"])
+    def api_settings_save():
+        from clawtracerx import config
+        data = request.get_json(force=True)
+        cfg = config.load()
+        if "openclaw_dir" in data:
+            new_dir = data["openclaw_dir"].strip()
+            if new_dir and not Path(new_dir).is_dir():
+                return jsonify({"ok": False, "error": f"Directory not found: {new_dir}"}), 400
+            cfg["openclaw_dir"] = new_dir
+        config.save(cfg)
+        return jsonify({"ok": True, "restart_required": True})
+
+    # --- Health ---
+
+    _health_cache = {"data": None, "ts": 0}
+
+    @app.route("/api/health")
+    def api_health():
+        now = time.time()
+        if _health_cache["data"] and (now - _health_cache["ts"]) < 30:
+            return jsonify(_health_cache["data"])
+
+        checks = {}
+
+        # 1. Config file
+        try:
+            gateway.load_gateway_config()
+            checks["config"] = {"ok": True, "path": str(gateway.OPENCLAW_CONFIG)}
+        except FileNotFoundError:
+            checks["config"] = {"ok": False, "error": "not found", "path": str(gateway.OPENCLAW_CONFIG)}
+        except Exception as e:
+            checks["config"] = {"ok": False, "error": str(e)}
+
+        # 2. Device identity
+        identity_path = gateway.DEVICE_IDENTITY_FILE
+        if identity_path.exists():
+            try:
+                with open(identity_path) as f:
+                    did = json.load(f).get("deviceId", "?")
+                checks["device"] = {"ok": True, "device_id": did[:12]}
+            except Exception as e:
+                checks["device"] = {"ok": False, "error": str(e)}
+        else:
+            checks["device"] = {"ok": False, "error": "not found"}
+
+        # 3. Agents directory
+        agents_dir = _sp.AGENTS_DIR
+        if agents_dir.exists():
+            agent_count = sum(1 for d in agents_dir.iterdir() if d.is_dir())
+            session_count = sum(
+                len(list((d / "sessions").glob("*.jsonl")))
+                for d in agents_dir.iterdir()
+                if d.is_dir() and (d / "sessions").exists()
+            )
+            checks["agents"] = {"ok": True, "agents": agent_count, "sessions": session_count}
+        else:
+            checks["agents"] = {"ok": False, "error": "dir not found"}
+
+        # 4. Gateway connection (lightweight RPC to test connectivity + auth)
+        try:
+            result = gateway.list_agents()
+            checks["gateway"] = {"ok": True, "agents": len(result) if isinstance(result, list) else 0}
+        except Exception as e:
+            checks["gateway"] = {"ok": False, "error": str(e)[:100]}
+
+        # 5. Workspace
+        workspace = _get_workspace_dir()
+        checks["workspace"] = {
+            "ok": workspace.exists(),
+            "path": str(workspace),
+        }
+
+        health = {
+            "timestamp": datetime.now(KST).isoformat(),
+            "openclaw_dir": str(_sp.OPENCLAW_DIR),
+            "checks": checks,
+        }
+        _health_cache["data"] = health
+        _health_cache["ts"] = now
+        return jsonify(health)
 
     return app
 
@@ -648,12 +761,7 @@ WORKSPACE_FILES = [
 
 def _get_workspace_dir() -> Path:
     """Get workspace directory from openclaw.json config."""
-    try:
-        cfg = gateway.load_gateway_config()
-    except Exception:
-        pass
-    # Read workspace from full config
-    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    config_path = gateway.OPENCLAW_CONFIG
     try:
         with open(config_path) as f:
             full_cfg = json.load(f)
@@ -662,14 +770,17 @@ def _get_workspace_dir() -> Path:
             return Path(workspace)
     except Exception:
         pass
-    return OPENCLAW_DIR / "workspace"
+    return _sp.OPENCLAW_DIR / "workspace"
 
 
 def _backup_context_file(filepath: Path):
     """Create .lab-backup before first modification."""
     backup = filepath.with_suffix(filepath.suffix + ".lab-backup")
     if filepath.exists() and not backup.exists():
-        shutil.copy2(filepath, backup)
+        try:
+            shutil.copy2(filepath, backup)
+        except OSError as e:
+            logging.warning("Failed to create backup for %s: %s", filepath, e)
 
 
 # --- Helpers ---
@@ -680,7 +791,7 @@ def _resolve(session_id: str):
     Searches for both active .jsonl files and soft-deleted
     .jsonl.deleted.{timestamp} files.
     """
-    for agent_dir in AGENTS_DIR.iterdir():
+    for agent_dir in _sp.AGENTS_DIR.iterdir():
         if not agent_dir.is_dir():
             continue
         sessions_dir = agent_dir / "sessions"
