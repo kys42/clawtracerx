@@ -35,7 +35,7 @@ const SESSION_ID = '{{ session_id }}';
 let sessionData = null;
 
 async function loadSession() {
-  sessionData = await fetchJSON(`/api/session/${SESSION_ID}`);
+  sessionData = await fetchJSONSafe(`/api/session/${SESSION_ID}`, {});
   renderHeader(sessionData);
   renderTurns(sessionData.turns, sessionData.compaction_events || []);
 }
@@ -242,8 +242,12 @@ async function showRaw(turnIndex) {
   qs('#raw-content').textContent = 'Loading...';
   modal.style.display = 'flex';
 
-  const data = await fetchJSON(`/api/session/${SESSION_ID}/raw/${turnIndex}`);
-  qs('#raw-content').textContent = JSON.stringify(data, null, 2);
+  try {
+    const data = await fetchJSON(`/api/session/${SESSION_ID}/raw/${turnIndex}`);
+    qs('#raw-content').textContent = JSON.stringify(data, null, 2);
+  } catch(e) {
+    qs('#raw-content').textContent = `Error: ${e.message}`;
+  }
 }
 
 function closeRawModal() {

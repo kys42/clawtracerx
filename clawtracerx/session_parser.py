@@ -253,19 +253,23 @@ def _extract_session_id_from_key(session_key: str) -> Optional[str]:
 
 # --- Subagent registry ---
 
+import threading as _threading
+
 _subagent_cache = None
+_subagent_lock = _threading.Lock()
 
 def load_subagent_runs() -> dict:
     global _subagent_cache
-    if _subagent_cache is not None:
+    with _subagent_lock:
+        if _subagent_cache is not None:
+            return _subagent_cache
+        if not SUBAGENTS_FILE.exists():
+            _subagent_cache = {}
+            return _subagent_cache
+        with open(SUBAGENTS_FILE) as f:
+            data = json.load(f)
+        _subagent_cache = data.get("runs", {})
         return _subagent_cache
-    if not SUBAGENTS_FILE.exists():
-        _subagent_cache = {}
-        return _subagent_cache
-    with open(SUBAGENTS_FILE) as f:
-        data = json.load(f)
-    _subagent_cache = data.get("runs", {})
-    return _subagent_cache
 
 
 def get_subagent_run(run_id: str) -> Optional[dict]:
@@ -910,9 +914,9 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     if turns:
         first_real_turn = next(
             (t for t in turns if t.user_source not in ("proactive", "delivery_mirror")),
-            turns[0],
+            turns[0] if turns else None,
         )
-        first_source = first_real_turn.user_source
+        first_source = first_real_turn.user_source if first_real_turn else "chat"
         if first_source == "cron":
             analysis.session_type = "cron"
         elif first_source == "heartbeat":

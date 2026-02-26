@@ -203,7 +203,7 @@ function renderApexArea(containerId, dataMap) {
 async function loadCost() {
   const period = qs('#filter-period').value;
   const agent = qs('#filter-agent').value;
-  const data = await fetchJSON(`/api/cost?period=${period}&agent=${agent}`);
+  const data = await fetchJSONSafe(`/api/cost?period=${period}&agent=${agent}`, {});
 
   // Hero metric cards
   qs('#cost-summary').innerHTML = `
@@ -283,7 +283,7 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
 }
 
 async function loadAgents() {
-  const agents = await fetchJSON('/api/agents');
+  const agents = await fetchJSONSafe('/api/agents');
   const sel = qs('#filter-agent');
   agents.forEach(a => {
     const opt = document.createElement('option');

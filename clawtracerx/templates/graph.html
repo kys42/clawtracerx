@@ -60,7 +60,7 @@ async function init() {
   const W = container.clientWidth;
   const H = container.clientHeight;
 
-  const graphData = await fetchJSON(`/api/session/${SESSION_ID}/graph`);
+  const graphData = await fetchJSONSafe(`/api/session/${SESSION_ID}/graph`, {});
 
   svgEl = d3.select('#graph-svg')
     .attr('width', W)

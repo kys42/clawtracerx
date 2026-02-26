@@ -3,14 +3,22 @@
 function qs(sel) { return document.querySelector(sel); }
 function qsa(sel) { return document.querySelectorAll(sel); }
 
-async function fetchJSON(url) {
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return await res.json();
+}
+
+/** Fetch with silent fallback (for backward compat — returns fallback on error). */
+async function fetchJSONSafe(url, fallback) {
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    return await fetchJSON(url);
   } catch (e) {
     console.error('Fetch error:', e);
-    return [];
+    return fallback !== undefined ? fallback : [];
   }
 }
 

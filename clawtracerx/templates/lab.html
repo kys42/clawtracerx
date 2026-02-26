@@ -310,7 +310,7 @@ async function init() {
 }
 
 async function loadAgents() {
-  const agents = await fetchJSON('/api/agents');
+  const agents = await fetchJSONSafe('/api/agents');
   const sel = qs('#agent-select');
   agents.forEach(function(a) {
     const opt = document.createElement('option');
@@ -324,7 +324,7 @@ async function loadGatewaySessions() {
   const agent = qs('#agent-select').value;
   const param = agent === 'all' ? '' : '?agent=' + agent;
   const separator = param ? '&' : '?';
-  gwSessions = await fetchJSON('/api/lab/sessions' + param + separator + 'last=50');
+  gwSessions = await fetchJSONSafe('/api/lab/sessions' + param + separator + 'last=50');
 
   const sel = qs('#session-select');
   sel.innerHTML = '<option value="">Select session...</option>';
@@ -472,7 +472,7 @@ async function sendMessage() {
 
 async function refreshSessionId() {
   // Re-fetch gateway sessions to get the session_id for our key
-  const sessions = await fetchJSON('/api/lab/sessions?last=50');
+  const sessions = await fetchJSONSafe('/api/lab/sessions?last=50');
   const match = sessions.find(function(s) { return s.session_key === currentSessionKey; });
   if (match) {
     currentSessionId = match.session_id;
@@ -610,7 +610,7 @@ function setStatus(status) {
 
 // --- Context files ---
 async function loadContextFiles() {
-  const files = await fetchJSON('/api/lab/context');
+  const files = await fetchJSONSafe('/api/lab/context');
   const container = qs('#context-files');
 
   if (!files || !files.length) {
@@ -641,11 +641,11 @@ async function loadContextFiles() {
         '<textarea class="input-textarea" id="ctx-' + f.name + '" rows="12" oninput="markContextUnsaved(\'' + f.name + '\')">' + escHtml(f.content) + '</textarea>' +
         '<div class="lab-ctx-actions">' +
           '<div style="display:flex;gap:6px">' +
-            '<button class="btn btn-sm btn-outline" onclick="reloadContextFile(\'' + f.name + '\')">Reload</button>' +
+            '<button class="btn btn-sm btn-outline" onclick="reloadContextFile(\'' + escHtml(f.name) + '\')">Reload</button>' +
             (f.has_backup ? '<button class="btn btn-sm btn-outline" onclick="showDiff(\'' + escHtml(f.name) + '\')">Diff \u25B8</button>' : '') +
             (f.has_backup ? '<button class="btn btn-sm btn-outline" style="color:var(--warning);border-color:rgba(245,158,11,0.3)" onclick="resetContextFile(\'' + escHtml(f.name) + '\')">\u21BA \uCD08\uAE30\uD654</button>' : '') +
           '</div>' +
-          '<button class="btn btn-sm btn-primary" onclick="saveContextFile(\'' + f.name + '\')">Save</button>' +
+          '<button class="btn btn-sm btn-primary" onclick="saveContextFile(\'' + escHtml(f.name) + '\')">Save</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -672,7 +672,7 @@ async function saveContextFile(name) {
 }
 
 async function reloadContextFile(name) {
-  const files = await fetchJSON('/api/lab/context');
+  const files = await fetchJSONSafe('/api/lab/context');
   const f = files.find(function(x) { return x.name === name; });
   if (f) {
     const textarea = qs('#ctx-' + name);
@@ -683,7 +683,7 @@ async function reloadContextFile(name) {
 }
 
 async function showDiff(name) {
-  const data = await fetchJSON('/api/lab/context/' + name + '/diff');
+  const data = await fetchJSONSafe('/api/lab/context/' + name + '/diff', {});
   qs('#diff-modal-title').textContent = 'Diff \u2014 ' + name;
   const pre = qs('#diff-content');
   if (!data.diff) {
@@ -725,7 +725,7 @@ async function resetContextFile(name) {
 
 // --- Activity log ---
 async function loadActivityLog() {
-  const entries = await fetchJSON('/api/lab/activity');
+  const entries = await fetchJSONSafe('/api/lab/activity');
   const container = qs('#activity-log');
   if (!entries || !entries.length) {
     container.innerHTML = '<span class="dim">No activity yet</span>';
