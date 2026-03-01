@@ -20,7 +20,7 @@ from flask import Flask, Response, render_template, jsonify, request, abort, str
 
 from clawtracerx.session_parser import (
     parse_session, list_sessions, load_cron_runs, load_subagent_runs,
-    get_raw_turn_lines, KST, _ts_to_dt, _truncate,
+    load_heartbeat_configs, get_raw_turn_lines, KST, _ts_to_dt, _truncate,
 )
 from clawtracerx import session_parser as _sp
 from clawtracerx import gateway
@@ -154,6 +154,10 @@ def create_app():
     @app.route("/cost")
     def cost_page():
         return render_template("cost.html")
+
+    @app.route("/schedule")
+    def schedule_page():
+        return render_template("schedule.html")
 
     # --- API ---
 
@@ -350,6 +354,56 @@ def create_app():
             "session_id": r.session_id,
             "agent_id": r.agent_id,
         } for r in runs])
+
+    @app.route("/api/schedule")
+    def api_schedule():
+        # Cron jobs + recent runs
+        jobs_raw = _sp.load_cron_jobs()
+        jobs = []
+        for jid, job in jobs_raw.items():
+            state = job.get("state", {})
+            schedule = job.get("schedule", {})
+            runs_raw = _sp.load_cron_runs(job_id=jid, last_n=10)
+            runs = [{"ts": r.ts, "status": r.status, "summary": r.summary,
+                     "error": r.error, "session_id": r.session_id,
+                     "duration_ms": r.duration_ms} for r in runs_raw]
+            jobs.append({
+                "id": jid, "name": job.get("name", jid[:8]),
+                "agent_id": job.get("agentId", ""),
+                "enabled": job.get("enabled", False),
+                "schedule_expr": schedule.get("expr", ""),
+                "schedule_tz": schedule.get("tz", ""),
+                "wake_mode": job.get("wakeMode", ""),
+                "last_status": state.get("lastStatus", ""),
+                "last_run_at_ms": state.get("lastRunAtMs"),
+                "last_duration_ms": state.get("lastDurationMs"),
+                "next_run_at_ms": state.get("nextRunAtMs"),
+                "consecutive_errors": state.get("consecutiveErrors", 0),
+                "payload_message": _truncate(job.get("payload", {}).get("message", ""), 200),
+                "runs": runs,
+            })
+        jobs.sort(key=lambda j: (not j["enabled"], j.get("next_run_at_ms") or float('inf')))
+
+        enabled = sum(1 for j in jobs if j["enabled"])
+        ok = sum(1 for j in jobs if j["enabled"] and j["last_status"] == "ok")
+        err = sum(1 for j in jobs if j["enabled"] and j["last_status"] == "error")
+
+        # Heartbeat configs + recent sessions
+        hb_configs = load_heartbeat_configs()
+        heartbeats = []
+        for hb in hb_configs:
+            sessions = list_sessions(agent_id=hb["agent_id"], last_n=5, session_type="heartbeat")
+            recent = [{"session_id": s["session_id"],
+                       "modified": s.get("modified", "").isoformat() if hasattr(s.get("modified", ""), "isoformat") else "",
+                       "tokens": s.get("tokens", 0), "cost": round(s.get("cost", 0), 6),
+                       "turns": s.get("turns", 0)} for s in sessions]
+            heartbeats.append({**hb, "sessions": recent})
+
+        return jsonify({
+            "cron_jobs": jobs,
+            "summary": {"total": len(jobs), "enabled": enabled, "ok": ok, "error": err},
+            "heartbeats": heartbeats,
+        })
 
     @app.route("/api/agents")
     def api_agents():

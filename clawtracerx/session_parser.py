@@ -468,9 +468,31 @@ def load_cron_runs(job_id: Optional[str] = None, last_n: int = 50) -> list:
                     session_id=d.get("sessionId", ""),
                     session_key=sk,
                     agent_id=agent_id,
+                    duration_ms=d.get("durationMs", 0),
                 ))
     results.sort(key=lambda r: r.ts, reverse=True)
     return results[:last_n]
+
+
+def load_heartbeat_configs() -> list:
+    """Load heartbeat configs from openclaw.json agents list."""
+    config_path = OPENCLAW_DIR / "openclaw.json"
+    if not config_path.exists():
+        return []
+    with open(config_path) as f:
+        data = json.load(f)
+    results = []
+    for agent in data.get("agents", {}).get("list", []):
+        hb = agent.get("heartbeat")
+        if hb:
+            results.append({
+                "agent_id": agent.get("id", ""),
+                "every": hb.get("every", ""),
+                "target": hb.get("target", ""),
+                "active_hours": hb.get("activeHours"),
+                "model": hb.get("model", ""),
+            })
+    return results
 
 
 # --- Session metadata ---
