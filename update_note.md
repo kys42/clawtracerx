@@ -1,3 +1,132 @@
+## [2026-03-01] - 한/영 i18n 토글 구현 (ClawTracerX 전체 UI 다국어화)
+
+### 작업 내용
+- 클라이언트 사이드 JS i18n 엔진 신규 구현 (`static/i18n.js`)
+- 사이드바에 `한`/`EN` 토글 버튼 추가 — 전체 UI 언어를 실시간 전환
+- 기존 한국어 하드코딩 문자열과 영어 혼재 상태를 통일된 키-값 사전으로 전환
+- 11개 파일 수정 (신규 1개 포함), 총 ~507 insertions / ~246 deletions
+
+### 주요 변경사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `clawtracerx/static/i18n.js` | **신규** — 한/영 사전 (~200 키), `_t()`, `setLang()`, `applyI18n()`, `getLang()`, DOMContentLoaded 자동 적용 |
+| `clawtracerx/templates/base.html` | `<head>`에 `i18n.js` 로드, 사이드바 lang 토글 UI, nav 라벨 `data-i18n`, health 인라인 스크립트 `_t()` 교체 + `langchange` 리스너 |
+| `clawtracerx/static/style.css` | `.lang-toggle`, `.lang-btn`, `.lang-btn.active` CSS 추가 |
+| `clawtracerx/static/turns.js` | ~25곳 하드코딩 문자열(한국어/영어 혼재) → `_t('turns.*')` 호출로 교체 |
+| `clawtracerx/templates/sessions.html` | `data-i18n` + `fmtRelTime()` `_t()` 교체 + `langchange` 리스너 |
+| `clawtracerx/templates/detail.html` | 메타 라벨 + Context 패널 라벨 → `_t()` + `langchange` 리스너 |
+| `clawtracerx/templates/cost.html` | 필터/카드/차트 라벨 → `_t()` + `langchange` 리스너 |
+| `clawtracerx/templates/graph.html` | 레전드 + 패널 라벨 → `data-i18n` / `_t()` |
+| `clawtracerx/templates/lab.html` | ~40곳 수정 + `currentStatus` 모듈 변수화 + `langchange` 리스너 |
+| `clawtracerx/templates/settings.html` | health 카드 라벨 → `_t()` + `langchange` 리스너 |
+| `clawtracerx/templates/schedule.html` | `fmtRelMs()` 시간 문자열 + 카드/테이블 라벨 → `_t()` + `langchange` 리스너 |
+
+### 설계 결정
+
+**`_t()` vs `t()` 네이밍**
+- `turns.js`의 `renderTurn(t, animIdx)` 파라미터 `t`와 충돌 방지
+- `_t(key)` 사용으로 전역 스코프 오염 최소화
+
+**i18n 적용 방식 2종**
+- 정적 HTML 텍스트: `data-i18n="key"` 속성 → `applyI18n()`이 `textContent` 일괄 교체
+- JS 동적 렌더: `_t('key')` 인라인 호출 → 문자열 연결 시 즉시 현재 언어 반환
+
+**`langchange` 이벤트**
+- `setLang()` 호출 시 `document.dispatchEvent(new Event('langchange'))` 발행
+- 각 페이지에서 `langchange` 리스너로 동적 콘텐츠(테이블, 카드, 차트 라벨) 재렌더
+
+**스크립트 로드 순서**
+- `i18n.js` → `<head>` (DOMContentLoaded 등록)
+- `app.js` → body 하단 (기존 위치 유지)
+- `turns.js` → 각 페이지 `{% block scripts %}`
+
+**시간 표현 concatenation 설계**
+- KO: `n + _t('time.minutes_ago')` → `"5분 전"`
+- EN: `n + _t('time.minutes_ago')` → `"5m ago"`
+- `_t('time.future')`/`_t('time.past')` suffix 방식으로 접미사 차이 처리
+
+**`getLang()` 함수**
+- locale-sensitive 포맷(날짜)에서 `toLocaleDateString(getLang() === 'en' ? 'en-US' : 'ko-KR', ...)` 사용
+
+### 문제 해결
+
+- **`isMac` 스코프**: lab.html의 `const isMac = ...`가 `init()` 내부에 있어 `langchange` 핸들러에서 접근 불가 → 모듈 레벨 `let isMac = false;`로 승격
+- **`currentStatus` 상태 유지**: lang 전환 후 현재 상태 텍스트 재적용 위해 `currentStatus` 모듈 변수로 승격
+- **cost.html `replace_all`**: `'No data'` 문자열이 3곳 존재 → `replace_all: true`로 일괄 교체
+
+### 영어 사전 키 예시
+
+```
+'time.just_now': 'just now',  'time.minutes_ago': 'm ago'
+'sessions.turns': 'turns',    'sessions.load_more': 'Load more'
+'turns.sub_session': 'Sub-session', 'turns.ch': 'ch'
+'lab.you': 'YOU',             'lab.sending': 'Sending to agent...'
+'schedule.errors': 'errors',  'schedule.next': 'Next:'
+```
+
+### 다음 단계
+- [ ] 언어 전환 후 ApexCharts x축 라벨(날짜 포맷) 재렌더 확인
+- [ ] `fmtDate()` locale 인자 추가 (현재 ISO 파싱 후 고정 포맷)
+- [ ] 추가 언어(일본어 등) 확장 가능 구조 이미 갖춰짐
+
+---
+
+## [2026-03-01] - Schedule 페이지 구현 (Cron & Heartbeat 대시보드)
+
+### 작업 내용
+- 크론 잡과 하트비트 설정을 한 페이지에서 모니터링하는 `/schedule` 대시보드 신규 구현
+- 기존 파서의 크론 데이터(`load_cron_jobs`, `load_cron_runs`)를 재활용하고, 하트비트 설정 로더(`load_heartbeat_configs`) 추가
+- `duration_ms` 파싱 누락 버그 수정 (크론 런 소요 시간이 항상 0으로 표시되던 문제)
+
+### 주요 변경사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `clawtracerx/session_parser.py` | `load_heartbeat_configs()` 함수 추가 (openclaw.json의 agents.list[].heartbeat 읽기). `load_cron_runs()` 내 `CronRun` 생성에 `duration_ms=d.get("durationMs", 0)` 추가 |
+| `clawtracerx/web.py` | `load_heartbeat_configs` import 추가. `/schedule` 페이지 라우트 추가. `/api/schedule` API 엔드포인트 추가 — 크론 잡 목록+최근 10회 runs+하트비트 설정+최근 5개 세션 일괄 반환 |
+| `clawtracerx/templates/base.html` | 사이드바 Cost↔Lab 사이에 Schedule 링크 추가 (시계 SVG 아이콘) |
+| `clawtracerx/templates/schedule.html` | **신규** — Summary 카드 4개(Enabled/OK/Error/Next Run), 크론 잡 카드 목록(클릭 접기/펼치기), Heartbeat 섹션 |
+| `clawtracerx/static/style.css` | Schedule 전용 CSS 추가 (~100줄) — `.sched-summary`, `.cron-job`, `.status-dot`, `.cron-runs-table`, `.cron-payload`, `.session-link`, `.hb-card` 등 |
+
+### 구현 상세
+
+**`/api/schedule` 응답 구조:**
+```json
+{
+  "cron_jobs": [ { "id", "name", "agent_id", "enabled", "schedule_expr", "last_status",
+                   "last_run_at_ms", "next_run_at_ms", "consecutive_errors",
+                   "payload_message", "runs": [...최근 10회] } ],
+  "summary": { "total", "enabled", "ok", "error" },
+  "heartbeats": [ { "agent_id", "every", "target", "active_hours", "model",
+                    "sessions": [...최근 5개 하트비트 세션] } ]
+}
+```
+
+**크론 잡 정렬**: enabled 먼저, 그 다음 next_run_at_ms 오름차순 (빨리 실행될 잡이 위)
+
+**Schedule 페이지 JS 특이사항:**
+- `fmtRelMs(ms)` — ms epoch → 상대 시간 ("23분 후", "2시간 전") 한국어 포맷
+- `fmtMs(ms)` — ms epoch → ISO → `fmtDate()` 변환
+- `expandedJobs` Set으로 펼쳐진 카드 ID 관리 (Refresh 후에도 상태 유지)
+- `consecutive_errors > 0`이면 에러 카운트 배지 표시
+
+### 버그 수정
+- **`duration_ms` 항상 0**: `load_cron_runs()`에서 `CronRun` 생성 시 `durationMs` 필드를 누락하여 파싱하지 않음. `duration_ms=d.get("durationMs", 0)` 추가로 수정
+
+### 검증
+- `restart.sh` 후 `/api/schedule` 200 응답 확인
+- 실제 크론 잡 데이터 (duration_ms, session_id 포함) 정상 반환 확인
+- `/schedule` 페이지 200 응답 확인
+
+### 다음 단계
+- [ ] 크론 잡 활성화/비활성화 토글 (게이트웨이 RPC 연동)
+- [ ] 다음 실행까지 남은 시간 카운트다운 자동 갱신 (setInterval)
+- [ ] 크론 런 실패 시 에러 상세 모달
+- [ ] Heartbeat 섹션 — activeHours 시각적 표현 (시간대 막대)
+
+---
+
 ## [2026-02-24] - Settings/Health Dashboard + 6-Agent 보안/안정성 리뷰 수정
 
 ### 작업 내용

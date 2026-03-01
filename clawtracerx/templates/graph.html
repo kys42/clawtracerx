@@ -8,18 +8,18 @@
 
 {% block content %}
 <div class="page-header">
-  <a href="/session/{{ session_id }}" class="back-link">&larr; Session Detail</a>
-  <h1>Execution Graph</h1>
+  <a href="/session/{{ session_id }}" class="back-link">&larr; <span data-i18n="graph.back">Session Detail</span></a>
+  <h1 data-i18n="graph.heading">Execution Graph</h1>
 </div>
 
 <div class="graph-controls">
-  <button class="btn btn-outline" onclick="resetView()">Reset View</button>
-  <button class="btn btn-outline" onclick="toggleLayout()">Toggle Layout</button>
+  <button class="btn btn-outline" onclick="resetView()" data-i18n="graph.reset">Reset View</button>
+  <button class="btn btn-outline" onclick="toggleLayout()" data-i18n="graph.toggle_layout">Toggle Layout</button>
   <div class="graph-legend">
-    <span><span class="legend-node session-node"></span>Session</span>
-    <span><span class="legend-node turn-node"></span>Turn</span>
-    <span><span class="legend-node tool-node"></span>Tool</span>
-    <span><span class="legend-node subagent-node"></span>Subagent</span>
+    <span><span class="legend-node session-node"></span><span data-i18n="graph.legend.session">Session</span></span>
+    <span><span class="legend-node turn-node"></span><span data-i18n="graph.legend.turn">Turn</span></span>
+    <span><span class="legend-node tool-node"></span><span data-i18n="graph.legend.tool">Tool</span></span>
+    <span><span class="legend-node subagent-node"></span><span data-i18n="graph.legend.subagent">Subagent</span></span>
   </div>
 </div>
 
@@ -385,14 +385,14 @@ function showPanel(node) {
   qs('#panel-title').textContent = `${node.type}: ${node.label}`;
 
   const items = [
-    ['Type',     node.type],
-    ['Status',   node.status || node.outcome || '—'],
-    ['Model',    node.model   || '—'],
-    ['Duration', node.duration_ms ? fmtDuration(node.duration_ms) : '—'],
-    ['Cost',     node.cost   != null ? fmtCost(node.cost)   : '—'],
-    ['Tokens',   node.tokens != null ? fmtTokens(node.tokens) : '—'],
-    ['Turns',    node.turns  != null ? node.turns  : '—'],
-    ['Tools',    node.tools  != null ? node.tools  : '—'],
+    [_t('graph.type'),     node.type],
+    [_t('graph.status'),   node.status || node.outcome || '—'],
+    [_t('graph.model'),    node.model   || '—'],
+    [_t('graph.duration'), node.duration_ms ? fmtDuration(node.duration_ms) : '—'],
+    [_t('graph.cost'),     node.cost   != null ? fmtCost(node.cost)   : '—'],
+    [_t('graph.tokens'),   node.tokens != null ? fmtTokens(node.tokens) : '—'],
+    [_t('graph.turns'),    node.turns  != null ? node.turns  : '—'],
+    [_t('graph.tools'),    node.tools  != null ? node.tools  : '—'],
   ].filter(([, v]) => v && v !== '—');
 
   let html = `<div class="panel-grid">`;
@@ -406,7 +406,7 @@ function showPanel(node) {
 
   if (node.sublabel) html += `<div class="panel-desc">${escHtml(node.sublabel)}</div>`;
   if (node.child_session_id) {
-    html += `<a href="/session/${node.child_session_id}" class="btn btn-primary btn-sm" style="margin-top:10px;display:inline-flex">Open Child Session</a>`;
+    html += `<a href="/session/${node.child_session_id}" class="btn btn-primary btn-sm" style="margin-top:10px;display:inline-flex">${_t('graph.open_child')}</a>`;
   }
 
   qs('#panel-body').innerHTML = html;

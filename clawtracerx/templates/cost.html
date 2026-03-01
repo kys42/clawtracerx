@@ -8,16 +8,16 @@
 
 {% block content %}
 <div class="page-header">
-  <h1>Cost Dashboard</h1>
+  <h1 data-i18n="cost.title">Cost Dashboard</h1>
   <div class="filters">
     <select id="filter-period" class="input-select" onchange="loadCost()">
-      <option value="today">Today</option>
-      <option value="week" selected>This Week</option>
-      <option value="month">This Month</option>
-      <option value="all">All Time</option>
+      <option value="today" data-i18n="cost.today">Today</option>
+      <option value="week" selected data-i18n="cost.this_week">This Week</option>
+      <option value="month" data-i18n="cost.this_month">This Month</option>
+      <option value="all" data-i18n="cost.all_time">All Time</option>
     </select>
     <select id="filter-agent" class="input-select" onchange="loadCost()">
-      <option value="all">All Agents</option>
+      <option value="all" data-i18n="cost.all_agents">All Agents</option>
     </select>
   </div>
 </div>
@@ -30,23 +30,23 @@
 
 <div class="cost-grid">
   <div class="card">
-    <h3>Cost by Agent</h3>
+    <h3 data-i18n="cost.by_agent">Cost by Agent</h3>
     <div id="chart-agent"></div>
   </div>
   <div class="card">
-    <h3>Cost by Type</h3>
+    <h3 data-i18n="cost.by_type">Cost by Type</h3>
     <div id="chart-type"></div>
   </div>
   <div class="card">
-    <h3>Cost by Model</h3>
+    <h3 data-i18n="cost.by_model">Cost by Model</h3>
     <div id="chart-model"></div>
   </div>
   <div class="card">
-    <h3>Agent × Type</h3>
-    <div id="agent-type-table"><div class="empty">Loading...</div></div>
+    <h3 data-i18n="cost.agent_x_type">Agent × Type</h3>
+    <div id="agent-type-table"><div class="empty" data-i18n="sessions.loading">Loading...</div></div>
   </div>
   <div class="card full-width">
-    <h3>Daily Cost</h3>
+    <h3 data-i18n="cost.daily">Daily Cost</h3>
     <div id="chart-daily"></div>
   </div>
 </div>
@@ -80,7 +80,7 @@ function renderApexBar(containerId, dataMap) {
   const el = qs(`#${containerId}`);
   destroyChart(containerId);
   if (!dataMap || !Object.keys(dataMap).length) {
-    el.innerHTML = '<div class="empty">No data</div>';
+    el.innerHTML = '<div class="empty">' + _t('cost.no_data') + '</div>';
     return;
   }
   el.innerHTML = '';
@@ -90,7 +90,7 @@ function renderApexBar(containerId, dataMap) {
 
   charts[containerId] = new ApexCharts(el, {
     ...APEX_BASE,
-    series: [{ name: 'Cost ($)', data: values }],
+    series: [{ name: _t('cost.cost_usd'), data: values }],
     chart: {
       ...APEX_BASE.chart,
       type: 'bar',
@@ -140,7 +140,7 @@ function renderApexArea(containerId, dataMap) {
   const el = qs(`#${containerId}`);
   destroyChart(containerId);
   if (!dataMap || !Object.keys(dataMap).length) {
-    el.innerHTML = '<div class="empty">No data</div>';
+    el.innerHTML = '<div class="empty">' + _t('cost.no_data') + '</div>';
     return;
   }
   el.innerHTML = '';
@@ -150,7 +150,7 @@ function renderApexArea(containerId, dataMap) {
 
   charts[containerId] = new ApexCharts(el, {
     ...APEX_BASE,
-    series: [{ name: 'Cost ($)', data: values }],
+    series: [{ name: _t('cost.cost_usd'), data: values }],
     chart: {
       ...APEX_BASE.chart,
       type: 'area',
@@ -209,15 +209,15 @@ async function loadCost() {
   qs('#cost-summary').innerHTML = `
     <div class="summary-card hero">
       <div class="summary-value cost">${fmtCost(data.total_cost)}</div>
-      <div class="summary-label">Total Cost</div>
+      <div class="summary-label">${_t('cost.total_cost')}</div>
     </div>
     <div class="summary-card">
       <div class="summary-value">${fmtTokens(data.total_tokens)}</div>
-      <div class="summary-label">Total Tokens</div>
+      <div class="summary-label">${_t('cost.total_tokens')}</div>
     </div>
     <div class="summary-card">
       <div class="summary-value">${data.session_count}</div>
-      <div class="summary-label">Sessions</div>
+      <div class="summary-label">${_t('cost.sessions')}</div>
     </div>
   `;
 
@@ -231,7 +231,7 @@ async function loadCost() {
 function renderAgentTypeTable(containerId, byAgentType, byType) {
   const el = qs(`#${containerId}`);
   if (!byAgentType || !Object.keys(byAgentType).length) {
-    el.innerHTML = '<div class="empty">No data</div>';
+    el.innerHTML = '<div class="empty">' + _t('cost.no_data') + '</div>';
     return;
   }
 
@@ -241,7 +241,10 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
     Object.values(byAgentType).some(row => row[t] > 0)
   );
 
-  const typeLabels = { chat: '💬 Chat', cron: '⏰ Cron', heartbeat: '💗 HB', subagent: '🤖 Sub' };
+  const typeLabels = {
+    chat: _t('sessions.type.chat'), cron: _t('sessions.type.cron'),
+    heartbeat: _t('sessions.type.hb'), subagent: _t('sessions.type.sub'),
+  };
   const typeColors = { chat: '#60a5fa', cron: '#fbbf24', heartbeat: '#f472b6', subagent: '#a78bfa' };
 
   const agents = Object.keys(byAgentType);
@@ -256,9 +259,9 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
       <table class="cost-breakdown-table">
         <thead>
           <tr>
-            <th>Agent</th>
+            <th>${_t('cost.agent')}</th>
             ${activeTypes.map(t => `<th style="color:${typeColors[t]}">${typeLabels[t]}</th>`).join('')}
-            <th style="color:var(--text-1)">Total</th>
+            <th style="color:var(--text-1)">${_t('cost.total')}</th>
           </tr>
         </thead>
         <tbody>
@@ -272,7 +275,7 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
         </tbody>
         <tfoot>
           <tr>
-            <td class="cbt-agent" style="color:var(--text-3);font-style:italic">Total</td>
+            <td class="cbt-agent" style="color:var(--text-3);font-style:italic">${_t('cost.total')}</td>
             ${activeTypes.map(t => `<td class="cbt-val">${fmtCell(colTotal(t))}</td>`).join('')}
             <td class="cbt-total" style="color:var(--success)">${fmtCost(grandTotal)}</td>
           </tr>
@@ -295,5 +298,7 @@ async function loadAgents() {
 
 loadAgents();
 loadCost();
+
+document.addEventListener('langchange', function() { loadCost(); });
 </script>
 {% endblock %}

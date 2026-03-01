@@ -6,22 +6,22 @@
 <div class="toast-container" id="toast-container"></div>
 
 <div class="settings-header">
-  <h1>Settings</h1>
+  <h1 data-i18n="settings.title">Settings</h1>
 </div>
 
 <!-- Section: OpenClaw Directory -->
 <section class="settings-section">
-  <h2 class="settings-section-title">OpenClaw Directory</h2>
-  <p class="settings-desc">
-    Override the default OpenClaw data directory (<code>~/.openclaw</code>).
-    Leave empty to use the default. Changes require a <strong>server restart</strong>.
+  <h2 class="settings-section-title" data-i18n="settings.openclaw_dir">OpenClaw Directory</h2>
+  <p class="settings-desc" data-i18n="settings.dir_desc">
+    Override the default OpenClaw data directory (~/.openclaw).
+    Leave empty to use the default. Changes require a server restart.
   </p>
   <div class="settings-field-group">
-    <label class="settings-label">Custom Path</label>
+    <label class="settings-label" data-i18n="settings.custom_path">Custom Path</label>
     <div class="settings-input-row">
       <input type="text" class="input-text" id="openclaw-dir-input"
-             placeholder="~/.openclaw (default)">
-      <button class="btn btn-primary btn-sm" id="save-btn" onclick="saveSettings()">Save</button>
+             data-i18n-placeholder="settings.path_placeholder" placeholder="~/.openclaw (default)">
+      <button class="btn btn-primary btn-sm" id="save-btn" onclick="saveSettings()" data-i18n="settings.save">Save</button>
     </div>
     <div class="settings-effective" id="effective-info"></div>
   </div>
@@ -30,11 +30,11 @@
 <!-- Section: System Status -->
 <section class="settings-section">
   <div class="settings-section-header">
-    <h2 class="settings-section-title">System Status</h2>
-    <button class="btn btn-outline btn-sm" onclick="refreshHealth(true)">Refresh</button>
+    <h2 class="settings-section-title" data-i18n="settings.system_status">System Status</h2>
+    <button class="btn btn-outline btn-sm" onclick="refreshHealth(true)" data-i18n="settings.refresh">Refresh</button>
   </div>
   <div class="health-grid" id="health-grid">
-    <div class="health-card loading">Loading...</div>
+    <div class="health-card loading" data-i18n="settings.loading">Loading...</div>
   </div>
 </section>
 
@@ -50,10 +50,9 @@
       const input = document.getElementById('openclaw-dir-input');
       input.value = cfg.openclaw_dir || '';
       const info = document.getElementById('effective-info');
-      info.innerHTML = `
-        <span class="settings-eff-label">Effective:</span>
-        <code>${escHtml(cfg.effective_openclaw_dir)}</code>
-      `;
+      info.innerHTML =
+        '<span class="settings-eff-label">' + _t('settings.effective') + '</span>' +
+        '<code>' + escHtml(cfg.effective_openclaw_dir) + '</code>';
     } catch(e) {
       console.error('Failed to load settings', e);
     }
@@ -64,32 +63,32 @@
     const btn = document.getElementById('save-btn');
     const dir = document.getElementById('openclaw-dir-input').value.trim();
     btn.disabled = true;
-    btn.textContent = 'Saving...';
+    btn.textContent = _t('settings.saving');
     try {
       const res = await postJSON('/api/settings', { openclaw_dir: dir });
       if (res.ok) {
-        showToast('Settings saved. Restart the server to apply.', 'warning');
+        showToast(_t('settings.saved_msg'), 'warning');
       } else {
-        showToast('Save failed', 'error');
+        showToast(_t('settings.save_failed'), 'error');
       }
     } catch(e) {
-      showToast('Error: ' + e.message, 'error');
+      showToast(_t('settings.error') + ' ' + e.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Save';
+      btn.textContent = _t('settings.save');
     }
   };
 
   // --- Health dashboard ---
   window.refreshHealth = async function(bustCache) {
     const grid = document.getElementById('health-grid');
-    grid.innerHTML = '<div class="health-card loading">Checking...</div>';
+    grid.innerHTML = '<div class="health-card loading">' + _t('settings.checking') + '</div>';
     try {
       const url = bustCache ? '/api/health?t=' + Date.now() : '/api/health';
       const h = await fetchJSON(url);
       renderHealth(h);
     } catch(e) {
-      grid.innerHTML = '<div class="health-card err">Failed to load health: ' + escHtml(e.message) + '</div>';
+      grid.innerHTML = '<div class="health-card err">' + _t('settings.health_failed') + ' ' + escHtml(e.message) + '</div>';
     }
   };
 
@@ -99,39 +98,39 @@
     const cards = [];
 
     // Config
-    cards.push(healthCard('Config', c.config?.ok, [
-      ['Path', c.config?.path || '-'],
-      ['Status', c.config?.ok ? 'Loaded' : (c.config?.error || 'error')],
+    cards.push(healthCard(_t('settings.config'), c.config?.ok, [
+      [_t('settings.path'), c.config?.path || '-'],
+      [_t('settings.status'), c.config?.ok ? _t('settings.loaded') : (c.config?.error || 'error')],
     ]));
 
     // Gateway
-    cards.push(healthCard('Gateway', c.gateway?.ok, [
-      ['Status', c.gateway?.ok ? 'Connected' : (c.gateway?.error || 'error')],
-      c.gateway?.ok ? ['Agents', c.gateway.agents] : null,
+    cards.push(healthCard(_t('settings.gateway'), c.gateway?.ok, [
+      [_t('settings.status'), c.gateway?.ok ? _t('settings.connected') : (c.gateway?.error || 'error')],
+      c.gateway?.ok ? [_t('settings.agents'), c.gateway.agents] : null,
     ].filter(Boolean)));
 
     // Device
-    cards.push(healthCard('Device Identity', c.device?.ok, [
-      ['Status', c.device?.ok ? 'Authenticated' : (c.device?.error || 'error')],
-      c.device?.device_id ? ['Device ID', c.device.device_id + '...'] : null,
+    cards.push(healthCard(_t('settings.device_identity'), c.device?.ok, [
+      [_t('settings.status'), c.device?.ok ? _t('settings.authenticated') : (c.device?.error || 'error')],
+      c.device?.device_id ? [_t('settings.device_id'), c.device.device_id + '...'] : null,
     ].filter(Boolean)));
 
     // Agents
-    cards.push(healthCard('Agents', c.agents?.ok, [
-      ['Status', c.agents?.ok ? 'Available' : (c.agents?.error || 'error')],
-      c.agents?.ok ? ['Agents', c.agents.agents] : null,
-      c.agents?.ok ? ['Sessions', c.agents.sessions] : null,
+    cards.push(healthCard(_t('settings.agents'), c.agents?.ok, [
+      [_t('settings.status'), c.agents?.ok ? _t('settings.available') : (c.agents?.error || 'error')],
+      c.agents?.ok ? [_t('settings.agents'), c.agents.agents] : null,
+      c.agents?.ok ? [_t('settings.sessions'), c.agents.sessions] : null,
     ].filter(Boolean)));
 
     // Workspace
-    cards.push(healthCard('Workspace', c.workspace?.ok, [
-      ['Path', c.workspace?.path || '-'],
-      ['Status', c.workspace?.ok ? 'Exists' : 'Not found'],
+    cards.push(healthCard(_t('settings.workspace'), c.workspace?.ok, [
+      [_t('settings.path'), c.workspace?.path || '-'],
+      [_t('settings.status'), c.workspace?.ok ? _t('settings.exists') : _t('settings.not_found')],
     ]));
 
     grid.innerHTML = cards.join('') +
-      '<div class="health-meta">OpenClaw Dir: <code>' + escHtml(h.openclaw_dir) +
-      '</code> &middot; Checked: ' + escHtml(h.timestamp) + '</div>';
+      '<div class="health-meta">' + _t('settings.openclaw_dir_label') + ' <code>' + escHtml(h.openclaw_dir) +
+      '</code> &middot; ' + _t('settings.checked') + ' ' + escHtml(h.timestamp) + '</div>';
   }
 
   function healthCard(title, ok, rows) {
@@ -163,6 +162,8 @@
   // Init
   loadSettings();
   refreshHealth(false);
+
+  document.addEventListener('langchange', function() { refreshHealth(false); });
 })();
 </script>
 {% endblock %}

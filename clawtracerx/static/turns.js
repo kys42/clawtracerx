@@ -6,7 +6,7 @@ const DELIVERY_MIRROR_SOURCE = 'delivery_mirror';
 
 function fmtChars(n) {
   if (!n) return '0';
-  if (n < 1000) return n + 'ch';
+  if (n < 1000) return n + _t('turns.ch');
   if (n < 1000000) return (n / 1000).toFixed(1) + 'K';
   return (n / 1000000).toFixed(2) + 'M';
 }
@@ -75,16 +75,16 @@ function renderTurns(turns, compactionEvents) {
       const lastCe = compactionEvents[compactionEvents.length - 1];
       const tokensBefore = lastCe.tokens_before ? fmtTokens(lastCe.tokens_before) : '?';
       const tokensAfter  = lastCe.tokens_after  ? fmtTokens(lastCe.tokens_after)  : null;
-      const hookLabel = lastCe.from_hook ? ' [hook]' : '';
+      const hookLabel = lastCe.from_hook ? ' ' + _t('turns.hook') : '';
       const summaryHtml = lastCe.summary ? `
         <details class="compaction-detail">
-          <summary>Summary ▾</summary>
+          <summary>${_t('turns.summary')} ▾</summary>
           <div class="compaction-summary-text">${escHtml(lastCe.summary)}</div>
         </details>` : '';
       html += `<div class="compaction-divider">
         <span class="compaction-line"></span>
         <div class="compaction-info">
-          <span class="compaction-label">Compacted${hookLabel}: ${tokensBefore}${tokensAfter ? ' → ' + tokensAfter : ''} tokens — from turn ${firstTurnIdx}</span>
+          <span class="compaction-label">${_t('turns.compacted')}${hookLabel}: ${tokensBefore}${tokensAfter ? ' → ' + tokensAfter : ''} ${_t('turns.tokens_from_turn')} ${firstTurnIdx}</span>
           ${summaryHtml}
         </div>
         <span class="compaction-line"></span>
@@ -120,7 +120,7 @@ function renderWorkflowGroup(turns, animIdx) {
     : turns.reduce((s, t) => s + (t.duration_ms || 0), 0);
 
   // Label: extract cron job name from first turn's user_text
-  let label = 'Workflow';
+  let label = _t('turns.workflow');
   const cronM = firstTurn.user_text.match(/\[cron:[^\s]+ ([^\]]+)\]/);
   if (cronM) label = cronM[1];
 
@@ -131,10 +131,10 @@ function renderWorkflowGroup(turns, animIdx) {
     <div class="workflow-header" onclick="toggleWorkflow(${gid})">
       <span class="workflow-icon">⛓</span>
       <span class="workflow-label">${escHtml(label)}</span>
-      <span class="workflow-meta">${turns.length} turns</span>
+      <span class="workflow-meta">${turns.length} ${_t('turns.turns')}</span>
       <div class="workflow-stats">
-        ${totalTools  ? `<span class="stat-chip tools">${totalTools} tools</span>` : ''}
-        ${totalSpawns ? `<span class="stat-chip subagents">${totalSpawns} agents</span>` : ''}
+        ${totalTools  ? `<span class="stat-chip tools">${totalTools} ${_t('turns.tools')}</span>` : ''}
+        ${totalSpawns ? `<span class="stat-chip subagents">${totalSpawns} ${_t('turns.agents')}</span>` : ''}
         <span class="stat-chip duration">${fmtDuration(totalDurationMs)}</span>
         <span class="stat-chip cost">${fmtCost(totalCost)}</span>
         <span class="stat-chip tokens">${fmtTokens(totalTokens)}</span>
@@ -173,20 +173,20 @@ function renderTurn(t, animIdx) {
   <div class="${classes}" id="turn-${t.index}" style="animation-delay:${delay}ms">
     <div class="turn-header" onclick="toggleTurn(${t.index})">
       <div class="turn-left">
-        <span class="turn-index">Turn ${t.index}</span>
-        ${isCompacted ? '<span class="badge badge-compacted">compacted</span>' : ''}
-        <span class="badge badge-${t.user_source} badge-type">${isDeliveryMirror ? '📨 delivered' : t.user_source}</span>
+        <span class="turn-index">${_t('turns.turn')} ${t.index}</span>
+        ${isCompacted ? `<span class="badge badge-compacted">${_t('turns.compacted_label')}</span>` : ''}
+        <span class="badge badge-${t.user_source} badge-type">${isDeliveryMirror ? '📨 ' + _t('turns.delivered') : t.user_source}</span>
         <span class="turn-preview">${escHtml(truncate(previewText, 80))}</span>
       </div>
       <div class="turn-stats">
-        ${t.tool_calls.length ? `<span class="stat-chip tools">${t.tool_calls.length} tools</span>` : ''}
-        ${t.subagent_spawns.length ? `<span class="stat-chip subagents">${t.subagent_spawns.length} subagents</span>` : ''}
+        ${t.tool_calls.length ? `<span class="stat-chip tools">${t.tool_calls.length} ${_t('turns.tools')}</span>` : ''}
+        ${t.subagent_spawns.length ? `<span class="stat-chip subagents">${t.subagent_spawns.length} ${_t('turns.subagents')}</span>` : ''}
         ${!isDeliveryMirror ? `<span class="stat-chip duration">${fmtDuration(t.duration_ms)}</span>` : ''}
         ${!isDeliveryMirror ? `<span class="stat-chip cost">${fmtCost(t.cost.total || 0)}</span>` : ''}
         ${!isDeliveryMirror ? `<span class="stat-chip tokens">${fmtTokens(t.usage.totalTokens || 0)}</span>` : ''}
-        ${(t.cache_hit_rate > 0) ? `<span class="stat-chip cache" title="Cache hit rate">${Math.round(t.cache_hit_rate * 100)}% cache</span>` : ''}
-        ${t.thinking_level ? `<span class="stat-chip thinking" title="Thinking level">💭 ${t.thinking_level}</span>` : ''}
-        ${typeof showRaw === 'function' ? `<button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" title="View raw JSONL">{ }</button>` : ''}
+        ${(t.cache_hit_rate > 0) ? `<span class="stat-chip cache">${Math.round(t.cache_hit_rate * 100)}% ${_t('turns.cache')}</span>` : ''}
+        ${t.thinking_level ? `<span class="stat-chip thinking">💭 ${t.thinking_level}</span>` : ''}
+        ${typeof showRaw === 'function' ? `<button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" data-i18n-title="turns.view_raw" title="${_t('turns.view_raw')}">{ }</button>` : ''}
       </div>
     </div>
     <div class="turn-body" id="turn-body-${t.index}" style="display:none">
@@ -194,7 +194,7 @@ function renderTurn(t, animIdx) {
         ${isDeliveryMirror ? '' : `
         <!-- User message -->
         <div class="msg-block user-msg">
-          <div class="msg-role">User <span class="badge badge-${t.user_source} badge-type" style="font-size:10px">${t.user_source}</span></div>
+          <div class="msg-role">${_t('turns.user')} <span class="badge badge-${t.user_source} badge-type" style="font-size:10px">${t.user_source}</span></div>
           <pre class="msg-content">${escHtml(t.user_text.slice(0, 2000))}</pre>
         </div>`}
 
@@ -206,15 +206,15 @@ function renderTurn(t, animIdx) {
         <!-- Thinking -->
         ${t.thinking_text ? `
         <div class="thinking-block">
-          <div class="thinking-label">Thinking</div>
+          <div class="thinking-label">${_t('turns.thinking')}</div>
           <pre class="thinking-content">${escHtml(t.thinking_text)}</pre>
         </div>` : ''}
-        ${t.thinking_encrypted ? '<div class="thinking-block encrypted"><span class="thinking-label">Thinking [encrypted]</span></div>' : ''}
+        ${t.thinking_encrypted ? `<div class="thinking-block encrypted"><span class="thinking-label">${_t('turns.thinking_encrypted')}</span></div>` : ''}
 
         <!-- Tool calls -->
         ${t.tool_calls.length ? `
         <div class="tool-calls">
-          <div class="tc-header">Tool Calls</div>
+          <div class="tc-header">${_t('turns.tool_calls')}</div>
           ${t.tool_calls.map(tc => renderToolCall(tc)).join('')}
         </div>` : ''}
 
@@ -224,7 +224,7 @@ function renderTurn(t, animIdx) {
         <!-- Assistant response -->
         ${t.assistant_texts.map(txt => `
         <div class="msg-block assistant-msg">
-          <div class="msg-role">Assistant</div>
+          <div class="msg-role">${_t('turns.assistant')}</div>
           <pre class="msg-content">${escHtml(txt)}</pre>
         </div>`).join('')}
       </div>
@@ -284,14 +284,14 @@ function renderSubagent(s, depth) {
   const isNamedAgent = agentId && agentId !== 'main';
   const agentBadge = isNamedAgent
     ? `<span class="badge badge-agent-named">🤖 ${escHtml(agentId)}</span>`
-    : `<span class="badge badge-agent-sub">서브세션</span>`;
+    : `<span class="badge badge-agent-sub">${_t('turns.sub_session')}</span>`;
 
   let childHtml = '';
   if (s.child_turns && s.child_turns.length) {
     // Expand child turns immediately — no secondary click needed
     childHtml = `
     <div class="subagent-children">
-      <div class="subagent-children-label">${s.child_turns.length} turns</div>
+      <div class="subagent-children-label">${s.child_turns.length} ${_t('turns.child_turns')}</div>
       <div class="subagent-turns">
         ${s.child_turns.map(ct => renderChildTurn(ct, depth + 1)).join('')}
       </div>
@@ -300,10 +300,10 @@ function renderSubagent(s, depth) {
     const as = s.announce_stats;
     childHtml = `
     <div class="subagent-announce-stats">
-      <span class="dim">From announce:</span>
-      runtime ${fmtDuration(as.runtime_ms)}
-      &middot; ${fmtTokens(as.total_tokens)} tokens
-      (in ${fmtTokens(as.input_tokens)} / out ${fmtTokens(as.output_tokens)})
+      <span class="dim">${_t('turns.from_announce')}</span>
+      ${_t('turns.runtime')} ${fmtDuration(as.runtime_ms)}
+      &middot; ${fmtTokens(as.total_tokens)} ${_t('turns.tokens')}
+      (${_t('turns.in')} ${fmtTokens(as.input_tokens)} / ${_t('turns.out')} ${fmtTokens(as.output_tokens)})
     </div>`;
   }
 
@@ -312,10 +312,10 @@ function renderSubagent(s, depth) {
     <div class="subagent-header" onclick="toggleSubagent(this)">
       <span class="subagent-icon">&#x1f500;</span>
       ${agentBadge}
-      <span class="subagent-label">${escHtml(s.label || 'subagent')}</span>
+      <span class="subagent-label">${escHtml(s.label || _t('turns.subagent'))}</span>
       <span class="badge ${outcomeClass}">${s.outcome}</span>
-      <span class="subagent-stats">${durStr} &middot; ${costStr} &middot; ${tokensStr} tokens</span>
-      ${s.child_session_id ? `<a href="/session/${s.child_session_id}" class="btn btn-sm" onclick="event.stopPropagation()">Open Session</a>` : ''}
+      <span class="subagent-stats">${durStr} &middot; ${costStr} &middot; ${tokensStr} ${_t('turns.tokens')}</span>
+      ${s.child_session_id ? `<a href="/session/${s.child_session_id}" class="btn btn-sm" onclick="event.stopPropagation()">${_t('turns.open_session')}</a>` : ''}
     </div>
     <div class="subagent-body" style="display:none">
       <div class="subagent-task">${escHtml(truncate(s.task, 300))}</div>
@@ -335,8 +335,8 @@ function renderChildTurn(ct, depth) {
   return `
   <div class="child-turn${errorClass}">
     <div class="child-turn-header" onclick="toggleEl(this.nextElementSibling)">
-      <span class="child-turn-idx">Turn ${ct.index}</span>
-      <span class="dim">${ct.tool_calls.length} tools</span>
+      <span class="child-turn-idx">${_t('turns.turn')} ${ct.index}</span>
+      <span class="dim">${ct.tool_calls.length} ${_t('turns.child_tools')}</span>
       <span class="dim">${fmtDuration(ct.duration_ms)}</span>
       <span class="dim">${fmtCost(ct.cost?.total || 0)}</span>
       ${ct.user_source && ct.user_source !== 'chat' ? `<span class="badge badge-${ct.user_source}" style="font-size:9px">${ct.user_source}</span>` : ''}
@@ -344,7 +344,7 @@ function renderChildTurn(ct, depth) {
     <div class="child-turn-body">
       ${ct.thinking_text ? `
       <div class="thinking-block">
-        <div class="thinking-label">Thinking</div>
+        <div class="thinking-label">${_t('turns.thinking')}</div>
         <pre class="thinking-content">${escHtml(truncate(ct.thinking_text, 1000))}</pre>
       </div>` : ''}
       ${ct.tool_calls.map(tc => renderToolCall(tc)).join('')}
@@ -361,14 +361,14 @@ function renderTokenBar(usage) {
   const total = input + output + cache || 1;
   return `
     <div class="token-segments">
-      <div class="token-seg input" style="width:${input/total*100}%" title="Input: ${fmtTokens(input)}"></div>
-      <div class="token-seg cache" style="width:${cache/total*100}%" title="Cache: ${fmtTokens(cache)}"></div>
-      <div class="token-seg output" style="width:${output/total*100}%" title="Output: ${fmtTokens(output)}"></div>
+      <div class="token-seg input" style="width:${input/total*100}%" title="${_t('turns.input')} ${fmtTokens(input)}"></div>
+      <div class="token-seg cache" style="width:${cache/total*100}%" title="${_t('turns.cache_label')} ${fmtTokens(cache)}"></div>
+      <div class="token-seg output" style="width:${output/total*100}%" title="${_t('turns.output')} ${fmtTokens(output)}"></div>
     </div>
     <div class="token-legend">
-      <span class="legend-item"><span class="dot input"></span>In: ${fmtTokens(input)}</span>
-      <span class="legend-item"><span class="dot cache"></span>Cache: ${fmtTokens(cache)}</span>
-      <span class="legend-item"><span class="dot output"></span>Out: ${fmtTokens(output)}</span>
+      <span class="legend-item"><span class="dot input"></span>${_t('turns.input')} ${fmtTokens(input)}</span>
+      <span class="legend-item"><span class="dot cache"></span>${_t('turns.cache_label')} ${fmtTokens(cache)}</span>
+      <span class="legend-item"><span class="dot output"></span>${_t('turns.output')} ${fmtTokens(output)}</span>
     </div>
   `;
 }

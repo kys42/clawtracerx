@@ -4,14 +4,14 @@
 
 {% block content %}
 <div class="page-header">
-  <a href="/" class="back-link">&larr; Sessions</a>
+  <a href="/" class="back-link">&larr; <span data-i18n="detail.back">Sessions</span></a>
   <div class="header-actions">
-    <a href="/session/{{ session_id }}/graph" class="btn btn-outline" id="graph-btn">Graph View</a>
+    <a href="/session/{{ session_id }}/graph" class="btn btn-outline" id="graph-btn" data-i18n="detail.graph">Graph View</a>
   </div>
 </div>
 
 <div id="session-header" class="card session-header">
-  <div class="loading">Loading session...</div>
+  <div class="loading" data-i18n="detail.loading">Loading session...</div>
 </div>
 
 <div id="turns-container"></div>
@@ -20,7 +20,7 @@
 <div id="raw-modal" class="modal" onclick="if(event.target===this)closeRawModal()">
   <div class="modal-content">
     <div class="modal-header">
-      <h3>Raw JSONL — <span id="raw-title"></span></h3>
+      <h3><span data-i18n="detail.raw_jsonl">Raw JSONL</span> — <span id="raw-title"></span></h3>
       <button class="btn-close" onclick="closeRawModal()">&times;</button>
     </div>
     <pre id="raw-content" class="raw-json"></pre>
@@ -52,39 +52,39 @@ function renderHeader(s) {
       </h2>
       <div class="meta-grid">
         <div class="meta-item">
-          <span class="meta-label">Started</span>
+          <span class="meta-label">${_t('detail.started')}</span>
           <span class="meta-value">${fmtDate(s.started_at)}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Model</span>
+          <span class="meta-label">${_t('detail.model')}</span>
           <span class="meta-value model-name">${s.model}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Provider</span>
+          <span class="meta-label">${_t('detail.provider')}</span>
           <span class="meta-value">${s.provider}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Duration</span>
+          <span class="meta-label">${_t('detail.duration')}</span>
           <span class="meta-value">${fmtDuration(s.total_duration_ms)}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Cost</span>
+          <span class="meta-label">${_t('detail.cost')}</span>
           <span class="meta-value cost">${fmtCost(s.total_cost)}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Tokens</span>
+          <span class="meta-label">${_t('detail.tokens')}</span>
           <span class="meta-value">${fmtTokens(s.total_tokens)}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Turns</span>
+          <span class="meta-label">${_t('detail.turns')}</span>
           <span class="meta-value">${s.turns.length}</span>
         </div>
         ${s.context_tokens ? `<div class="meta-item">
-          <span class="meta-label">Ctx Tokens</span>
+          <span class="meta-label">${_t('detail.ctx_tokens')}</span>
           <span class="meta-value">${fmtTokens(s.context_tokens)}</span>
         </div>` : ''}
         ${s.compactions ? `<div class="meta-item">
-          <span class="meta-label">Compactions</span>
+          <span class="meta-label">${_t('detail.compactions')}</span>
           <span class="meta-value">${s.compactions}</span>
         </div>` : ''}
       </div>
@@ -108,10 +108,10 @@ function renderContextPanel(s) {
 
   const filesHtml = ctx.injectedFiles.length ? `
     <div class="context-section">
-      <div class="context-label">Injected Files (${ctx.injectedFiles.length})</div>
+      <div class="context-label">${_t('detail.injected_files')} (${ctx.injectedFiles.length})</div>
       <table class="ctx-table">
         <thead>
-          <tr><th>Name</th><th>Injected</th><th></th></tr>
+          <tr><th>${_t('detail.name')}</th><th>${_t('detail.injected')}</th><th></th></tr>
         </thead>
         <tbody>
           ${ctx.injectedFiles.map(f => {
@@ -137,8 +137,8 @@ function renderContextPanel(s) {
         </tbody>
         <tfoot>
           <tr>
-            <td class="ctx-name" style="color:var(--text-3)">${ctx.injectedFiles.length}개 파일</td>
-            <td class="ctx-num" style="color:var(--success);font-weight:600">${fmtK(ctx.injectedFiles.reduce((a,f) => a+(f.injectedChars||0), 0))} total</td>
+            <td class="ctx-name" style="color:var(--text-3)">${ctx.injectedFiles.length}${_t('detail.files_count')}</td>
+            <td class="ctx-num" style="color:var(--success);font-weight:600">${fmtK(ctx.injectedFiles.reduce((a,f) => a+(f.injectedChars||0), 0))} ${_t('detail.total')}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -147,10 +147,10 @@ function renderContextPanel(s) {
 
   const skillsHtml = ctx.skills && ctx.skills.length ? `
     <div class="context-section">
-      <div class="context-label">Skills (${ctx.skills.length})</div>
+      <div class="context-label">${_t('detail.skills')} (${ctx.skills.length})</div>
       <table class="ctx-table">
         <thead>
-          <tr><th>Name</th><th>Chars</th></tr>
+          <tr><th>${_t('detail.name')}</th><th>${_t('detail.chars')}</th></tr>
         </thead>
         <tbody>
           ${ctx.skills.map(sk => `<tr>
@@ -160,7 +160,7 @@ function renderContextPanel(s) {
         </tbody>
         <tfoot>
           <tr>
-            <td class="ctx-name" style="color:var(--text-3)">Total</td>
+            <td class="ctx-name" style="color:var(--text-3)">${_t('detail.total')}</td>
             <td class="ctx-num" style="color:var(--accent);font-weight:700">${fmtK(ctx.skills.reduce((a,s) => a+(s.chars||0), 0))}</td>
           </tr>
         </tfoot>
@@ -169,14 +169,14 @@ function renderContextPanel(s) {
 
   const toolsHtml = ctx.tools && ctx.tools.length ? `
     <div class="context-section">
-      <div class="context-label">Tools (${ctx.tools.length})</div>
+      <div class="context-label">${_t('detail.tools')} (${ctx.tools.length})</div>
       <table class="ctx-table">
         <thead>
           <tr>
-            <th>Name</th>
-            <th><span style="color:var(--warning)">●</span> Desc</th>
-            <th><span style="color:rgba(251,191,36,0.6)">●</span> Schema</th>
-            <th>Total</th>
+            <th>${_t('detail.name')}</th>
+            <th><span style="color:var(--warning)">●</span> ${_t('detail.desc')}</th>
+            <th><span style="color:rgba(251,191,36,0.6)">●</span> ${_t('detail.schema')}</th>
+            <th>${_t('detail.total')}</th>
           </tr>
         </thead>
         <tbody>
@@ -192,7 +192,7 @@ function renderContextPanel(s) {
         </tbody>
         <tfoot>
           <tr>
-            <td class="ctx-name" style="color:var(--text-3)">Total</td>
+            <td class="ctx-name" style="color:var(--text-3)">${_t('detail.total')}</td>
             <td class="ctx-num" style="color:var(--warning);font-weight:700">${fmtK(ctx.tools.reduce((a,t) => a+(t.summaryChars||0), 0))}</td>
             <td class="ctx-num" style="color:rgba(251,191,36,0.6);font-weight:700">${fmtK(ctx.tools.reduce((a,t) => a+(t.schemaChars||0), 0))}</td>
             <td class="ctx-num" style="color:var(--text-0);font-weight:700">${fmtK(ctx.tools.reduce((a,t) => a+(t.summaryChars||0)+(t.schemaChars||0), 0))}</td>
@@ -208,7 +208,7 @@ function renderContextPanel(s) {
   <details class="context-panel">
     <summary>
       <div class="context-summary-left">
-        <span class="context-title">Context Injection</span>
+        <span class="context-title">${_t('detail.context_injection')}</span>
         ${ctx.workspaceDir ? `<code style="font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">${ctx.workspaceDir.replace(/^\/Users\/\w+/, '~')}</code>` : ''}
       </div>
       <div class="context-meta">
@@ -219,14 +219,14 @@ function renderContextPanel(s) {
     </summary>
     <div class="context-body">
       <div class="context-section">
-        <div class="context-label">System Prompt Breakdown</div>
+        <div class="context-label">${_t('detail.system_prompt')}</div>
         <div class="ctx-usage-bar">
-          <div class="ctx-usage-seg project" style="width:${projPct}%" title="Project context: ${fmtChars(ctx.projectContextChars)}"></div>
-          <div class="ctx-usage-seg system"  style="width:${sysPct}%"  title="System: ${fmtChars(ctx.nonProjectContextChars)}"></div>
+          <div class="ctx-usage-seg project" style="width:${projPct}%" title="${_t('detail.project')}: ${fmtChars(ctx.projectContextChars)}"></div>
+          <div class="ctx-usage-seg system"  style="width:${sysPct}%"  title="${_t('detail.system')}: ${fmtChars(ctx.nonProjectContextChars)}"></div>
         </div>
         <div class="ctx-legend-row">
-          <span><span class="ctx-dot project"></span>Project ${fmtChars(ctx.projectContextChars)}</span>
-          <span><span class="ctx-dot system"></span>System ${fmtChars(ctx.nonProjectContextChars)}</span>
+          <span><span class="ctx-dot project"></span>${_t('detail.project')} ${fmtChars(ctx.projectContextChars)}</span>
+          <span><span class="ctx-dot system"></span>${_t('detail.system')} ${fmtChars(ctx.nonProjectContextChars)}</span>
         </div>
       </div>
       ${filesHtml}
@@ -246,7 +246,7 @@ async function showRaw(turnIndex) {
     const data = await fetchJSON(`/api/session/${SESSION_ID}/raw/${turnIndex}`);
     qs('#raw-content').textContent = JSON.stringify(data, null, 2);
   } catch(e) {
-    qs('#raw-content').textContent = `Error: ${e.message}`;
+    qs('#raw-content').textContent = _t('detail.error') + ' ' + e.message;
   }
 }
 
@@ -291,5 +291,12 @@ async function openRawModal(title, fetchPromise) {
 }
 
 loadSession();
+
+document.addEventListener('langchange', function() {
+  if (sessionData) {
+    renderHeader(sessionData);
+    renderTurns(sessionData.turns, sessionData.compaction_events || []);
+  }
+});
 </script>
 {% endblock %}

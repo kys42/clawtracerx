@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
   {% block head %}{% endblock %}
+  <script src="/static/i18n.js"></script>
 </head>
 <body>
   <nav class="sidebar">
@@ -21,6 +22,10 @@
       </div>
       <span class="brand-text">ClawTracerX</span>
     </div>
+    <div class="lang-toggle">
+      <button class="lang-btn" data-lang="ko" onclick="setLang('ko')">한</button>
+      <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+    </div>
     <ul class="sidebar-nav">
       <li><a href="/" class="nav-link {% if active == 'sessions' %}active{% endif %}">
         <span class="nav-icon">
@@ -29,7 +34,7 @@
             <path d="M3 9h18M9 21V9"/>
           </svg>
         </span>
-        <span class="nav-label">Sessions</span>
+        <span class="nav-label" data-i18n="nav.sessions">Sessions</span>
       </a></li>
       <li><a href="/cost" class="nav-link {% if active == 'cost' %}active{% endif %}">
         <span class="nav-icon">
@@ -38,7 +43,16 @@
             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
           </svg>
         </span>
-        <span class="nav-label">Cost</span>
+        <span class="nav-label" data-i18n="nav.cost">Cost</span>
+      </a></li>
+      <li><a href="/schedule" class="nav-link {% if active == 'schedule' %}active{% endif %}">
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </span>
+        <span class="nav-label" data-i18n="nav.schedule">Schedule</span>
       </a></li>
       <li><a href="/lab" class="nav-link {% if active == 'lab' %}active{% endif %}">
         <span class="nav-icon">
@@ -47,7 +61,7 @@
             <line x1="9" y1="3" x2="15" y2="3"/>
           </svg>
         </span>
-        <span class="nav-label">Lab</span>
+        <span class="nav-label" data-i18n="nav.lab">Lab</span>
       </a></li>
       <li><a href="/settings" class="nav-link {% if active == 'settings' %}active{% endif %}">
         <span class="nav-icon">
@@ -56,7 +70,7 @@
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </span>
-        <span class="nav-label">Settings</span>
+        <span class="nav-label" data-i18n="nav.settings">Settings</span>
       </a></li>
     </ul>
     <div class="sidebar-footer">
@@ -77,11 +91,24 @@
     var c=h.checks;
     function dot(ok){return '<span class="health-dot '+(ok?'ok':'err')+'"></span>'}
     el.innerHTML=
-      '<div class="health-row">'+dot(c.config&&c.config.ok)+' Config</div>'+
-      '<div class="health-row">'+dot(c.gateway&&c.gateway.ok)+' Gateway</div>'+
-      '<div class="health-row">'+dot(c.agents&&c.agents.ok)+' Agents'+(c.agents&&c.agents.ok?' ('+c.agents.agents+')':'')+'</div>'+
-      '<div class="health-row">'+dot(c.device&&c.device.ok)+' Device</div>';
+      '<div class="health-row">'+dot(c.config&&c.config.ok)+' '+_t('health.config')+'</div>'+
+      '<div class="health-row">'+dot(c.gateway&&c.gateway.ok)+' '+_t('health.gateway')+'</div>'+
+      '<div class="health-row">'+dot(c.agents&&c.agents.ok)+' '+_t('health.agents')+(c.agents&&c.agents.ok?' ('+c.agents.agents+')':'')+'</div>'+
+      '<div class="health-row">'+dot(c.device&&c.device.ok)+' '+_t('health.device')+'</div>';
   }).catch(function(){});
+  document.addEventListener('langchange', function() {
+    fetch('/api/health').then(function(r){return r.json()}).then(function(h){
+      var el=document.getElementById('sidebar-health');
+      if(!el)return;
+      var c=h.checks;
+      function dot(ok){return '<span class="health-dot '+(ok?'ok':'err')+'"></span>'}
+      el.innerHTML=
+        '<div class="health-row">'+dot(c.config&&c.config.ok)+' '+_t('health.config')+'</div>'+
+        '<div class="health-row">'+dot(c.gateway&&c.gateway.ok)+' '+_t('health.gateway')+'</div>'+
+        '<div class="health-row">'+dot(c.agents&&c.agents.ok)+' '+_t('health.agents')+(c.agents&&c.agents.ok?' ('+c.agents.agents+')':'')+'</div>'+
+        '<div class="health-row">'+dot(c.device&&c.device.ok)+' '+_t('health.device')+'</div>';
+    }).catch(function(){});
+  });
   </script>
   {% block scripts %}{% endblock %}
 </body>

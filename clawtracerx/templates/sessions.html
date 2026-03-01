@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="page-header">
-  <h1>Sessions</h1>
+  <h1 data-i18n="sessions.title">Sessions</h1>
   <div class="filters">
     <select id="filter-count" class="input-select">
       <option value="30">30</option>
@@ -17,23 +17,23 @@
 
 <div class="filter-bars">
   <div class="filter-bar-row" id="type-chips">
-    <button class="type-chip active" data-type="">All</button>
-    <button class="type-chip" data-type="chat">💬 Chat</button>
-    <button class="type-chip" data-type="cron">⏰ Cron</button>
-    <button class="type-chip" data-type="heartbeat">💗 HB</button>
-    <button class="type-chip" data-type="subagent">🤖 Sub</button>
+    <button class="type-chip active" data-type="" data-i18n="sessions.type.all">All</button>
+    <button class="type-chip" data-type="chat" data-i18n="sessions.type.chat">💬 Chat</button>
+    <button class="type-chip" data-type="cron" data-i18n="sessions.type.cron">⏰ Cron</button>
+    <button class="type-chip" data-type="heartbeat" data-i18n="sessions.type.hb">💗 HB</button>
+    <button class="type-chip" data-type="subagent" data-i18n="sessions.type.sub">🤖 Sub</button>
   </div>
   <div class="filter-bar-row" id="agent-chips">
-    <button class="agent-chip active" data-agent="all">All</button>
+    <button class="agent-chip active" data-agent="all" data-i18n="sessions.agent.all">All</button>
   </div>
 </div>
 
 <div id="sessions-list">
-  <div class="loading">Loading...</div>
+  <div class="loading" data-i18n="sessions.loading">Loading...</div>
 </div>
 
 <div id="load-more-wrap" style="text-align:center;margin-top:16px;display:none">
-  <button class="btn btn-outline" id="btn-load-more">더보기</button>
+  <button class="btn btn-outline" id="btn-load-more" data-i18n="sessions.load_more">Load More</button>
 </div>
 {% endblock %}
 
@@ -119,11 +119,11 @@ function fmtRelTime(dateStr) {
   const diffMin = Math.floor(diffSec / 60);
   const diffHr  = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHr / 24);
-  if (diffSec < 60) return '방금';
-  if (diffMin < 60) return `${diffMin}분 전`;
-  if (diffHr < 24)  return `${diffHr}시간 전`;
-  if (diffDay < 7)  return `${diffDay}일 전`;
-  return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+  if (diffSec < 60) return _t('time.just_now');
+  if (diffMin < 60) return `${diffMin}${_t('time.minutes_ago')}`;
+  if (diffHr < 24)  return `${diffHr}${_t('time.hours_ago')}`;
+  if (diffDay < 7)  return `${diffDay}${_t('time.days_ago')}`;
+  return d.toLocaleDateString(getLang() === 'en' ? 'en-US' : 'ko-KR', { month: 'short', day: 'numeric' });
 }
 
 function typeLabel(type) {
@@ -147,7 +147,7 @@ async function loadSessions() {
   const list = qs('#sessions-list');
 
   if (!data || !data.length) {
-    list.innerHTML = '<div class="empty">No sessions found</div>';
+    list.innerHTML = '<div class="empty">' + _t('sessions.empty') + '</div>';
     qs('#load-more-wrap').style.display = 'none';
     return;
   }
@@ -166,12 +166,12 @@ async function loadSessions() {
       ? `style="color:${mColor};border-color:${hexAlpha(mColor,0.25)};background:${hexAlpha(mColor,0.09)}"`
       : '';
 
-    const toolChip = s.tool_calls > 0 ? `<span class="stat-chip tools">${s.tool_calls} tools</span>` : '';
-    const subChip  = s.subagents > 0  ? `<span class="stat-chip subagents">${s.subagents} sub</span>` : '';
-    const errChip  = s.errors > 0     ? `<span class="stat-chip errors">${s.errors} err</span>` : '';
-    const avgChip  = s.avg_turn_time != null ? `<span class="stat-chip">~${s.avg_turn_time}s/턴</span>` : '';
+    const toolChip = s.tool_calls > 0 ? `<span class="stat-chip tools">${s.tool_calls} ${_t('sessions.tools')}</span>` : '';
+    const subChip  = s.subagents > 0  ? `<span class="stat-chip subagents">${s.subagents} ${_t('sessions.sub')}</span>` : '';
+    const errChip  = s.errors > 0     ? `<span class="stat-chip errors">${s.errors} ${_t('sessions.err')}</span>` : '';
+    const avgChip  = s.avg_turn_time != null ? `<span class="stat-chip">~${s.avg_turn_time}${_t('sessions.s_per_turn')}</span>` : '';
     const avgTok   = s.turns > 0 ? Math.round(s.tokens / s.turns) : 0;
-    const avgTokChip = avgTok > 0 ? `<span class="stat-chip tokens">${fmtTokens(avgTok)}/턴</span>` : '';
+    const avgTokChip = avgTok > 0 ? `<span class="stat-chip tokens">${fmtTokens(avgTok)}${_t('sessions.per_turn')}</span>` : '';
 
     return `
     <div class="session-card" data-type="${s.type}" onclick="location.href='/session/${s.session_id}'">
@@ -184,7 +184,7 @@ async function loadSessions() {
           <div class="sc-left">
             <code class="sc-sid">${s.session_id.slice(0,10)}</code>
             <span class="stat-chip model" ${modelStyle}>${modelShort || '—'}</span>
-            <span class="stat-chip turns">${s.turns}턴</span>
+            <span class="stat-chip turns">${s.turns}${_t('sessions.turns')}</span>
             ${avgTokChip}
             ${toolChip}${subChip}${errChip}${avgChip}
           </div>
@@ -192,7 +192,7 @@ async function loadSessions() {
         </div>
         <div class="sc-row3">
           <span class="sc-type" style="color:${tColor}">[${typeLabel(s.type)}]</span>
-          <span class="sc-msg">${msg ? escHtml(msg) : '<span class="sc-no-msg">메시지 없음</span>'}</span>
+          <span class="sc-msg">${msg ? escHtml(msg) : '<span class="sc-no-msg">' + _t('sessions.no_message') + '</span>'}</span>
           <span class="sc-derived">${sizeStr}</span>
         </div>
       </div>
@@ -276,5 +276,9 @@ qs('#filter-count').addEventListener('change', () => {
 initTypeChips();
 loadAgents();
 loadSessions();
+
+document.addEventListener('langchange', function() {
+  loadSessions();
+});
 </script>
 {% endblock %}
