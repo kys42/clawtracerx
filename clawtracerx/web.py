@@ -199,6 +199,8 @@ def create_app():
                 "subagents": s.get("subagents", 0),
                 "errors": s.get("errors", 0),
                 "avg_turn_time": s.get("avg_turn_time"),
+                "channel": s.get("channel", ""),
+                "file_path": s.get("file_path", ""),
             })
         return jsonify(result)
 
@@ -964,6 +966,8 @@ def _serialize_analysis(analysis):
         "session_total_tokens": analysis.session_total_tokens,
         "session_compaction_count": analysis.session_compaction_count,
         "memory_flush_at": analysis.memory_flush_at.isoformat() if analysis.memory_flush_at else None,
+        "file_path": analysis.file_path,
+        "channel": analysis.channel,
     }
 
     if analysis.context:

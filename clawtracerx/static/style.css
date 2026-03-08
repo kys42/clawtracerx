@@ -444,6 +444,40 @@ body {
 }
 .meta-value.cost { font-size: 18px; color: var(--success); }
 
+/* File path row in session detail header */
+.meta-file-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+.meta-file-path code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.btn-copy-path {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.btn-copy-path:hover { opacity: 1; background: var(--bg-3); }
+
 /* --- Timeline spine --- */
 #turns-container {
   position: relative;
@@ -1669,6 +1703,21 @@ body {
   padding: 2px 6px;
   /* color/border/background set via inline style from JS */
 }
+.stat-chip.channel { color: var(--cyan); border-color: rgba(6,182,212,0.2); background: rgba(6,182,212,0.08); font-size: 10.5px; }
+
+/* File path copy button in session card */
+.sc-path-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+.sc-path-btn:hover { opacity: 1; background: var(--bg-3); }
 
 /* Row 2 — separated by border */
 .sc-row3 {

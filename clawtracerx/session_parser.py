@@ -142,6 +142,7 @@ class SessionAnalysis:
     compactions: int = 0
     compaction_events: list = field(default_factory=list)  # list of CompactionEvent
     file_path: str = ""
+    channel: str = ""                          # telegram, discord, whatsapp, slack, etc.
     context: Optional[SessionContext] = None   # from sessions.json
     thinking_level: str = ""                   # current thinking level
     context_tokens: int = 0                    # from sessions.json
@@ -193,12 +194,24 @@ def _truncate(text: str, max_len: int = 200) -> str:
     return text[:max_len] + "..."
 
 
+_BRACKET_CHANNEL_MAP = {
+    "telegram": "telegram",
+    "whatsapp": "whatsapp",
+    "discord": "discord",
+    "slack": "slack",
+    "signal": "signal",
+    "imessage": "imessage",
+    "irc": "irc",
+    "googlechat": "googlechat",
+}
+
+
 def _detect_source(user_text: str) -> str:
     """Detect user message source from text prefix.
 
     Returns one of:
       chat, cron, heartbeat, system, subagent_announce, cron_announce,
-      discord, telegram
+      discord, telegram, whatsapp, slack, signal, imessage, irc, googlechat
 
     OpenClaw message formats:
       - "[cron:...]" → cron trigger
@@ -210,7 +223,7 @@ def _detect_source(user_text: str) -> str:
       - "[Day YYYY-MM-DD ...] [Queued announce...] ... A subagent task" → queued announce
       - "[heartbeat..." → heartbeat trigger
       - "Read HEARTBEAT.md" / contains "heartbeat" → heartbeat
-      - "[message_id: ...]" → channel message (discord/telegram)
+      - "[message_id: ...]" → channel message (discord/telegram/whatsapp/etc.)
     """
     if not user_text:
         return "chat"
@@ -236,14 +249,14 @@ def _detect_source(user_text: str) -> str:
     # Discord JSON format (no [message_id:] bracket marker)
     if "Conversation info (untrusted metadata):" in user_text:
         return "discord"
-    # Channel messages with message_id marker
+    # Channel messages with message_id marker — detect platform from bracket header
     if "[message_id:" in user_text:
-        lower = user_text.lower()
-        if "discord" in lower or "#" in user_text.split("]")[0]:
-            return "discord"
-        if "telegram" in lower:
-            return "telegram"
-        return "chat"
+        m = re.match(r'(?:System:\s*)?\[(\w+)', user_text.strip())
+        if m:
+            ch = m.group(1).lower()
+            if ch in _BRACKET_CHANNEL_MAP:
+                return ch
+        return "telegram"  # legacy fallback for bracket format
     # Heartbeat prompt patterns
     if "HEARTBEAT.md" in user_text or "heartbeat" in user_text.lower():
         return "heartbeat"
@@ -428,6 +441,11 @@ _DISCORD_SENDER_RE = re.compile(
 _TG_PREFIX_RE = re.compile(
     r'\[Telegram\s+[^\]]+?\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\S+)\]\s+'
     r'(.+?)\s+\(\d+\):\s*([\s\S]*)')
+# General bracket prefix for all channel platforms (Telegram, WhatsApp, Slack, etc.)
+_BRACKET_PREFIX_RE = re.compile(
+    r'\[\w+[^\]]*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\S+)\]\s+'
+    r'(.+?)\s+\(\d+\):\s*([\s\S]*)',
+    re.DOTALL)
 _REPLY_BLOCK_RE = re.compile(
     r'\s*\[Replying to remote-agent id:\d+\]([\s\S]*?)\[/Replying\]\s*')
 
@@ -455,11 +473,21 @@ def _parse_channel_message(user_text: str, source: str) -> Optional[dict]:
         # Detect real platform from JSON fields
         if conv.get("group_channel"):
             platform = "discord"
+        elif conv.get("group_space"):
+            label = conv.get("conversation_label", "").lower()
+            platform = "googlechat" if ("google" in label or "space" in label) else "slack"
         elif conv.get("group_subject") or conv.get("is_forum"):
             platform = "telegram"
         else:
             label = conv.get("conversation_label", "")
-            platform = "telegram" if re.search(r'id:-\d+', label) else "discord"
+            if re.search(r'id:-\d+', label):
+                platform = "telegram"
+            else:
+                sender = conv.get("sender", "")
+                if re.match(r'^\+\d{8,15}$', sender):
+                    platform = "whatsapp"
+                else:
+                    platform = "discord"  # fallback
 
         return {
             "platform": platform,
@@ -473,13 +501,23 @@ def _parse_channel_message(user_text: str, source: str) -> Optional[dict]:
             "reply_context": "",
         }
 
-    if source == "telegram":
+    # Bracket format: telegram and any other _BRACKET_CHANNEL_MAP channel
+    if source in _BRACKET_CHANNEL_MAP:
         msg_id_m = re.search(r'\[message_id:\s*([^\]]+)\]', user_text)
         message_id = msg_id_m.group(1).strip() if msg_id_m else ""
         clean = re.sub(r'\n?\[message_id:[^\]]+\]', '', user_text).strip()
-        # System: 프리픽스 제거
+        # System: prefix removal
         clean = re.sub(r'^System:\s*\[[^\]]+\][^\n]*\n+', '', clean).strip()
-        m = _TG_PREFIX_RE.match(clean)
+
+        # Determine actual platform from bracket header
+        first_m = re.match(r'\[(\w+)', clean)
+        if first_m:
+            ch = first_m.group(1).lower()
+            actual_platform = _BRACKET_CHANNEL_MAP.get(ch, source)
+        else:
+            actual_platform = source
+
+        m = _BRACKET_PREFIX_RE.match(clean)
         if not m:
             return None
         ts_str, sender, actual_text = m.group(1), m.group(2), m.group(3).strip()
@@ -489,7 +527,7 @@ def _parse_channel_message(user_text: str, source: str) -> Optional[dict]:
             reply_context = reply_m.group(1).strip()
             actual_text = _REPLY_BLOCK_RE.sub(' ', actual_text).strip()
         return {
-            "platform": "telegram",
+            "platform": actual_platform,
             "sender": sender,
             "sender_id": "",
             "channel": "",
@@ -778,12 +816,15 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 api=current_api,
                 thinking_level=current_thinking_level,
             )
-            # 채널 메시지 파싱 (discord / telegram)
-            if source in ("discord", "telegram"):
+            # 채널 메시지 파싱 (discord / telegram / whatsapp / slack / etc.)
+            if source in _BRACKET_CHANNEL_MAP or source == "discord":
                 current_turn.channel_meta = _parse_channel_message(user_text, source)
                 # Correct user_source to match actual detected platform
                 if current_turn.channel_meta:
                     current_turn.user_source = current_turn.channel_meta.get("platform", source)
+                    # Set session-level channel from first channel message
+                    if not analysis.channel:
+                        analysis.channel = current_turn.channel_meta.get("platform", source)
             pending_tool_calls = {}
             turn_raw_lines = [entry]
             _turn_round_idx = 0
@@ -1519,7 +1560,7 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                         last_user_text = user_text
                         # 채널 메시지: raw metadata 대신 실제 메시지 텍스트로 대체
                         _src = _detect_source(user_text)
-                        if _src in ("discord", "telegram"):
+                        if _src in _BRACKET_CHANNEL_MAP or _src == "discord":
                             _cm = _parse_channel_message(user_text, _src)
                             if _cm and _cm.get("actual_text"):
                                 last_user_text = _cm["actual_text"]
@@ -1529,10 +1570,11 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                                 session_type = "cron"
                             elif src == "heartbeat":
                                 session_type = "heartbeat"
-                            elif src in ("discord", "telegram"):
-                                # channel_meta 파싱 후 실제 플랫폼 확인
+                            elif src in _BRACKET_CHANNEL_MAP or src == "discord":
+                                # 채널 메시지: session_type은 "chat" 유지, channel 필드에 기록
                                 _cm = _parse_channel_message(user_text, src)
-                                session_type = _cm.get("platform", src) if _cm else src
+                                if _cm:
+                                    meta["channel"] = _cm.get("platform", src)
                     elif role in ("assistant", "toolResult"):
                         # delivery-mirror는 실제 LLM 응답이 아니라 채널 미러링
                         # → 포함시키면 세션 전체 기간이 turn 시간으로 측정됨

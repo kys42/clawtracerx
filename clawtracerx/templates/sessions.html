@@ -110,6 +110,21 @@ function modelColor(model) {
   return modelColorMap[key];
 }
 
+const CHANNEL_ICONS = {
+  telegram:   '✈️',
+  discord:    '🎮',
+  whatsapp:   '📱',
+  slack:      '📢',
+  signal:     '🔒',
+  imessage:   '🍎',
+  irc:        '💻',
+  googlechat: '💬',
+};
+
+function copyPath(path) {
+  navigator.clipboard.writeText(path).catch(() => {});
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function fmtRelTime(dateStr) {
   if (!dateStr) return '—';
@@ -173,6 +188,14 @@ async function loadSessions() {
     const avgTok   = s.turns > 0 ? Math.round(s.tokens / s.turns) : 0;
     const avgTokChip = avgTok > 0 ? `<span class="stat-chip tokens">${fmtTokens(avgTok)}${_t('sessions.per_turn')}</span>` : '';
 
+    const chIcon  = s.channel ? (CHANNEL_ICONS[s.channel] || '📡') : '';
+    const chBadge = s.channel
+      ? `<span class="stat-chip channel" title="${escHtml(s.channel)}">${chIcon} ${escHtml(s.channel)}</span>`
+      : '';
+    const pathBtn = s.file_path
+      ? `<button class="sc-path-btn" title="${escHtml(s.file_path)}" onclick="event.stopPropagation();copyPath('${escHtml(s.file_path)}')">📋</button>`
+      : '';
+
     return `
     <div class="session-card" data-type="${s.type}" onclick="location.href='/session/${s.session_id}'">
       <div class="sc-agent-panel" style="background:${hexAlpha(aColor,0.15)};color:${aColor}">
@@ -187,8 +210,12 @@ async function loadSessions() {
             <span class="stat-chip turns">${s.turns}${_t('sessions.turns')}</span>
             ${avgTokChip}
             ${toolChip}${subChip}${errChip}${avgChip}
+            ${chBadge}
           </div>
-          <span class="sc-derived" style="color:var(--success);flex-shrink:0">${costStr}</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            ${pathBtn}
+            <span class="sc-derived" style="color:var(--success)">${costStr}</span>
+          </div>
         </div>
         <div class="sc-row3">
           <span class="sc-type" style="color:${tColor}">[${typeLabel(s.type)}]</span>
