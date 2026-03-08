@@ -221,7 +221,7 @@ def create_app():
 
     @app.route("/api/session/<session_id>/graph")
     def api_session_graph(session_id):
-        """Return graph data for subagent tree visualization."""
+        """Return nodes + edges for interactive D3 graph visualization."""
         file_path = _resolve(session_id)
         if not file_path:
             abort(404, "Session not found")
@@ -395,7 +395,7 @@ def create_app():
                 "last_duration_ms": state.get("lastDurationMs"),
                 "next_run_at_ms": state.get("nextRunAtMs"),
                 "consecutive_errors": state.get("consecutiveErrors", 0),
-                "payload_message": _truncate(job.get("payload", {}).get("message", ""), 200),
+                "payload_message": job.get("payload", {}).get("message", ""),
                 "runs": runs,
             })
         jobs.sort(key=lambda j: (not j["enabled"], j.get("next_run_at_ms") or float('inf')))
@@ -1194,3 +1194,78 @@ def _tool_summary(tc):
     elif tc.name in ("glob", "grep"):
         return tc.arguments.get("pattern", "")[:40]
     return ""
+
+
+def _build_turn_flow(turn):
+    """Build sequential execution flow for a single turn."""
+    steps = []
+    spawn_idx = 0
+
+    for tc in turn.tool_calls:
+        if tc.name == "sessions_spawn":
+            if spawn_idx < len(turn.subagent_spawns):
+                spawn = turn.subagent_spawns[spawn_idx]
+                spawn_idx += 1
+                steps.append({
+                    "type": "subagent",
+                    "label": spawn.label or "subagent",
+                    "task": _truncate(spawn.task, 120),
+                    "status": spawn.outcome,
+                    "cost": round(spawn.cost_usd, 4) if spawn.cost_usd else None,
+                    "tokens": spawn.total_tokens,
+                    "duration_ms": spawn.duration_ms,
+                    "child_session_id": spawn.child_session_id,
+                    "child_steps": _build_subagent_steps(spawn),
+                })
+        else:
+            steps.append({
+                "type": "tool",
+                "id": tc.id,
+                "name": tc.name,
+                "summary": _tool_summary(tc),
+                "duration_ms": tc.duration_ms,
+                "status": "error" if tc.is_error else "ok",
+            })
+
+    return {
+        "user_msg": _truncate(turn.user_text, 300),
+        "user_source": turn.user_source,
+        "assistant_msg": _truncate(turn.assistant_texts[-1] if turn.assistant_texts else "", 300),
+        "cost": round(turn.cost.get("total", 0), 4),
+        "tokens": turn.usage.get("totalTokens", 0),
+        "duration_ms": turn.duration_ms,
+        "model": turn.model,
+        "steps": steps,
+    }
+
+
+def _build_subagent_steps(spawn):
+    """Recursively build tool steps from a subagent spawn's child turns."""
+    steps = []
+    for child_turn in spawn.child_turns:
+        sub_spawn_idx = 0
+        for tc in child_turn.tool_calls:
+            if tc.name == "sessions_spawn":
+                if sub_spawn_idx < len(child_turn.subagent_spawns):
+                    nested = child_turn.subagent_spawns[sub_spawn_idx]
+                    sub_spawn_idx += 1
+                    steps.append({
+                        "type": "subagent",
+                        "label": nested.label or "subagent",
+                        "task": _truncate(nested.task, 80),
+                        "status": nested.outcome,
+                        "cost": round(nested.cost_usd, 4) if nested.cost_usd else None,
+                        "duration_ms": nested.duration_ms,
+                        "child_session_id": nested.child_session_id,
+                        "child_steps": _build_subagent_steps(nested),
+                    })
+            else:
+                steps.append({
+                    "type": "tool",
+                    "id": tc.id,
+                    "name": tc.name,
+                    "summary": _tool_summary(tc),
+                    "duration_ms": tc.duration_ms,
+                    "status": "error" if tc.is_error else "ok",
+                })
+    return steps
