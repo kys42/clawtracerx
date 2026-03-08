@@ -9,3 +9,10 @@ lab.log
 .DS_Store
 npm/binary/
 node_modules/
+
+# Private guide documents
+AGENTS.md
+CLAUDE.md
+OPENCLAW_AGENT_GUIDE.md
+SESSION_ANALYSIS_SPEC.md
+update_note.md
