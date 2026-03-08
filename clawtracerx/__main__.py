@@ -15,12 +15,15 @@ Usage:
 
 import argparse
 
+from clawtracerx import __version__
+
 
 def main():
     parser = argparse.ArgumentParser(
         prog="ctrace",
         description="ClawTracerX — Analyze agent sessions, tool calls, and costs",
     )
+    parser.add_argument("--version", "-V", action="version", version=f"ctrace {__version__}")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # sessions
@@ -85,14 +88,19 @@ def main():
     if args.command == "web":
         from clawtracerx.web import create_app
         app = create_app()
-        print(f"\nClawTracerX web dashboard")
+        print("\nClawTracerX web dashboard")
         print(f"http://localhost:{args.port}\n")
         app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
         return
 
     from clawtracerx.cli import (
-        cmd_sessions, cmd_analyze, cmd_raw,
-        cmd_crons, cmd_subagents, cmd_cost, cmd_context,
+        cmd_analyze,
+        cmd_context,
+        cmd_cost,
+        cmd_crons,
+        cmd_raw,
+        cmd_sessions,
+        cmd_subagents,
     )
 
     if args.command in ("sessions", "ls"):

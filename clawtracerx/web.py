@@ -200,6 +200,7 @@ def create_app():
                 "modified": s.get("modified", "").isoformat() if hasattr(s.get("modified", ""), "isoformat") else "",
                 "started_at": s.get("started_at", "").isoformat() if hasattr(s.get("started_at", ""), "isoformat") else "",
                 "last_message": s.get("last_message", ""),
+                "last_message_role": s.get("last_message_role", "user"),
                 "tool_calls": s.get("tool_calls", 0),
                 "subagents": s.get("subagents", 0),
                 "errors": s.get("errors", 0),
@@ -1117,7 +1118,7 @@ def _build_graph(analysis):
             "source": turn.user_source,
             "status": "error" if any(tc.is_error for tc in turn.tool_calls) else "ok",
         })
-        edges.append({"from": root_id, "to": turn_id, "type": "contains"})
+        edges.append({"source": root_id, "target": turn_id, "type": "contains"})
 
         # Tool call nodes
         for tc in turn.tool_calls:
@@ -1133,7 +1134,7 @@ def _build_graph(analysis):
                 "result_size": tc.result_size,
                 "status": "error" if tc.is_error else "ok",
             })
-            edges.append({"from": turn_id, "to": tc_id, "type": "calls"})
+            edges.append({"source": turn_id, "target": tc_id, "type": "calls"})
 
         # Subagent nodes (with recursive children)
         for spawn in turn.subagent_spawns:
@@ -1159,7 +1160,7 @@ def _add_subagent_graph(nodes, edges, parent_id, spawn):
         "status": spawn.outcome,
         "child_session_id": spawn.child_session_id,
     })
-    edges.append({"from": parent_id, "to": spawn_id, "type": "spawns"})
+    edges.append({"source": parent_id, "target": spawn_id, "type": "spawns"})
 
     # Child turn tool nodes
     for child_turn in spawn.child_turns:
@@ -1176,7 +1177,7 @@ def _add_subagent_graph(nodes, edges, parent_id, spawn):
                 "result_size": tc.result_size,
                 "status": "error" if tc.is_error else "ok",
             })
-            edges.append({"from": spawn_id, "to": tc_id, "type": "calls"})
+            edges.append({"source": spawn_id, "target": tc_id, "type": "calls"})
 
         for nested_spawn in child_turn.subagent_spawns:
             _add_subagent_graph(nodes, edges, spawn_id, nested_spawn)
