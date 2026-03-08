@@ -91,6 +91,12 @@
   </nav>
 
   <main class="content">
+    <div id="update-banner" class="update-banner" style="display:none">
+      <span data-i18n="update.available">New version available:</span>
+      <strong class="update-version"></strong>
+      <a class="update-link" target="_blank" data-i18n="update.view">View Release</a>
+      <button class="update-dismiss" onclick="dismissUpdate()">&times;</button>
+    </div>
     {% block content %}{% endblock %}
   </main>
 
@@ -137,6 +143,7 @@
         '<div class="health-row">'+dot(c.device&&c.device.ok)+' '+_t('health.device')+'</div>';
     }).catch(function(){});
   });
+  checkForUpdate();
   </script>
   {% block scripts %}{% endblock %}
 </body>

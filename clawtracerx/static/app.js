@@ -207,6 +207,24 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeTextModal();
 });
 
+// === Update check ===
+async function checkForUpdate() {
+  if (sessionStorage.getItem('clawtracerx-update-dismissed')) return;
+  const data = await fetchJSONSafe('/api/check-update', {});
+  if (!data.update_available) return;
+  const banner = document.getElementById('update-banner');
+  if (!banner) return;
+  banner.querySelector('.update-version').textContent = data.latest;
+  banner.querySelector('.update-link').href = data.release_url;
+  banner.style.display = 'flex';
+}
+
+function dismissUpdate() {
+  var banner = document.getElementById('update-banner');
+  if (banner) banner.style.display = 'none';
+  sessionStorage.setItem('clawtracerx-update-dismissed', '1');
+}
+
 async function postJSON(url, data) {
   try {
     const res = await fetch(url, {

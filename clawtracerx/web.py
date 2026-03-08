@@ -12,6 +12,8 @@ import shutil
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -858,6 +860,44 @@ def create_app():
         _health_cache["data"] = health
         _health_cache["ts"] = now
         return jsonify(health)
+
+    # --- Update check ---
+
+    _update_cache: dict = {"data": None, "ts": 0}
+    _UPDATE_CACHE_TTL = 3600  # 1 hour
+
+    @app.route("/api/check-update")
+    def api_check_update():
+        from clawtracerx import __version__
+
+        now = time.time()
+        if _update_cache["data"] and (now - _update_cache["ts"]) < _UPDATE_CACHE_TTL:
+            return jsonify(_update_cache["data"])
+
+        try:
+            req = urllib.request.Request(
+                "https://api.github.com/repos/kys42/clawtracerx/releases/latest",
+                headers={
+                    "Accept": "application/vnd.github.v3+json",
+                    "User-Agent": "clawtracerx",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                release = json.loads(resp.read())
+            latest = release["tag_name"].lstrip("v")
+            result = {
+                "current": __version__,
+                "latest": latest,
+                "update_available": latest != __version__,
+                "release_url": release["html_url"],
+                "release_name": release.get("name", release["tag_name"]),
+            }
+        except Exception:
+            result = {"current": __version__, "latest": None, "update_available": False}
+
+        _update_cache["data"] = result
+        _update_cache["ts"] = now
+        return jsonify(result)
 
     return app
 

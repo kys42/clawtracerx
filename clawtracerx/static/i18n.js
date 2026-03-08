@@ -337,6 +337,10 @@
       'turns.output': '출력:',
       'turns.show_full': '전문 보기',
       'turns.subagent_task': '서브에이전트 작업',
+
+      // === Update ===
+      'update.available': '새 버전이 있습니다:',
+      'update.view': '릴리스 보기',
     },
 
     en: {
@@ -672,6 +676,10 @@
       'turns.output': 'Out:',
       'turns.show_full': 'Show full',
       'turns.subagent_task': 'Subagent task',
+
+      // === Update ===
+      'update.available': 'New version available:',
+      'update.view': 'View Release',
     },
   };
 
