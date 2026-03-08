@@ -63,7 +63,7 @@
         </span>
         <span class="nav-label" data-i18n="nav.schedule">Schedule</span>
       </a></li>
-      <li><a href="/lab" class="nav-link {% if active == 'lab' %}active{% endif %}">
+      <li><a class="nav-link nav-link-disabled" title="Coming soon" style="opacity:0.4;cursor:not-allowed;pointer-events:none;">
         <span class="nav-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 3h6v7l4 9H5l4-9V3z"/>
@@ -71,6 +71,7 @@
           </svg>
         </span>
         <span class="nav-label" data-i18n="nav.lab">Lab</span>
+        <span style="font-size:0.65rem;margin-left:4px;opacity:0.7;">soon</span>
       </a></li>
       <li><a href="/settings" class="nav-link {% if active == 'settings' %}active{% endif %}">
         <span class="nav-icon">
