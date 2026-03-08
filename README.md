@@ -37,7 +37,7 @@ npm install -g clawtracerx
 | Platform | Supported |
 |----------|-----------|
 | macOS arm64 (Apple Silicon) | ✅ |
-| macOS x64 (Intel) | ✅ |
+| macOS x64 (Intel) | ❌ (use pip) |
 | Linux x64 | ✅ |
 | Windows | ❌ (use pip) |
 
