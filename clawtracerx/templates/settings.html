@@ -38,6 +38,19 @@
   </div>
 </section>
 
+<!-- Section: Config File -->
+<section class="settings-section">
+  <div class="settings-section-header">
+    <h2 class="settings-section-title" data-i18n="settings.config_file">Config File</h2>
+    <button class="btn btn-outline btn-sm" id="config-toggle-btn" onclick="toggleConfig()" data-i18n="settings.show_config">Show Config</button>
+  </div>
+  <div id="config-viewer" style="display:none">
+    <div class="config-path" id="config-path"></div>
+    <div class="config-masked-note" data-i18n="settings.config_masked">Sensitive values are masked.</div>
+    <pre class="config-content" id="config-content"></pre>
+  </div>
+</section>
+
 {% endblock %}
 
 {% block scripts %}
@@ -158,6 +171,36 @@
       setTimeout(() => toast.remove(), 300);
     }, 4000);
   }
+
+  // --- Config viewer ---
+  let configLoaded = false;
+  window.toggleConfig = async function() {
+    const viewer = document.getElementById('config-viewer');
+    const btn = document.getElementById('config-toggle-btn');
+    const isVisible = viewer.style.display !== 'none';
+    if (isVisible) {
+      viewer.style.display = 'none';
+      btn.textContent = _t('settings.show_config');
+      btn.setAttribute('data-i18n', 'settings.show_config');
+    } else {
+      viewer.style.display = 'block';
+      btn.textContent = _t('settings.hide_config');
+      btn.setAttribute('data-i18n', 'settings.hide_config');
+      if (!configLoaded) {
+        document.getElementById('config-content').textContent = _t('settings.loading');
+        try {
+          const res = await fetchJSON('/api/openclaw-config');
+          document.getElementById('config-path').textContent = res.path || '';
+          document.getElementById('config-content').textContent = res.ok
+            ? JSON.stringify(res.config, null, 2)
+            : (_t('settings.error') + ' ' + (res.error || ''));
+          configLoaded = true;
+        } catch(e) {
+          document.getElementById('config-content').textContent = _t('settings.error') + ' ' + e.message;
+        }
+      }
+    }
+  };
 
   // Init
   loadSettings();

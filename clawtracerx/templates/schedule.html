@@ -157,8 +157,12 @@ function renderCronJobs(jobs) {
         html += '<td style="white-space:nowrap">' + fmtMs(run.ts) + '</td>';
         html += '<td><span style="color:' + statusColor + '">' + escHtml(run.status) + '</span></td>';
         html += '<td>' + fmtDuration(run.duration_ms) + '</td>';
-        html += '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
-                escHtml(run.error || run.summary) + '</td>';
+        var summaryText = run.error || run.summary || '';
+        var summaryTitle = run.error ? _t('schedule.col.status') : _t('schedule.col.summary');
+        html += '<td>' +
+          escHtml(truncate(summaryText, 80)) +
+          makeShowFullBtn(_t('turns.show_full'), summaryTitle, summaryText, 80) +
+          '</td>';
         html += '<td>';
         if (run.session_id) {
           html += '<a href="/session/' + encodeURIComponent(run.session_id) + '" class="session-link" title="Open session">\u2192</a>';

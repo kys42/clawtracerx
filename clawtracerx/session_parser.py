@@ -70,6 +70,7 @@ class ToolCall:
     duration_ms: Optional[int] = None
     is_error: bool = False
     status: str = ""
+    round_idx: int = 0   # which assistant message round within the turn
 
 
 @dataclass
@@ -97,6 +98,7 @@ class Turn:
     subagent_spawns: list = field(default_factory=list)
     thinking_text: Optional[str] = None
     thinking_encrypted: bool = False
+    thinking_blocks: list = field(default_factory=list)  # per-round thinking, list[Optional[str]]
     model: str = ""
     provider: str = ""
     api: str = ""
@@ -110,6 +112,8 @@ class Turn:
     thinking_level: str = ""      # thinking level at the time of this turn
     cache_hit_rate: float = 0.0   # cacheRead / (input + cacheRead)
     workflow_group_id: Optional[int] = None  # set if this turn is part of a multi-turn workflow chain
+    channel_meta: Optional[dict] = None
+    # {platform, sender, sender_id, channel, ts_str, message_id, actual_text, reply_context}
 
 
 @dataclass
@@ -229,6 +233,9 @@ def _detect_source(user_text: str) -> str:
         if "a cron job" in lower:
             return "cron_announce"
         return "system"
+    # Discord JSON format (no [message_id:] bracket marker)
+    if "Conversation info (untrusted metadata):" in user_text:
+        return "discord"
     # Channel messages with message_id marker
     if "[message_id:" in user_text:
         lower = user_text.lower()
@@ -410,6 +417,88 @@ def _resolve_child_from_transcript(spawn, transcript: str):
                 if not spawn.cost_usd and child_analysis.total_cost:
                     spawn.cost_usd = child_analysis.total_cost
                 return
+
+
+# --- Channel message parsing ---
+
+_DISCORD_CONV_RE = re.compile(
+    r'Conversation info \(untrusted metadata\):\n```json\n([\s\S]*?)\n```')
+_DISCORD_SENDER_RE = re.compile(
+    r'Sender \(untrusted metadata\):\n```json\n([\s\S]*?)\n```')
+_TG_PREFIX_RE = re.compile(
+    r'\[Telegram\s+[^\]]+?\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\S+)\]\s+'
+    r'(.+?)\s+\(\d+\):\s*([\s\S]*)')
+_REPLY_BLOCK_RE = re.compile(
+    r'\s*\[Replying to remote-agent id:\d+\]([\s\S]*?)\[/Replying\]\s*')
+
+
+def _parse_channel_message(user_text: str, source: str) -> Optional[dict]:
+    """Extract platform metadata and actual message text from channel messages."""
+    if source == "discord":
+        conv_m = _DISCORD_CONV_RE.search(user_text)
+        if not conv_m:
+            return None
+        try:
+            conv = json.loads(conv_m.group(1))
+        except json.JSONDecodeError:
+            conv = {}
+        sender_info = {}
+        sender_m = _DISCORD_SENDER_RE.search(user_text)
+        if sender_m:
+            try:
+                sender_info = json.loads(sender_m.group(1))
+            except json.JSONDecodeError:
+                pass
+        # 마지막 ```\n 블록 이후가 실제 메시지
+        last_end = user_text.rfind('\n```\n')
+        actual_text = user_text[last_end + 5:].strip() if last_end >= 0 else user_text
+        # Detect real platform from JSON fields
+        if conv.get("group_channel"):
+            platform = "discord"
+        elif conv.get("group_subject") or conv.get("is_forum"):
+            platform = "telegram"
+        else:
+            label = conv.get("conversation_label", "")
+            platform = "telegram" if re.search(r'id:-\d+', label) else "discord"
+
+        return {
+            "platform": platform,
+            "sender": sender_info.get("label") or sender_info.get("name") or "",
+            "sender_id": conv.get("sender", ""),
+            "channel": (conv.get("group_channel") or conv.get("group_subject") or
+                        conv.get("conversation_label", "")),
+            "ts_str": "",
+            "message_id": str(conv.get("message_id", "")),
+            "actual_text": actual_text,
+            "reply_context": "",
+        }
+
+    if source == "telegram":
+        msg_id_m = re.search(r'\[message_id:\s*([^\]]+)\]', user_text)
+        message_id = msg_id_m.group(1).strip() if msg_id_m else ""
+        clean = re.sub(r'\n?\[message_id:[^\]]+\]', '', user_text).strip()
+        # System: 프리픽스 제거
+        clean = re.sub(r'^System:\s*\[[^\]]+\][^\n]*\n+', '', clean).strip()
+        m = _TG_PREFIX_RE.match(clean)
+        if not m:
+            return None
+        ts_str, sender, actual_text = m.group(1), m.group(2), m.group(3).strip()
+        reply_context = ""
+        reply_m = _REPLY_BLOCK_RE.search(actual_text)
+        if reply_m:
+            reply_context = reply_m.group(1).strip()
+            actual_text = _REPLY_BLOCK_RE.sub(' ', actual_text).strip()
+        return {
+            "platform": "telegram",
+            "sender": sender,
+            "sender_id": "",
+            "channel": "",
+            "ts_str": ts_str,
+            "message_id": message_id,
+            "actual_text": actual_text,
+            "reply_context": reply_context,
+        }
+    return None
 
 
 # --- Cron ---
@@ -638,6 +727,7 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     pending_tool_calls = {}  # id -> ToolCall
     turn_raw_lines = []
     current_thinking_level = ""
+    _turn_round_idx = 0  # assistant message round counter within current turn
 
     for entry in lines:
         etype = entry.get("type")
@@ -688,8 +778,15 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 api=current_api,
                 thinking_level=current_thinking_level,
             )
+            # 채널 메시지 파싱 (discord / telegram)
+            if source in ("discord", "telegram"):
+                current_turn.channel_meta = _parse_channel_message(user_text, source)
+                # Correct user_source to match actual detected platform
+                if current_turn.channel_meta:
+                    current_turn.user_source = current_turn.channel_meta.get("platform", source)
             pending_tool_calls = {}
             turn_raw_lines = [entry]
+            _turn_round_idx = 0
 
         elif role == "assistant":
             model_name = msg.get("model", "")
@@ -727,6 +824,7 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 )
                 pending_tool_calls = {}
                 turn_raw_lines = []
+                _turn_round_idx = 0
             elif current_turn is None:
                 # Assistant message without prior user - create implicit turn
                 current_turn = Turn(
@@ -741,9 +839,11 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 )
                 pending_tool_calls = {}
                 turn_raw_lines = []
+                _turn_round_idx = 0
 
             turn_raw_lines.append(entry)
             content = msg.get("content", [])
+            _round_thinking_parts: list = []  # thinking in this assistant round
 
             # Update model info from this message
             if msg.get("model"):
@@ -783,6 +883,8 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     elif ctype == "thinking":
                         thinking_text = c.get("thinking", "")
                         if thinking_text:
+                            _round_thinking_parts.append(thinking_text)
+                            # maintain backward-compat thinking_text (merged)
                             if current_turn.thinking_text:
                                 current_turn.thinking_text += "\n" + thinking_text
                             else:
@@ -800,9 +902,17 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                             id=c.get("id", ""),
                             name=c.get("name", ""),
                             arguments=c.get("arguments", {}),
+                            round_idx=_turn_round_idx,
                         )
                         pending_tool_calls[tc.id] = tc
                         current_turn.tool_calls.append(tc)
+
+            # Record per-round thinking in thinking_blocks
+            round_thinking = "\n".join(_round_thinking_parts) or None
+            while len(current_turn.thinking_blocks) <= _turn_round_idx:
+                current_turn.thinking_blocks.append(None)
+            current_turn.thinking_blocks[_turn_round_idx] = round_thinking
+            _turn_round_idx += 1
 
         elif role == "toolResult":
             if current_turn is None:
@@ -1407,12 +1517,22 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                                 if isinstance(c, dict) and c.get("type") == "text":
                                     user_text += c.get("text", "")
                         last_user_text = user_text
+                        # 채널 메시지: raw metadata 대신 실제 메시지 텍스트로 대체
+                        _src = _detect_source(user_text)
+                        if _src in ("discord", "telegram"):
+                            _cm = _parse_channel_message(user_text, _src)
+                            if _cm and _cm.get("actual_text"):
+                                last_user_text = _cm["actual_text"]
                         if user_count == 1:
                             src = _detect_source(user_text)
                             if src == "cron":
                                 session_type = "cron"
                             elif src == "heartbeat":
                                 session_type = "heartbeat"
+                            elif src in ("discord", "telegram"):
+                                # channel_meta 파싱 후 실제 플랫폼 확인
+                                _cm = _parse_channel_message(user_text, src)
+                                session_type = _cm.get("platform", src) if _cm else src
                     elif role in ("assistant", "toolResult"):
                         # delivery-mirror는 실제 LLM 응답이 아니라 채널 미러링
                         # → 포함시키면 세션 전체 기간이 turn 시간으로 측정됨

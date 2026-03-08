@@ -2,6 +2,21 @@
 /* Depends on app.js: fmtTokens, fmtCost, fmtSize, fmtDuration, fmtDate, truncate, escHtml, shortenPath, toolIcon */
 
 const SYSTEM_SOURCES = new Set(['system', 'subagent_announce', 'cron_announce']);
+
+function renderChannelMsg(cm) {
+  const platformBadge = `<span class="badge badge-${escHtml(cm.platform)}" style="font-size:10px">${escHtml(cm.platform)}</span>`;
+  const senderHtml = cm.sender ? `<span class="channel-sender">${escHtml(cm.sender)}</span>` : '';
+  const channelHtml = cm.channel ? `<span class="channel-ch">${escHtml(cm.channel)}</span>` : '';
+  const tsHtml = cm.ts_str ? `<span class="channel-ts">${escHtml(cm.ts_str)}</span>` : '';
+  const midHtml = cm.message_id ? `<span class="channel-mid">#${escHtml(cm.message_id)}</span>` : '';
+  const replyHtml = cm.reply_context
+    ? `<div class="channel-reply">${escHtml(cm.reply_context)}</div>` : '';
+  return `<div class="channel-msg">
+    <div class="channel-msg-meta">${platformBadge}${senderHtml}${channelHtml}${tsHtml}${midHtml}</div>
+    ${replyHtml}
+    <pre class="channel-msg-body">${escHtml(cm.actual_text || '')}</pre>
+  </div>`;
+}
 const DELIVERY_MIRROR_SOURCE = 'delivery_mirror';
 
 function fmtChars(n) {
@@ -165,15 +180,23 @@ function renderTurn(t, animIdx) {
   const delay = (animIdx || 0) * 40;
 
   // preview: delivery_mirror has no user_text — show assistant text instead
-  const previewText = isDeliveryMirror
-    ? (t.assistant_texts[0] || '').replace(/\n/g, ' ')
-    : (t.user_text || '').replace(/\n/g, ' ');
+  let previewText;
+  if (isDeliveryMirror) {
+    previewText = (t.assistant_texts[0] || '').replace(/\n/g, ' ');
+  } else if (t.channel_meta) {
+    const cm = t.channel_meta;
+    previewText = (cm.sender ? cm.sender + ': ' : '') +
+                  (cm.actual_text || '').replace(/\n/g, ' ');
+  } else {
+    previewText = (t.user_text || '').replace(/\n/g, ' ');
+  }
 
   return `
   <div class="${classes}" id="turn-${t.index}" style="animation-delay:${delay}ms">
     <div class="turn-header" onclick="toggleTurn(${t.index})">
       <div class="turn-left">
         <span class="turn-index">${_t('turns.turn')} ${t.index}</span>
+        ${t.timestamp ? `<span class="turn-timestamp">${fmtTurnTime(t.timestamp)}</span>` : ''}
         ${isCompacted ? `<span class="badge badge-compacted">${_t('turns.compacted_label')}</span>` : ''}
         <span class="badge badge-${t.user_source} badge-type">${isDeliveryMirror ? '📨 ' + _t('turns.delivered') : t.user_source}</span>
         <span class="turn-preview">${escHtml(truncate(previewText, 80))}</span>
@@ -195,7 +218,13 @@ function renderTurn(t, animIdx) {
         <!-- User message -->
         <div class="msg-block user-msg">
           <div class="msg-role">${_t('turns.user')} <span class="badge badge-${t.user_source} badge-type" style="font-size:10px">${t.user_source}</span></div>
-          <pre class="msg-content">${escHtml(t.user_text.slice(0, 2000))}</pre>
+          ${t.channel_meta
+            ? renderChannelMsg(t.channel_meta)
+            : `<pre class="msg-content">${escHtml(t.user_text.slice(0, 2000))}</pre>
+               ${t.user_text.length > 2000 && typeof openFullUserText === 'function'
+                 ? `<button class="tc-full-btn" onclick="openFullUserText(${t.index})">${_t('turns.show_full')} (${fmtSize(t.user_text.length)})</button>`
+                 : ''}`
+          }
         </div>`}
 
         <!-- Token breakdown -->
@@ -203,20 +232,49 @@ function renderTurn(t, animIdx) {
           ${renderTokenBar(t.usage)}
         </div>
 
-        <!-- Thinking -->
-        ${t.thinking_text ? `
-        <div class="thinking-block">
-          <div class="thinking-label">${_t('turns.thinking')}</div>
-          <pre class="thinking-content">${escHtml(t.thinking_text)}</pre>
-        </div>` : ''}
-        ${t.thinking_encrypted ? `<div class="thinking-block encrypted"><span class="thinking-label">${_t('turns.thinking_encrypted')}</span></div>` : ''}
-
-        <!-- Tool calls -->
-        ${t.tool_calls.length ? `
-        <div class="tool-calls">
-          <div class="tc-header">${_t('turns.tool_calls')}</div>
-          ${t.tool_calls.map(tc => renderToolCall(tc)).join('')}
-        </div>` : ''}
+        <!-- Thinking + Tool calls (interleaved by round) -->
+        ${(() => {
+          const roundTcs = {};
+          for (const tc of t.tool_calls) {
+            const r = tc.round_idx ?? 0;
+            (roundTcs[r] = roundTcs[r] || []).push(tc);
+          }
+          let html = '';
+          if (t.thinking_blocks && t.thinking_blocks.length > 0) {
+            const maxR = Math.max(
+              t.thinking_blocks.length - 1,
+              ...Object.keys(roundTcs).map(Number),
+              0
+            );
+            for (let r = 0; r <= maxR; r++) {
+              const th = t.thinking_blocks[r];
+              const tcs = roundTcs[r] || [];
+              if (th) html += `
+              <div class="thinking-block">
+                <div class="thinking-label">${_t('turns.thinking')}</div>
+                <pre class="thinking-content">${escHtml(th)}</pre>
+              </div>`;
+              if (tcs.length) html += `
+              <div class="tool-calls">
+                <div class="tc-header">${_t('turns.tool_calls')}</div>
+                ${tcs.map(tc => renderToolCall(tc)).join('')}
+              </div>`;
+            }
+          } else {
+            if (t.thinking_text) html += `
+            <div class="thinking-block">
+              <div class="thinking-label">${_t('turns.thinking')}</div>
+              <pre class="thinking-content">${escHtml(t.thinking_text)}</pre>
+            </div>`;
+            if (t.tool_calls.length) html += `
+            <div class="tool-calls">
+              <div class="tc-header">${_t('turns.tool_calls')}</div>
+              ${t.tool_calls.map(tc => renderToolCall(tc)).join('')}
+            </div>`;
+          }
+          if (t.thinking_encrypted) html += `<div class="thinking-block encrypted"><span class="thinking-label">${_t('turns.thinking_encrypted')}</span></div>`;
+          return html;
+        })()}
 
         <!-- Subagent spawns -->
         ${t.subagent_spawns.map(s => renderSubagent(s, 0)).join('')}
@@ -252,6 +310,22 @@ function renderToolCall(tc) {
   else if (tc.arguments.command) argSummary = truncate(tc.arguments.command, 80);
   else if (tc.arguments.pattern) argSummary = tc.arguments.pattern;
 
+  // "Show full" for truncated args
+  let argFullBtns = '';
+  if (tc.arguments_truncated) {
+    for (const [k, origLen] of Object.entries(tc.arguments_truncated)) {
+      const label = `${_t('turns.show_full')} (${k}, ${fmtSize(origLen)})`;
+      argFullBtns += typeof openFullContent === 'function'
+        ? `<button class="tc-full-btn" onclick="event.stopPropagation();openFullContent('${escHtml(tc.id)}','${escHtml(k)}')">${label}</button> `
+        : '';
+    }
+  }
+
+  // "Show full" for large result
+  const resultFullBtn = (tc.result_size > 500 && typeof openFullContent === 'function')
+    ? `<button class="tc-full-btn" onclick="event.stopPropagation();openFullContent('${escHtml(tc.id)}','result')">${_t('turns.show_full')} (${fmtSize(tc.result_size)})</button>`
+    : '';
+
   return `
   <div class="tc-row ${errorClass}" data-category="${category}" onclick="toggleTcResult(this)">
     <span class="tc-icon">${icon}</span>
@@ -259,8 +333,10 @@ function renderToolCall(tc) {
     <span class="tc-args">${escHtml(argSummary)}</span>
     ${durStr}${sizeStr}
     ${tc.is_error ? '<span class="tc-err-badge">ERROR</span>' : ''}
+    ${argFullBtns ? `<div onclick="event.stopPropagation()">${argFullBtns}</div>` : ''}
     <div class="tc-result" style="display:none">
       <pre>${escHtml(tc.result_text)}</pre>
+      ${resultFullBtn}
     </div>
   </div>`;
 }
@@ -318,7 +394,10 @@ function renderSubagent(s, depth) {
       ${s.child_session_id ? `<a href="/session/${s.child_session_id}" class="btn btn-sm" onclick="event.stopPropagation()">${_t('turns.open_session')}</a>` : ''}
     </div>
     <div class="subagent-body" style="display:none">
-      <div class="subagent-task">${escHtml(truncate(s.task, 300))}</div>
+      <div class="subagent-task">
+        ${escHtml(truncate(s.task, 300))}
+        ${makeShowFullBtn(_t('turns.show_full'), _t('turns.subagent_task'), s.task, 300)}
+      </div>
       ${childHtml}
     </div>
   </div>`;
@@ -346,10 +425,14 @@ function renderChildTurn(ct, depth) {
       <div class="thinking-block">
         <div class="thinking-label">${_t('turns.thinking')}</div>
         <pre class="thinking-content">${escHtml(truncate(ct.thinking_text, 1000))}</pre>
+        ${makeShowFullBtn(_t('turns.show_full'), _t('turns.thinking'), ct.thinking_text, 1000)}
       </div>` : ''}
       ${ct.tool_calls.map(tc => renderToolCall(tc)).join('')}
       ${nestedSubagents}
-      ${ct.assistant_texts.map(txt => `<pre class="child-response">${escHtml(truncate(txt, 500))}</pre>`).join('')}
+      ${ct.assistant_texts.map(txt => `
+        <pre class="child-response">${escHtml(truncate(txt, 500))}</pre>
+        ${makeShowFullBtn(_t('turns.show_full'), _t('turns.assistant'), txt, 500)}
+      `).join('')}
     </div>
   </div>`;
 }

@@ -93,7 +93,7 @@
   "version": 3,
   "id": "uuid-전체형",        // 세션 초기화 이벤트만 전체 UUID 사용
   "timestamp": "2026-02-15T15:00:00.377Z",
-  "cwd": "/Users/kys/.openclaw/workspace"
+  "cwd": "~/.openclaw/workspace"
 }
 ```
 
@@ -511,7 +511,7 @@ aki 에이전트의 대규모 세션 (98dfebb5, 1030턴):
   },
   "delivery": {
     "mode": "announce",         // "announce" | "none"
-    "to": "telegram:-1003886593826:1",
+    "to": "telegram:-100XXXXXXXXXX:1",
     "channel": "telegram",
     "bestEffort": true
   },
@@ -722,7 +722,7 @@ else:
   "ts": "2026-02-19T11:59:41.762Z",
   "source": "config-io",
   "event": "config.write",
-  "configPath": "/Users/kys/.openclaw/openclaw.json",
+  "configPath": "~/.openclaw/openclaw.json",
   "pid": 97073,
   "argv": ["node", "openclaw.mjs", "doctor", "--generate-gateway-token"],
   "existsBefore": true,
@@ -819,7 +819,7 @@ session-monitor, coding-agent, github, healthcheck, skill-creator
 ```json
 {
   "systemPromptReport": {
-    "workspaceDir": "/Users/kys/.openclaw/workspace",
+    "workspaceDir": "~/.openclaw/workspace",
     "bootstrapMaxChars": 20000,
     "systemPrompt": {
       "chars": 32700,
@@ -832,7 +832,7 @@ session-monitor, coding-agent, github, healthcheck, skill-creator
     "injectedWorkspaceFiles": [
       {
         "name": "AGENTS.md",
-        "path": "/Users/kys/.openclaw/workspace/AGENTS.md",
+        "path": "~/.openclaw/workspace/AGENTS.md",
         "missing": false,
         "rawChars": 8300,
         "injectedChars": 8300,
@@ -840,7 +840,7 @@ session-monitor, coding-agent, github, healthcheck, skill-creator
       },
       {
         "name": "SOUL.md",
-        "path": "/Users/kys/.openclaw/workspace/SOUL.md",
+        "path": "~/.openclaw/workspace/SOUL.md",
         "missing": false,
         "rawChars": 2100,
         "injectedChars": 2100,

@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<!-- Hero — compact horizontal strip -->
+<section class="home-hero">
+  <div class="hero-left">
+    <div class="hero-badge">OpenClaw Monitor</div>
+    <h1 class="hero-title">ClawTracerX</h1>
+    <p class="hero-subtitle" data-i18n="home.subtitle">OpenClaw Multi-Agent Monitoring</p>
+  </div>
+  <div class="hero-actions">
+    <a href="https://github.com/kys42/clawtracerx" target="_blank" rel="noopener" class="btn btn-outline hero-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/>
+      </svg>
+      <span data-i18n="home.github">GitHub</span>
+    </a>
+    <a href="/" class="btn btn-primary hero-btn">
+      <span data-i18n="home.open_sessions">View Sessions</span>
+      <span class="btn-arrow">→</span>
+    </a>
+  </div>
+</section>
+
+<!-- Live Stats -->
+<section class="home-stats" id="home-stats"></section>
+
+<!-- Feature Grid -->
+<section class="home-features">
+  <div class="home-features-title" data-i18n="home.features">Features</div>
+
+  <!-- 상단 3개 -->
+  <div class="feature-grid">
+
+    <!-- Sessions Card -->
+    <div class="feature-card" onclick="location.href='/'">
+      <div class="feature-header">
+        <div class="feature-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M3 9h18M9 21V9"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-title" data-i18n="home.feat.sessions.title">Sessions</div>
+          <div class="feature-desc" data-i18n="home.feat.sessions.desc">Browse and analyze every conversation session your agents have run.</div>
+        </div>
+        <a href="/" class="btn btn-sm feature-open-btn" onclick="event.stopPropagation()" data-i18n="home.open">Open →</a>
+      </div>
+      <div class="feature-preview">
+        <div class="mini-table">
+          <div class="mini-row">
+            <span class="mini-badge chat">chat</span>
+            <span class="mini-id">9f2a…</span>
+            <span class="mini-model">claude-opus-4</span>
+            <span class="mini-cost">$0.124</span>
+            <span class="mini-turns">12 <span data-i18n="home.preview.turns">turns</span></span>
+          </div>
+          <div class="mini-row">
+            <span class="mini-badge cron">cron</span>
+            <span class="mini-id">3b7c…</span>
+            <span class="mini-model">claude-sonnet-4</span>
+            <span class="mini-cost">$0.047</span>
+            <span class="mini-turns">5 <span data-i18n="home.preview.turns">turns</span></span>
+          </div>
+          <div class="mini-row">
+            <span class="mini-badge hb">hb</span>
+            <span class="mini-id">a1e8…</span>
+            <span class="mini-model">claude-haiku-4</span>
+            <span class="mini-cost">$0.003</span>
+            <span class="mini-turns">1 <span data-i18n="home.preview.turns">turns</span></span>
+          </div>
+        </div>
+      </div>
+      <ul class="feature-bullets">
+        <li data-i18n="home.feat.sessions.b1">Filter by agent & type</li>
+        <li data-i18n="home.feat.sessions.b2">Track turns, tools, cost & errors</li>
+        <li data-i18n="home.feat.sessions.b3">Explore subagent trees</li>
+        <li data-i18n="home.feat.sessions.b4">Raw JSONL viewer</li>
+      </ul>
+    </div>
+
+    <!-- Cost Card -->
+    <div class="feature-card" onclick="location.href='/cost'">
+      <div class="feature-header">
+        <div class="feature-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="1" x2="12" y2="23"/>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-title" data-i18n="home.feat.cost.title">Cost</div>
+          <div class="feature-desc" data-i18n="home.feat.cost.desc">Visualize API costs broken down by agent, model, and session type.</div>
+        </div>
+        <a href="/cost" class="btn btn-sm feature-open-btn" onclick="event.stopPropagation()" data-i18n="home.open">Open →</a>
+      </div>
+      <div class="feature-preview">
+        <div class="mini-donut-wrap">
+          <svg class="mini-donut" viewBox="0 0 100 100">
+            <circle class="donut-track" cx="50" cy="50" r="36"/>
+            <circle class="donut-seg" cx="50" cy="50" r="36"
+              stroke="#6366f1" stroke-dasharray="113 113" stroke-dashoffset="0"/>
+            <circle class="donut-seg" cx="50" cy="50" r="36"
+              stroke="#22c55e" stroke-dasharray="79 147" stroke-dashoffset="-113"/>
+            <circle class="donut-seg" cx="50" cy="50" r="36"
+              stroke="#f59e0b" stroke-dasharray="34 192" stroke-dashoffset="-192"/>
+          </svg>
+          <div class="mini-donut-legend">
+            <span><span class="dot" style="background:#6366f1"></span>aki $1.24</span>
+            <span><span class="dot" style="background:#22c55e"></span>main $0.87</span>
+            <span><span class="dot" style="background:#f59e0b"></span>code $0.32</span>
+          </div>
+        </div>
+      </div>
+      <ul class="feature-bullets">
+        <li data-i18n="home.feat.cost.b1">Cost breakdown by period</li>
+        <li data-i18n="home.feat.cost.b2">Agent × model × type cross-table</li>
+        <li data-i18n="home.feat.cost.b3">Daily trend chart</li>
+      </ul>
+    </div>
+
+    <!-- Schedule Card -->
+    <div class="feature-card" onclick="location.href='/schedule'">
+      <div class="feature-header">
+        <div class="feature-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-title" data-i18n="home.feat.schedule.title">Schedule</div>
+          <div class="feature-desc" data-i18n="home.feat.schedule.desc">Monitor cron jobs and heartbeat execution history.</div>
+        </div>
+        <a href="/schedule" class="btn btn-sm feature-open-btn" onclick="event.stopPropagation()" data-i18n="home.open">Open →</a>
+      </div>
+      <div class="feature-preview">
+        <div class="mini-cron-list">
+          <div class="mini-cron-row">
+            <span class="health-dot ok"></span>
+            <span class="mini-cron-name">daily-report</span>
+            <span class="mini-cron-next">2h later</span>
+          </div>
+          <div class="mini-cron-row">
+            <span class="health-dot ok"></span>
+            <span class="mini-cron-name">health-check</span>
+            <span class="mini-cron-next">15m later</span>
+          </div>
+          <div class="mini-cron-row">
+            <span class="health-dot err"></span>
+            <span class="mini-cron-name">weekly-sync</span>
+            <span class="mini-cron-next err" data-i18n="home.preview.error">Error</span>
+          </div>
+        </div>
+      </div>
+      <ul class="feature-bullets">
+        <li data-i18n="home.feat.schedule.b1">Cron expression parsing</li>
+        <li data-i18n="home.feat.schedule.b2">Last & next run times</li>
+        <li data-i18n="home.feat.schedule.b3">Run history + session links</li>
+      </ul>
+    </div>
+
+  </div><!-- /.feature-grid -->
+
+  <!-- 하단 2개 -->
+  <div class="feature-grid-bottom">
+
+    <!-- Lab Card -->
+    <div class="feature-card" onclick="location.href='/lab'">
+      <div class="feature-header">
+        <div class="feature-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 3h6v7l4 9H5l4-9V3z"/>
+            <line x1="9" y1="3" x2="15" y2="3"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-title" data-i18n="home.feat.lab.title">Lab</div>
+          <div class="feature-desc" data-i18n="home.feat.lab.desc">Send messages to agents and observe responses in real time.</div>
+        </div>
+        <a href="/lab" class="btn btn-sm feature-open-btn" onclick="event.stopPropagation()" data-i18n="home.open">Open →</a>
+      </div>
+      <div class="feature-preview">
+        <div class="mini-terminal">
+          <div class="mini-term-bar">
+            <span class="mini-term-dot r"></span>
+            <span class="mini-term-dot y"></span>
+            <span class="mini-term-dot g"></span>
+            <span class="mini-term-title">aki · chat</span>
+          </div>
+          <div class="mini-msg user" data-i18n="home.preview.lab_user">Review code before deploy</div>
+          <div class="mini-thinking" data-i18n="home.preview.analyzing">💭 Analyzing...</div>
+          <div class="mini-tool">📖 Read: src/main.py</div>
+          <div class="mini-msg assistant" data-i18n="home.preview.lab_assistant">Code review done. 3 improvements...</div>
+        </div>
+      </div>
+      <ul class="feature-bullets">
+        <li data-i18n="home.feat.lab.b1">Real-time message exchange</li>
+        <li data-i18n="home.feat.lab.b2">Context file edit + Diff</li>
+        <li data-i18n="home.feat.lab.b3">Change thinking level & model</li>
+      </ul>
+    </div>
+
+    <!-- Settings Card -->
+    <div class="feature-card" onclick="location.href='/settings'">
+      <div class="feature-header">
+        <div class="feature-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="feature-title" data-i18n="home.feat.settings.title">Settings</div>
+          <div class="feature-desc" data-i18n="home.feat.settings.desc">Check system health and manage OpenClaw connection settings.</div>
+        </div>
+        <a href="/settings" class="btn btn-sm feature-open-btn" onclick="event.stopPropagation()" data-i18n="home.open">Open →</a>
+      </div>
+      <div class="feature-preview">
+        <div class="mini-health">
+          <div class="mini-health-row">
+            <span class="health-dot ok"></span>
+            Config
+            <span class="mini-val ok" data-i18n="home.preview.loaded">Loaded</span>
+          </div>
+          <div class="mini-health-row">
+            <span class="health-dot ok"></span>
+            Gateway
+            <span class="mini-val ok" data-i18n="home.preview.connected">Connected</span>
+          </div>
+          <div class="mini-health-row">
+            <span class="health-dot ok"></span>
+            Agents
+            <span class="mini-val" data-i18n="home.preview.agents_count">3</span>
+          </div>
+          <div class="mini-health-row">
+            <span class="health-dot ok"></span>
+            Device
+            <span class="mini-val ok" data-i18n="home.preview.authenticated">Authenticated</span>
+          </div>
+        </div>
+      </div>
+      <ul class="feature-bullets">
+        <li data-i18n="home.feat.settings.b1">System health at a glance</li>
+        <li data-i18n="home.feat.settings.b2">OpenClaw directory path config</li>
+      </ul>
+    </div>
+
+  </div><!-- /.feature-grid-bottom -->
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  async function loadHomeStats() {
+    var container = qs('#home-stats');
+    if (!container) return;
+
+    var keys = ['home.stat.sessions', 'home.stat.turns', 'home.stat.cost', 'home.stat.agents', 'home.stat.tools'];
+    container.innerHTML = keys.map(function(k) {
+      return '<div class="home-stat-card">' +
+        '<div class="stat-label" data-i18n="' + k + '">' + _t(k) + '</div>' +
+        '<div class="stat-loading"></div>' +
+        '</div>';
+    }).join('');
+
+    try {
+      var results = await Promise.all([
+        fetchJSONSafe('/api/cost', {}),
+        fetchJSONSafe('/api/sessions?last=9999', [])
+      ]);
+      var costData = results[0];
+      var sessions = results[1];
+
+      var totalCost = (costData.total && costData.total.cost) || 0;
+      var totalSessions = sessions.length || 0;
+      var totalTurns = sessions.reduce(function(s, x) { return s + (x.turns || 0); }, 0);
+      var totalTools = sessions.reduce(function(s, x) { return s + (x.tool_calls || 0); }, 0);
+      var agentSet = new Set(sessions.map(function(x) { return x.agent_id; }).filter(Boolean));
+
+      var stats = [
+        { key: 'home.stat.sessions', value: totalSessions },
+        { key: 'home.stat.turns',    value: fmtTokens(totalTurns) },
+        { key: 'home.stat.cost',     value: fmtCost(totalCost) },
+        { key: 'home.stat.agents',   value: agentSet.size },
+        { key: 'home.stat.tools',    value: fmtTokens(totalTools) },
+      ];
+
+      container.innerHTML = stats.map(function(s) {
+        return '<div class="home-stat-card">' +
+          '<div class="stat-label" data-i18n="' + s.key + '">' + _t(s.key) + '</div>' +
+          '<div class="stat-value">' + s.value + '</div>' +
+          '</div>';
+      }).join('');
+    } catch(e) {
+      console.error('loadHomeStats error:', e);
+    }
+  }
+
+  loadHomeStats();
+
+  document.addEventListener('langchange', function() {
+    document.querySelectorAll('#home-stats .stat-label[data-i18n]').forEach(function(el) {
+      el.textContent = _t(el.dataset.i18n);
+    });
+  });
+})();
+</script>
+{% endblock %}

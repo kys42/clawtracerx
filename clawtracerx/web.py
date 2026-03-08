@@ -137,7 +137,15 @@ def create_app():
                 template_folder=os.path.join(_base, "templates"),
                 static_folder=os.path.join(_base, "static"))
 
+    @app.context_processor
+    def inject_globals():
+        return {'home_dir': os.path.expanduser('~')}
+
     # --- Pages ---
+
+    @app.route("/home")
+    def home_page():
+        return render_template("home.html", active="home")
 
     @app.route("/")
     def index():
@@ -732,6 +740,48 @@ def create_app():
         config.save(cfg)
         return jsonify({"ok": True, "restart_required": True})
 
+    @app.route("/api/openclaw-config")
+    def api_openclaw_config():
+        config_path = gateway.OPENCLAW_CONFIG
+        try:
+            with open(config_path) as f:
+                data = json.load(f)
+            masked = _mask_sensitive(data)
+            return jsonify({"ok": True, "path": str(config_path), "config": masked})
+        except FileNotFoundError:
+            return jsonify({"ok": False, "error": "not found", "path": str(config_path)})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e), "path": str(config_path)})
+
+    @app.route("/api/session/<session_id>/tc/<tc_id>/full")
+    def api_tc_full(session_id, tc_id):
+        file_path = _resolve(session_id)
+        if not file_path:
+            abort(404, "Session not found")
+        analysis = parse_session(file_path)
+        for turn in analysis.turns:
+            for tc in turn.tool_calls:
+                if tc.id == tc_id:
+                    return jsonify({
+                        "id": tc.id,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                        "result_text": tc.result_text,
+                        "result_size": tc.result_size,
+                    })
+        abort(404, "Tool call not found")
+
+    @app.route("/api/session/<session_id>/turn/<int:idx>/user-text")
+    def api_turn_user_text(session_id, idx):
+        file_path = _resolve(session_id)
+        if not file_path:
+            abort(404, "Session not found")
+        analysis = parse_session(file_path)
+        for turn in analysis.turns:
+            if turn.index == idx:
+                return jsonify({"content": turn.user_text})
+        abort(404, "Turn not found")
+
     # --- Health ---
 
     _health_cache = {"data": None, "ts": 0}
@@ -839,6 +889,26 @@ def _backup_context_file(filepath: Path):
 
 # --- Helpers ---
 
+_SENSITIVE_KEYS = re.compile(r'key|secret|token|password', re.IGNORECASE)
+
+
+def _mask_sensitive(obj):
+    """Recursively mask sensitive values in config dicts."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if k == "env" and isinstance(v, dict):
+                out[k] = {ek: "***" for ek in v}
+            elif _SENSITIVE_KEYS.search(k) and isinstance(v, str):
+                out[k] = "***"
+            else:
+                out[k] = _mask_sensitive(v)
+        return out
+    if isinstance(obj, list):
+        return [_mask_sensitive(x) for x in obj]
+    return obj
+
+
 def _resolve(session_id: str):
     """Resolve session ID to file path.
 
@@ -937,6 +1007,7 @@ def _serialize_turn(turn):
         "tool_calls": [_serialize_tc(tc) for tc in turn.tool_calls],
         "subagent_spawns": [_serialize_spawn(s) for s in turn.subagent_spawns],
         "thinking_text": turn.thinking_text[:2000] if turn.thinking_text else None,
+        "thinking_blocks": [b[:2000] if b else None for b in turn.thinking_blocks],
         "thinking_encrypted": turn.thinking_encrypted,
         "model": turn.model,
         "provider": turn.provider,
@@ -950,17 +1021,23 @@ def _serialize_turn(turn):
         "thinking_level": turn.thinking_level,
         "cache_hit_rate": round(turn.cache_hit_rate, 4),
         "workflow_group_id": turn.workflow_group_id,
+        "channel_meta": {
+            **turn.channel_meta,
+            "actual_text": _truncate(turn.channel_meta.get("actual_text", ""), 500),
+        } if turn.channel_meta else None,
     }
 
 
 def _serialize_tc(tc):
     args = {}
+    truncated: dict = {}
     for k, v in tc.arguments.items():
         if isinstance(v, str) and len(v) > 300:
             args[k] = v[:300] + "..."
+            truncated[k] = len(v)
         else:
             args[k] = v
-    return {
+    result = {
         "id": tc.id,
         "name": tc.name,
         "arguments": args,
@@ -969,7 +1046,11 @@ def _serialize_tc(tc):
         "duration_ms": tc.duration_ms,
         "is_error": tc.is_error,
         "status": tc.status,
+        "round_idx": tc.round_idx,
     }
+    if truncated:
+        result["arguments_truncated"] = truncated
+    return result
 
 
 def _serialize_spawn(spawn):

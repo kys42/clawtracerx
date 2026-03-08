@@ -23,10 +23,19 @@
       <span class="brand-text">ClawTracerX</span>
     </div>
     <div class="lang-toggle">
-      <button class="lang-btn" data-lang="ko" onclick="setLang('ko')">한</button>
-      <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+      <button class="lang-btn" data-lang="ko" onclick="setLang('ko')">🇰🇷 KO</button>
+      <button class="lang-btn" data-lang="en" onclick="setLang('en')">🇺🇸 EN</button>
     </div>
     <ul class="sidebar-nav">
+      <li><a href="/home" class="nav-link {% if active == 'home' %}active{% endif %}">
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </span>
+        <span class="nav-label" data-i18n="nav.home">Home</span>
+      </a></li>
       <li><a href="/" class="nav-link {% if active == 'sessions' %}active{% endif %}">
         <span class="nav-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -83,6 +92,18 @@
     {% block content %}{% endblock %}
   </main>
 
+  <!-- 공통 텍스트 전문 보기 modal -->
+  <div id="text-modal" class="modal" onclick="if(event.target===this)closeTextModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="text-modal-title"></h3>
+        <button class="btn-close" onclick="closeTextModal()">&times;</button>
+      </div>
+      <pre id="text-modal-body" class="raw-json"></pre>
+    </div>
+  </div>
+
+  <script>window._homeDir = "{{ home_dir }}";</script>
   <script src="/static/app.js"></script>
   <script>
   fetch('/api/health').then(function(r){return r.json()}).then(function(h){

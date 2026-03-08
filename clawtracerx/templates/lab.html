@@ -738,8 +738,18 @@ async function loadActivityLog() {
     var ts = e.ts ? e.ts.split('T')[1]?.split('+')[0]?.slice(0,8) : '';
     var action = e.action || '';
     var key = e.sessionKey ? ' key=' + e.sessionKey : '';
-    var msg = e.message ? ' msg="' + truncate(e.message, 60) + '"' : '';
-    var err = e.error ? ' <span style="color:var(--error)">ERR: ' + escHtml(truncate(e.error,80)) + '</span>' : '';
+    var msg = '';
+    if (e.message) {
+      msg = ' msg="' + escHtml(truncate(e.message, 60))
+        + makeShowFullBtn('···', 'msg', e.message, 60) + '"';
+    }
+    var err = '';
+    if (e.error) {
+      err = ' <span style="color:var(--error)">ERR: '
+        + escHtml(truncate(e.error, 80))
+        + makeShowFullBtn('···', 'ERR', e.error, 80)
+        + '</span>';
+    }
     var file = e.file ? ' file=' + e.file : '';
     var rid = e.runId ? ' run=' + e.runId.slice(0,8) : '';
     return '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle)">' +

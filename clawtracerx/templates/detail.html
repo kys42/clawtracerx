@@ -6,6 +6,7 @@
 <div class="page-header">
   <a href="/" class="back-link">&larr; <span data-i18n="detail.back">Sessions</span></a>
   <div class="header-actions">
+    <button class="btn btn-outline btn-sm" id="sort-btn" onclick="toggleSort()" data-i18n="detail.sort_newest">Newest first</button>
     <a href="/session/{{ session_id }}/graph" class="btn btn-outline" id="graph-btn" data-i18n="detail.graph">Graph View</a>
   </div>
 </div>
@@ -33,11 +34,28 @@
 <script>
 const SESSION_ID = '{{ session_id }}';
 let sessionData = null;
+let sortOrder = 'newest'; // 'newest' | 'oldest'
+
+function getSortedTurns(turns) {
+  return sortOrder === 'newest' ? [...turns].reverse() : turns;
+}
+
+function toggleSort() {
+  sortOrder = sortOrder === 'newest' ? 'oldest' : 'newest';
+  const btn = qs('#sort-btn');
+  if (btn) btn.textContent = _t('detail.sort_' + sortOrder);
+  if (sessionData) {
+    renderTurns(
+      getSortedTurns(sessionData.turns),
+      sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
+    );
+  }
+}
 
 async function loadSession() {
   sessionData = await fetchJSONSafe(`/api/session/${SESSION_ID}`, {});
   renderHeader(sessionData);
-  renderTurns(sessionData.turns, sessionData.compaction_events || []);
+  renderTurns(getSortedTurns(sessionData.turns), []);
 }
 
 function renderHeader(s) {
@@ -290,12 +308,29 @@ async function openRawModal(title, fetchPromise) {
   }
 }
 
+function openFullContent(tcId, field) {
+  const title = field === 'result' ? `Tool result` : `Arg: ${field}`;
+  openRawModal(title, fetchJSON(`/api/session/${SESSION_ID}/tc/${encodeURIComponent(tcId)}/full`).then(d => {
+    if (field === 'result') return { content: d.result_text };
+    return { content: typeof d.arguments[field] === 'string' ? d.arguments[field] : JSON.stringify(d.arguments[field], null, 2) };
+  }));
+}
+
+function openFullUserText(turnIdx) {
+  openRawModal(`Turn ${turnIdx} — user`, fetchJSON(`/api/session/${SESSION_ID}/turn/${turnIdx}/user-text`));
+}
+
 loadSession();
 
 document.addEventListener('langchange', function() {
+  const btn = qs('#sort-btn');
+  if (btn) btn.textContent = _t('detail.sort_' + sortOrder);
   if (sessionData) {
     renderHeader(sessionData);
-    renderTurns(sessionData.turns, sessionData.compaction_events || []);
+    renderTurns(
+      getSortedTurns(sessionData.turns),
+      sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
+    );
   }
 });
 </script>

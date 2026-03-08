@@ -64,6 +64,16 @@ function fmtDate(iso) {
   }
 }
 
+function fmtTurnTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const mo = d.getMonth() + 1;
+  const day = d.getDate();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${mo}/${day} ${hh}:${mm}`;
+}
+
 function truncate(s, max) {
   if (!s) return '';
   return s.length <= max ? s : s.slice(0, max) + '...';
@@ -77,7 +87,7 @@ function escHtml(s) {
 function shortenPath(p) {
   if (!p) return '';
   // Replace home dir
-  const home = '/Users/kys';
+  const home = window._homeDir || '';
   if (p.startsWith(home)) p = '~' + p.slice(home.length);
   // Show last 2 segments if long
   if (p.length > 60) {
@@ -102,6 +112,41 @@ function toolIcon(name) {
   }
   return '\ud83d\udd27';
 }
+
+// === Text expansion modal (공통) ===
+window._textBuf = {};
+var _textBufIdx = 0;
+
+function _storeText(text) {
+  var k = _textBufIdx++;
+  window._textBuf[k] = text;
+  return k;
+}
+
+function makeShowFullBtn(label, title, text, threshold) {
+  if (!text || text.length <= threshold) return '';
+  var k = _storeText(text);
+  return '<button class="tc-full-btn" onclick="event.stopPropagation();showTextModal(\''
+    + escHtml(title) + '\',' + k + ')">' + escHtml(label) + '</button>';
+}
+
+function showTextModal(title, keyOrText) {
+  var modal = document.getElementById('text-modal');
+  if (!modal) return;
+  var text = typeof keyOrText === 'number' ? (window._textBuf[keyOrText] || '') : keyOrText;
+  document.getElementById('text-modal-title').textContent = title;
+  document.getElementById('text-modal-body').textContent = text;
+  modal.style.display = 'flex';
+}
+
+function closeTextModal() {
+  var modal = document.getElementById('text-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeTextModal();
+});
 
 async function postJSON(url, data) {
   try {
