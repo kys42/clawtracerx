@@ -1,27 +1,53 @@
-# ClawTracerX — OpenClaw Agent Monitor
+# ClawTracerX
 
-OpenClaw 멀티 에이전트 시스템의 내부 실행을 분석하는 모니터링 도구.
+**OpenClaw agent session monitor** — visualizes what happens inside AI agent runs: tool calls, subagents, token usage, cost, and timing.
 
-에이전트가 메시지를 받고 응답하기까지 내부에서 무슨 일이 벌어지는지 — 어떤 툴을 호출했고, 서브에이전트를 생성했고, 토큰을 얼마나 썼고, 얼마나 걸렸는지 — 한눈에 보여줍니다.
+---
 
-## Features
+## What is this?
 
-- **세션 분석**: Turn 단위로 구조화된 세션 상세 분석 (user → assistant → tool results)
-- **서브에이전트 추적**: parent → child 세션을 재귀적으로 파싱하여 전체 실행 트리 구성
-- **토큰/비용 추적**: 메시지 단위 토큰 사용량 및 USD 비용 집계 (에이전트별, 모델별, 일별)
-- **Thinking 추출**: Google/Gemini 모델의 thinking 평문 표시, OpenAI 암호화 감지
-- **크론 모니터링**: 크론 잡 실행 이력, 성공/실패 추적
-- **인터랙티브 그래프**: Canvas 기반 실행 트리 시각화 (드래그, 줌, Tree/Force 레이아웃)
-- **Raw 로그**: 특정 Turn의 JSONL 원문을 JSON pretty-print로 확인
+ClawTracerX reads the JSONL transcripts that [OpenClaw](https://github.com/kys42/openclaw) writes locally and turns them into a web dashboard + CLI. No data leaves your machine.
+
+- **Session timeline** — every turn: user message → assistant thinking → tool calls → subagent spawns, with per-message token counts and cost
+- **Subagent tree** — recursively parses child sessions so you see the full execution tree
+- **Cost dashboard** — per-agent, per-model, per-day breakdown with charts
+- **Cron monitor** — job run history, success/failure tracking
+- **Interactive graph** — Canvas-based execution tree (drag, zoom, Tree/Force layout)
+- **Lab** *(coming soon)* — send messages to agents directly from the dashboard
+
+---
 
 ## Requirements
 
-- Python 3.9+ **또는** Node.js 18+ (npm 설치 시)
-- OpenClaw (`~/.openclaw/` 디렉토리 구조 필요)
+- [OpenClaw](https://github.com/kys42/openclaw) installed and configured (`~/.openclaw/`)
+- **Python 3.9+** (pip install) **or** **Node.js 18+** (npm install, no Python needed)
+
+---
 
 ## Installation
 
-### pip (Python 사용자)
+### npm — no Python required (recommended)
+
+```bash
+npm install -g clawtracerx
+```
+
+`postinstall` automatically downloads the pre-built binary for your platform.
+
+| Platform | Supported |
+|----------|-----------|
+| macOS arm64 (Apple Silicon) | ✅ |
+| macOS x64 (Intel) | ✅ |
+| Linux x64 | ✅ |
+| Windows | ❌ (use pip) |
+
+### pip
+
+```bash
+pip install "clawtracerx[web]"
+```
+
+### From source
 
 ```bash
 git clone https://github.com/kys42/clawtracerx.git
@@ -29,56 +55,71 @@ cd clawtracerx
 pip install -e ".[web]"
 ```
 
-### npm (바이너리, Python 불필요)
+### Verify
 
 ```bash
-npm install -g clawtracerx   # postinstall이 바이너리 자동 다운로드
+ctrace --version
+ctrace sessions
 ```
 
+---
+
 ## Usage
+
+### Web dashboard
+
+```bash
+ctrace web                  # http://localhost:8901
+ctrace web --port 9000      # custom port
+ctrace web --debug          # debug mode
+```
+
+| Page | URL | Description |
+|------|-----|-------------|
+| Sessions | `/` | All sessions with agent/type filters |
+| Session Detail | `/session/<id>` | Turn-by-turn timeline, tool call results, token chart |
+| Graph | `/session/<id>/graph` | Interactive execution tree |
+| Cost | `/cost` | Token/cost breakdown by agent, model, day |
+| Schedule | `/schedule` | Cron job and heartbeat status |
 
 ### CLI
 
 ```bash
-# 세션 목록
-ctrace sessions                          # 전체 (최근 20개)
-ctrace sessions --agent aki --last 50    # aki 에이전트만, 50개
-ctrace sessions --type cron              # 크론 세션만
+# List sessions
+ctrace sessions                          # recent 20
+ctrace sessions --agent aki --last 50    # filter by agent
+ctrace sessions --type cron              # cron sessions only
 
-# 세션 상세 분석 (핵심 기능)
-ctrace analyze <session-id>              # UUID 앞부분만으로도 검색 가능
-ctrace analyze a6604d70                  # 예시
-ctrace analyze aki:92de0796              # agent:id 형식
-ctrace analyze ~/.openclaw/agents/aki/sessions/xxxx.jsonl  # 전체 경로
+# Analyze a session (core feature)
+ctrace analyze <session-id>              # UUID prefix works
+ctrace analyze a6604d70
+ctrace analyze aki:92de0796              # agent:id format
+ctrace analyze ~/.openclaw/agents/aki/sessions/xxxx.jsonl
 
-# 특정 Turn의 JSONL 원문 보기
+# View raw JSONL for a turn
 ctrace raw <session-id> --turn 0
 
-# 크론 실행 이력
-ctrace crons                             # 전체 (최근 20개)
-ctrace crons --last 50 --job <job-id>    # 특정 잡 필터
+# Cost summary
+ctrace cost                              # today
+ctrace cost --period week
+ctrace cost --period month --agent aki
 
-# 서브에이전트 실행 이력
-ctrace subagents                         # 전체
-ctrace subagents --parent a6604d70       # 특정 parent 세션의 서브에이전트만
+# Cron history
+ctrace crons
+ctrace crons --last 50 --job <job-id>
 
-# 비용 요약
-ctrace cost                              # 오늘
-ctrace cost --period week                # 이번 주
-ctrace cost --period month --agent aki   # 이번 달, aki만
-
-# 웹 대시보드 시작
-ctrace web                               # http://localhost:8901
-ctrace web --port 9000                   # 커스텀 포트
+# Subagent history
+ctrace subagents
+ctrace subagents --parent a6604d70
 ```
 
-### `ctrace analyze` 출력 예시
+### Example: `ctrace analyze` output
 
 ```
 ═══════════════════════════════════════════════════════
 Session: a6604d70-deb (main)
 Started: 2026-02-20 00:00:00 | Model: gemini-3-flash-preview | Provider: google
-Type: cron | CWD: /Users/kys/.openclaw/workspace
+Type: cron | CWD: ~/.openclaw/workspace
 ═══════════════════════════════════════════════════════
 
 ── Turn 0 ────────────────────────────────────────────
@@ -89,106 +130,72 @@ Type: cron | CWD: /Users/kys/.openclaw/workspace
      Tokens: in=568.3K, out=3.3K, cache=224.9K, total=571.6K
 
      ├─ 🔧 session_status
-     ├─ 💻 exec(python3 scripts/log_chunker_clean.py)    2.3s
-     ├─ 🔀 subagent → nightly-map-2026-02-19-batch-0
-     │     task: "너는 daily review mapper다..."
+     ├─ 💻 exec(python3 scripts/log_chunker.py)          2.3s
+     ├─ 🔀 subagent → nightly-map-batch-0
+     │     task: "batch mapper..."
      │     ok | 14.7s | $0.042 | 12K tokens
-     │     ├─ 📁 read(batch_0_chunks.md)                  201ms
-     │     ├─ 💻 exec(gh pr diff 92)                     2340ms
-     │     ├─ ✏️  edit(PR-92-review.md)                     45ms
+     │     ├─ 📁 read(batch_0_chunks.md)                201ms
+     │     ├─ 💻 exec(gh pr diff 92)                   2340ms
      │     └─ ✅ Done (3 turns)
-     ├─ 🔀 subagent → nightly-map-2026-02-19-batch-1
-     │     ok | 5.0s
-     └─ 💬 "DONE: 2026-02-19 batches=4..."
+     └─ 💬 "DONE: batches=4..."
 
 ═══════════════════════════════════════════════════════
 Summary
   Turns: 4 | Duration: 4m 28s | Cost: $0.330
   Tokens: in=568K out=3.3K cache=225K total=618K
-  Tools: exec×13, write×3, sessions_spawn×3, session_status×2
+  Tools: exec×13, write×3, sessions_spawn×3
   Subagents: 3 (success: 2, error: 1)
 ```
 
-### 웹 대시보드
+---
 
-`ctrace web` 실행 후 http://localhost:8901 접속.
+## Data sources
 
-| 페이지 | 경로 | 설명 |
-|--------|------|------|
-| Sessions | `/` | 전체 세션 목록. 에이전트/타입 필터, 클릭하여 상세 |
-| Session Detail | `/session/<id>` | Turn별 타임라인. 툴콜 결과 펼치기, 토큰 바 차트, Raw 모달 |
-| Graph View | `/session/<id>/graph` | Canvas 인터랙티브 실행 그래프. 서브에이전트 트리 시각화 |
-| Cost Dashboard | `/cost` | 에이전트별/타입별/모델별/일별 비용 차트 |
+ClawTracerX is **read-only** — it only reads files OpenClaw writes locally.
 
-## Data Sources
+| Source | Path | Contents |
+|--------|------|----------|
+| Session transcripts | `~/.openclaw/agents/{id}/sessions/*.jsonl` | Messages, tool calls, tokens, cost, timing |
+| Subagent registry | `~/.openclaw/subagents/runs.json` | parent↔child mapping, task, duration, outcome |
+| Cron run logs | `~/.openclaw/cron/runs/*.jsonl` | jobId, status, duration, summary |
+| Cron job definitions | `~/.openclaw/cron/jobs.json` | schedule, agent, model, delivery |
 
-ClawTracerX은 OpenClaw가 로컬에 저장하는 파일들을 읽기만 합니다 (read-only).
+### What's tracked (and what isn't)
 
-| 소스 | 경로 | 내용 |
-|------|------|------|
-| 세션 트랜스크립트 | `~/.openclaw/agents/{id}/sessions/*.jsonl` | 메시지, 툴콜, 토큰, 비용, 타이밍 |
-| 서브에이전트 레지스트리 | `~/.openclaw/subagents/runs.json` | parent↔child 매핑, task, duration, outcome |
-| 크론 실행 로그 | `~/.openclaw/cron/runs/*.jsonl` | jobId, status, duration, summary |
-| 크론 잡 정의 | `~/.openclaw/cron/jobs.json` | schedule, agent, model, delivery |
+| Item | Available | Notes |
+|------|-----------|-------|
+| Per-message token/cost | ✅ | usage + cost on every assistant message |
+| Per-tool-call tokens | ❌ | multiple tool calls share one assistant message |
+| Per-tool-call timing | ✅ partial | `exec`, `read` etc. have `durationMs` |
+| Subagent internals | ✅ | recursive child JSONL parsing |
+| Google/Gemini thinking | ✅ | plain text in `thinking` field |
+| OpenAI thinking | ❌ | Fernet-encrypted, not locally decryptable |
+| Turn duration | ✅ | user timestamp → last assistant timestamp |
+| Model change tracking | ✅ | `model_change` events, per-message model field |
 
-### 데이터 한계
-
-| 항목 | 가능 여부 | 비고 |
-|------|----------|------|
-| 메시지 단위 토큰/비용 | ✅ | assistant 메시지마다 usage + cost |
-| 개별 툴콜 단위 토큰 | ❌ | 하나의 assistant 메시지에 여러 toolCall이 포함되어 분리 불가 |
-| 개별 툴콜 실행 시간 | ✅ (일부) | exec, read 등은 `details.durationMs` 있음 |
-| 서브에이전트 내부 추적 | ✅ | childSessionKey로 자식 세션 JSONL 재귀 파싱 |
-| Thinking (Google/Gemini) | ✅ | `thinking` 필드에 평문 저장 |
-| Thinking (OpenAI) | ❌ | Fernet 암호화, 로컬 복호화 불가 |
-| Turn 소요 시간 | ✅ | user timestamp → 마지막 assistant timestamp |
-| 모델 변경 추적 | ✅ | model_change 이벤트, 메시지별 model 필드 |
+---
 
 ## Architecture
 
 ```
 clawtracerx/
-├── pyproject.toml
-├── clawtracerx/
-│   ├── __init__.py          # version
-│   ├── __main__.py          # CLI 엔트리포인트 (argparse)
-│   ├── session_parser.py    # JSONL 파싱, Turn 구조화, 서브에이전트 매핑
-│   ├── cli.py               # CLI 명령어 (sessions, analyze, raw, crons, cost)
-│   ├── web.py               # Flask 웹 서버 + REST API
-│   ├── gateway.py           # OpenClaw WS RPC 클라이언트
-│   ├── templates/
-│   │   ├── base.html        # 레이아웃 (사이드바, 네비게이션)
-│   │   ├── sessions.html    # 세션 목록 페이지
-│   │   ├── detail.html      # 세션 상세 (Turn 타임라인)
-│   │   ├── graph.html       # 실행 그래프 (Canvas)
-│   │   └── cost.html        # 비용 대시보드
-│   └── static/
-│       ├── style.css        # 다크 테마 CSS
-│       └── app.js           # 공유 JS 유틸리티
-├── tests/                   # pytest 테스트 스위트
-└── npm/                     # npm 배포용 (바이너리 다운로드 방식)
+├── __main__.py          CLI entrypoint (argparse)
+├── session_parser.py    JSONL → SessionAnalysis (Turn / ToolCall / SubagentSpawn tree)
+├── cli.py               CLI commands → ANSI terminal output
+├── web.py               Flask server + REST API
+├── gateway.py           OpenClaw WebSocket RPC client
+├── templates/           Jinja2 (base, sessions, detail, graph, cost, schedule)
+└── static/
+    ├── app.js           Shared utilities (fetchJSON, fmtTokens, shortenPath…)
+    ├── turns.js         Shared turn renderer
+    └── style.css        Dark Pro design system
+
+npm/                     npm wrapper (downloads pre-built binary via postinstall)
+tests/                   pytest test suite
 ```
 
-### 핵심 데이터 모델
-
-```
-SessionAnalysis
-├── session_id, agent_id, session_type
-├── model, provider, started_at
-├── total_cost, total_tokens, total_duration_ms
-└── turns[]
-    └── Turn
-        ├── user_text, user_source (chat|cron|heartbeat)
-        ├── assistant_texts[], thinking_text
-        ├── model, provider, usage{}, cost{}
-        ├── duration_ms, stop_reason
-        ├── tool_calls[]
-        │   └── ToolCall {name, arguments, result_text, duration_ms, is_error}
-        ├── subagent_spawns[]
-        │   └── SubagentSpawn {label, task, outcome, child_turns[], cost_usd}
-        └── raw_lines[] (JSONL 원문)
-```
+---
 
 ## License
 
-Internal tool for OpenClaw ecosystem.
+MIT

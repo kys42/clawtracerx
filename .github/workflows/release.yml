@@ -10,6 +10,7 @@ jobs:
       matrix:
         include:
           - { os: macos-14,       platform: darwin, arch: arm64 }
+          - { os: macos-13,       platform: darwin, arch: x64   }
           - { os: ubuntu-latest,  platform: linux,  arch: x64   }
     runs-on: ${{ matrix.os }}
     steps:
