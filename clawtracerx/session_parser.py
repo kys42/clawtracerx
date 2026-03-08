@@ -8,12 +8,11 @@ with tool calls, subagent spawns, token usage, and cost tracking.
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 KST = timezone(timedelta(hours=9))
 OPENCLAW_DIR = Path.home() / ".openclaw"
@@ -1508,7 +1507,6 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
 
     try:
         with open(file_path) as f:
-            first_lines = []
             user_count = 0
             total_cost = 0.0
             total_tokens = 0

@@ -4,13 +4,9 @@ Tests for clawtracerx.session_parser — pure functions and I/O.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
-
-import pytest
+from datetime import datetime
 
 import clawtracerx.session_parser as sp
-
 
 # ---------------------------------------------------------------------------
 # Tier 1: Pure functions
@@ -194,7 +190,7 @@ class TestParseSession:
                            "totalTokens": 15, "cost": {"total": 0.0001}},
             }},
         ]
-        f.write_text("\n".join(json.dumps(l) for l in lines))
+        f.write_text("\n".join(json.dumps(line) for line in lines))
         analysis = sp.parse_session(f, recursive_subagents=False)
         assert analysis.session_type == "cron"
 

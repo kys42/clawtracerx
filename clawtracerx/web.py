@@ -16,14 +16,19 @@ from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, Response, render_template, jsonify, request, abort, stream_with_context
+from flask import Flask, Response, abort, jsonify, render_template, request, stream_with_context
 
-from clawtracerx.session_parser import (
-    parse_session, list_sessions, load_cron_runs, load_subagent_runs,
-    load_heartbeat_configs, get_raw_turn_lines, KST, _ts_to_dt, _truncate,
-)
-from clawtracerx import session_parser as _sp
 from clawtracerx import gateway
+from clawtracerx import session_parser as _sp
+from clawtracerx.session_parser import (
+    KST,
+    _truncate,
+    get_raw_turn_lines,
+    list_sessions,
+    load_cron_runs,
+    load_heartbeat_configs,
+    parse_session,
+)
 
 
 def _get_base_path() -> str:
@@ -442,7 +447,7 @@ def create_app():
                 agent_id=agent if agent and agent != "all" else None,
                 limit=limit,
             )
-        except Exception as e:
+        except Exception:
             # Fallback to local file listing if gateway unavailable
             gw_sessions = []
 
@@ -571,16 +576,16 @@ def create_app():
                 except OSError:
                     idle_count += 1
                     if idle_count >= 600:  # 5 min timeout
-                        yield f"event: timeout\ndata: {{}}\n\n"
+                        yield "event: timeout\ndata: {}\n\n"
                         return
                     if idle_count % 30 == 0:
-                        yield f": heartbeat\n\n"
+                        yield ": heartbeat\n\n"
                     continue
 
                 if current_size == last_size:
                     idle_count += 1
                     if idle_count % 30 == 0:
-                        yield f": heartbeat\n\n"
+                        yield ": heartbeat\n\n"
                     continue
 
                 # File changed
@@ -607,7 +612,7 @@ def create_app():
                         # Check agent completion
                         last_turn = turns[-1]
                         if last_turn.get("stop_reason") == "stop":
-                            yield f"event: done\ndata: {{}}\n\n"
+                            yield "event: done\ndata: {}\n\n"
                             return
 
                     elif new_count == last_turn_count and turns:
@@ -616,7 +621,7 @@ def create_app():
                         yield f"id: {event_id}\nevent: patch\ndata: {json.dumps({'index': turns[-1]['index'], 'turn': turns[-1]})}\n\n"
 
                         if turns[-1].get("stop_reason") == "stop":
-                            yield f"event: done\ndata: {{}}\n\n"
+                            yield "event: done\ndata: {}\n\n"
                             return
 
                 except Exception as e:
