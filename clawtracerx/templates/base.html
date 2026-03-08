@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
   {% block head %}{% endblock %}
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="/static/i18n.js"></script>
 </head>
 <body>
@@ -98,9 +99,14 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="text-modal-title"></h3>
-        <button class="btn-close" onclick="closeTextModal()">&times;</button>
+        <div class="modal-toolbar">
+          <button id="text-modal-copy" class="modal-tool-btn" onclick="copyModalText()">Copy</button>
+          <button id="text-modal-toggle" class="modal-tool-btn" onclick="toggleModalMarkdown()">Raw</button>
+          <button class="btn-close" onclick="closeTextModal()">&times;</button>
+        </div>
       </div>
-      <pre id="text-modal-body" class="raw-json"></pre>
+      <div id="text-modal-md" class="md-body modal-scroll" style="display:none"></div>
+      <pre id="text-modal-pre" class="raw-json modal-scroll"></pre>
     </div>
   </div>
 

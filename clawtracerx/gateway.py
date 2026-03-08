@@ -12,19 +12,17 @@ Protocol (v3):
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import time
 from pathlib import Path
 from uuid import uuid4
 
 import websocket
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
-    load_pem_private_key,
-    load_pem_public_key,
     Encoding,
     PublicFormat,
+    load_pem_private_key,
+    load_pem_public_key,
 )
 
 OPENCLAW_CONFIG = Path.home() / ".openclaw" / "openclaw.json"

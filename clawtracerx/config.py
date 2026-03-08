@@ -35,8 +35,8 @@ def apply_paths(openclaw_dir: str = ""):
     if not openclaw_dir:
         return  # use defaults, no change
 
-    from clawtracerx import session_parser as sp
     from clawtracerx import gateway as gw
+    from clawtracerx import session_parser as sp
 
     base = Path(openclaw_dir)
     sp.OPENCLAW_DIR = base

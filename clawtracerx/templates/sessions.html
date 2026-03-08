@@ -219,7 +219,11 @@ async function loadSessions() {
         </div>
         <div class="sc-row3">
           <span class="sc-type" style="color:${tColor}">[${typeLabel(s.type)}]</span>
-          <span class="sc-msg">${msg ? escHtml(msg) : '<span class="sc-no-msg">' + _t('sessions.no_message') + '</span>'}</span>
+          <span class="sc-msg">${(() => {
+            const isAI = s.last_message_role === 'assistant';
+            if (msg) return isAI ? `<span class="sc-msg-ai">${escHtml(msg)}</span>` : escHtml(msg);
+            return `<span class="sc-no-msg">${_t('sessions.no_message')}</span>`;
+          })()}</span>
           <span class="sc-derived">${sizeStr}</span>
         </div>
       </div>

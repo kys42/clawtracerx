@@ -116,6 +116,8 @@ function toolIcon(name) {
 // === Text expansion modal (공통) ===
 window._textBuf = {};
 var _textBufIdx = 0;
+var _modalRawText = '';
+var _modalIsMarkdown = true;
 
 function _storeText(text) {
   var k = _textBufIdx++;
@@ -130,13 +132,70 @@ function makeShowFullBtn(label, title, text, threshold) {
     + escHtml(title) + '\',' + k + ')">' + escHtml(label) + '</button>';
 }
 
-function showTextModal(title, keyOrText) {
+async function showTextModal(title, keyOrText, opts) {
   var modal = document.getElementById('text-modal');
   if (!modal) return;
-  var text = typeof keyOrText === 'number' ? (window._textBuf[keyOrText] || '') : keyOrText;
+  opts = opts || {};
+
+  var text;
+  if (keyOrText && typeof keyOrText.then === 'function') {
+    _modalRawText = '';
+    _modalIsMarkdown = false;
+    document.getElementById('text-modal-title').textContent = title;
+    _refreshModalBody('Loading...');
+    modal.style.display = 'flex';
+    try {
+      var result = await keyOrText;
+      text = typeof result === 'string' ? result
+           : (result.content != null ? result.content : JSON.stringify(result, null, 2));
+    } catch(e) {
+      text = 'Error: ' + e.message;
+    }
+  } else {
+    text = typeof keyOrText === 'number'
+         ? (window._textBuf[keyOrText] || '')
+         : (keyOrText || '');
+  }
+
+  _modalRawText = text;
+  _modalIsMarkdown = (opts.markdown !== false);
   document.getElementById('text-modal-title').textContent = title;
-  document.getElementById('text-modal-body').textContent = text;
+  _refreshModalBody();
   modal.style.display = 'flex';
+}
+
+function _refreshModalBody(loading) {
+  var pre    = document.getElementById('text-modal-pre');
+  var mdDiv  = document.getElementById('text-modal-md');
+  var toggle = document.getElementById('text-modal-toggle');
+  var text   = loading != null ? loading : _modalRawText;
+
+  if (_modalIsMarkdown && !loading && typeof marked !== 'undefined') {
+    pre.style.display   = 'none';
+    mdDiv.style.display = 'block';
+    mdDiv.innerHTML = marked.parse(text);
+    if (toggle) toggle.textContent = 'Raw';
+  } else {
+    mdDiv.style.display = 'none';
+    pre.style.display   = 'block';
+    pre.textContent     = text;
+    if (toggle) toggle.textContent = loading ? '…' : 'Markdown';
+  }
+}
+
+function toggleModalMarkdown() {
+  _modalIsMarkdown = !_modalIsMarkdown;
+  _refreshModalBody();
+}
+
+function copyModalText() {
+  if (!_modalRawText) return;
+  var btn = document.getElementById('text-modal-copy');
+  navigator.clipboard.writeText(_modalRawText).then(function() {
+    if (btn) { btn.textContent = '✓ Copied'; setTimeout(function(){ btn.textContent = 'Copy'; }, 1500); }
+  }).catch(function() {
+    if (btn) btn.textContent = 'Copy';
+  });
 }
 
 function closeTextModal() {

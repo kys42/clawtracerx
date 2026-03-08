@@ -3,16 +3,20 @@ ClawTracerX CLI — Command-line interface for OpenClaw agent monitoring.
 """
 
 import json
-import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 from clawtracerx.session_parser import (
-    parse_session, list_sessions, load_cron_runs,
-    load_subagent_runs, get_raw_turn_lines,
-    load_session_metadata, _parse_session_context,
-    AGENTS_DIR, KST, _ts_to_dt, _truncate,
+    AGENTS_DIR,
+    KST,
+    _truncate,
+    _ts_to_dt,
+    get_raw_turn_lines,
+    list_sessions,
+    load_cron_runs,
+    load_subagent_runs,
+    parse_session,
 )
 
 # --- ANSI colors ---

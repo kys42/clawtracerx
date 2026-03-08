@@ -3,7 +3,6 @@ Tests for clawtracerx.gateway — pure helper functions.
 """
 from __future__ import annotations
 
-import pytest
 from clawtracerx.gateway import _base64url_encode, _build_device_auth_payload
 
 

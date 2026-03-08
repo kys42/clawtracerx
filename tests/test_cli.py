@@ -3,8 +3,7 @@ Tests for clawtracerx.cli — formatting helpers.
 """
 from __future__ import annotations
 
-import pytest
-from clawtracerx.cli import _fmt_duration, _fmt_cost, _fmt_tokens, _fmt_size, _icon
+from clawtracerx.cli import _fmt_cost, _fmt_duration, _fmt_size, _fmt_tokens, _icon
 
 
 class TestFmtDuration:

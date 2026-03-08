@@ -17,16 +17,6 @@
 
 <div id="turns-container"></div>
 
-<!-- Raw log modal -->
-<div id="raw-modal" class="modal" onclick="if(event.target===this)closeRawModal()">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3><span data-i18n="detail.raw_jsonl">Raw JSONL</span> — <span id="raw-title"></span></h3>
-      <button class="btn-close" onclick="closeRawModal()">&times;</button>
-    </div>
-    <pre id="raw-content" class="raw-json"></pre>
-  </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -259,25 +249,12 @@ function renderContextPanel(s) {
   </details>`;
 }
 
-async function showRaw(turnIndex) {
-  const modal = qs('#raw-modal');
-  qs('#raw-title').textContent = `Turn ${turnIndex}`;
-  qs('#raw-content').textContent = 'Loading...';
-  modal.style.display = 'flex';
-
-  try {
-    const data = await fetchJSON(`/api/session/${SESSION_ID}/raw/${turnIndex}`);
-    qs('#raw-content').textContent = JSON.stringify(data, null, 2);
-  } catch(e) {
-    qs('#raw-content').textContent = _t('detail.error') + ' ' + e.message;
-  }
+function showRaw(turnIndex) {
+  showTextModal(`Turn ${turnIndex} — Raw JSONL`,
+    fetchJSON(`/api/session/${SESSION_ID}/raw/${turnIndex}`).then(d => JSON.stringify(d, null, 2)),
+    { markdown: false }
+  );
 }
-
-function closeRawModal() {
-  qs('#raw-modal').style.display = 'none';
-}
-
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRawModal(); });
 
 // Context panel click handlers (file / skill preview)
 document.addEventListener('click', e => {
@@ -300,17 +277,8 @@ document.addEventListener('click', e => {
   }
 });
 
-async function openRawModal(title, fetchPromise) {
-  const modal = qs('#raw-modal');
-  qs('#raw-title').textContent = title;
-  qs('#raw-content').textContent = 'Loading...';
-  modal.style.display = 'flex';
-  try {
-    const data = await fetchPromise;
-    qs('#raw-content').textContent = data.content;
-  } catch(e) {
-    qs('#raw-content').textContent = `Error: ${e.message}`;
-  }
+function openRawModal(title, fetchPromise) {
+  showTextModal(title, fetchPromise.then(d => d.content != null ? d.content : JSON.stringify(d, null, 2)), { markdown: false });
 }
 
 function openFullContent(tcId, field) {

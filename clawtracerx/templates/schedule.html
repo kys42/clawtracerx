@@ -139,7 +139,9 @@ function renderCronJobs(jobs) {
     html += '<div class="cron-job-detail" id="detail-' + escHtml(job.id) + '" style="display:' + (isOpen ? 'block' : 'none') + '">';
 
     if (job.payload_message) {
-      html += '<div class="cron-payload">' + escHtml(job.payload_message) + '</div>';
+      const payloadPreview = truncate(job.payload_message, 300);
+      html += '<div class="cron-payload">' + escHtml(payloadPreview) + '</div>';
+      html += makeShowFullBtn(_t('turns.show_full'), job.name + ' payload', job.payload_message, 300);
     }
 
     if (job.wake_mode) {

@@ -1513,7 +1513,8 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
             model = ""
             session_type = "chat"
 
-            last_user_text = ""
+            last_preview = ""
+            last_preview_role = "user"
             tool_call_count = 0
             subagent_count = 0
             error_count = 0
@@ -1555,13 +1556,14 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                             for c in content:
                                 if isinstance(c, dict) and c.get("type") == "text":
                                     user_text += c.get("text", "")
-                        last_user_text = user_text
+                        last_preview = user_text
+                        last_preview_role = "user"
                         # 채널 메시지: raw metadata 대신 실제 메시지 텍스트로 대체
                         _src = _detect_source(user_text)
                         if _src in _BRACKET_CHANNEL_MAP or _src == "discord":
                             _cm = _parse_channel_message(user_text, _src)
                             if _cm and _cm.get("actual_text"):
-                                last_user_text = _cm["actual_text"]
+                                last_preview = _cm["actual_text"]
                         if user_count == 1:
                             src = _detect_source(user_text)
                             if src == "cron":
@@ -1579,6 +1581,16 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                         if ts and msg.get("model") != "delivery-mirror":
                             current_turn_last_ts = ts
                     if role == "assistant":
+                        if msg.get("model") != "delivery-mirror":
+                            content = msg.get("content", [])
+                            if isinstance(content, list):
+                                for c in content:
+                                    if isinstance(c, dict) and c.get("type") == "text":
+                                        text = c.get("text", "").strip()
+                                        if text:
+                                            last_preview = text
+                                            last_preview_role = "assistant"
+                                            break
                         if msg.get("model"):
                             model = msg["model"]
                         usage = msg.get("usage", {})
@@ -1612,7 +1624,8 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
             meta["turns"] = user_count
             meta["cost"] = total_cost
             meta["tokens"] = total_tokens
-            meta["last_message"] = last_user_text[:200] if last_user_text else ""
+            meta["last_message"] = last_preview[:200] if last_preview else ""
+            meta["last_message_role"] = last_preview_role
             meta["tool_calls"] = tool_call_count
             meta["subagents"] = subagent_count
             meta["errors"] = error_count
