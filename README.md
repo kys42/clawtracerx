@@ -17,6 +17,20 @@ ClawTracerX reads the JSONL transcripts that [OpenClaw](https://github.com/kys42
 
 ---
 
+## Screenshots
+
+| Home (overview) | Sessions |
+|---|---|
+| ![Home](docs/screenshots/home.png) | ![Sessions](docs/screenshots/sessions.png) |
+
+| Cost dashboard |
+|---|
+| ![Cost dashboard](docs/screenshots/cost.png) |
+
+> Next to add (best for README): **Session detail** (tools + subagent tree), **Graph**, **Schedule/Cron**, **Settings**.
+
+---
+
 ## Requirements
 
 - [OpenClaw](https://github.com/kys42/openclaw) installed and configured (`~/.openclaw/`)
