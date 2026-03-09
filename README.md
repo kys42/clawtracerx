@@ -1,5 +1,11 @@
 # ClawTracerX
 
+<p align="center">
+  <img src="docs/assets/mascot-skeleton.png" width="96" alt="ClawTracerX skeleton mascot" />
+</p>
+
+> **Mascot credit / license**: Skeleton mascot artwork was provided out-of-band (Telegram). Attribution and license terms are **TBD** — please share the required credit text (or confirm that no attribution is required), and we will update this note.
+
 **OpenClaw agent session monitor** — visualizes what happens inside AI agent runs: tool calls, subagents, token usage, cost, and timing.
 
 ---
