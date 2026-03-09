@@ -1,7 +1,7 @@
 # ClawTracerX
 
 <p align="center">
-  <img src="docs/assets/mascot-skeleton-128.jpg" width="96" alt="ClawTracerX skeleton mascot" />
+  <img src="docs/assets/mascot-skeleton.png" width="96" alt="ClawTracerX skeleton mascot" />
 </p>
 
 **OpenClaw agent session monitor** — visualizes what happens inside AI agent runs: tool calls, subagents, token usage, cost, and timing.
