@@ -595,7 +595,7 @@
         "375px 뷰포트에서 detail 검색바가 넘치지 않음",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-027",

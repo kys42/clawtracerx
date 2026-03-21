@@ -2723,6 +2723,11 @@ body {
   }
 }
 
+.lab-session-select { min-width: 300px; }
+@media (max-width: 768px) {
+  .lab-session-select { min-width: 0; width: 100%; }
+}
+
 /* === Health dots (sidebar) === */
 .health-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .health-dot.ok { background: var(--success); }

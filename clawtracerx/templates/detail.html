@@ -29,7 +29,7 @@
   <input type="text" class="input-search" id="turn-search"
          :placeholder="_t('detail.search_placeholder')"
          data-i18n-placeholder="detail.search_placeholder"
-         @input="debouncedFilterTurns()" style="flex:1;min-width:200px">
+         @input="debouncedFilterTurns()" style="flex:1">
   <select class="input-select" id="tool-filter" @change="filterTurns()">
     <option value="" data-i18n="detail.filter_all_tools">All tools</option>
   </select>

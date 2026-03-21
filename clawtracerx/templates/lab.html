@@ -20,7 +20,7 @@
     <select class="input-select" id="agent-select" onchange="loadGatewaySessions()">
       <option value="all" data-i18n="lab.all_agents">All Agents</option>
     </select>
-    <select class="input-select" id="session-select" onchange="selectSession()" style="min-width:300px">
+    <select class="input-select lab-session-select" id="session-select" onchange="selectSession()">
       <option value="" data-i18n="lab.select_session">Select session...</option>
     </select>
     <button class="btn btn-outline btn-sm" onclick="startNewSession()" data-i18n="lab.new" data-i18n-title="lab.new_title" title="New session">+ New</button>
