@@ -959,7 +959,7 @@
         "showToast() 호출 시 토스트가 화면에 표시됨",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-045",
@@ -985,7 +985,7 @@
         "비용 차트 바 클릭 → 해당 에이전트 세션 목록으로 이동",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-046",

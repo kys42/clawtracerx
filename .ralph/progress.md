@@ -305,6 +305,19 @@
 ## Loop 24 — US-047: API 요청 파라미터 유효성 검증
 
 **작업 내용:**
+- `_int_param()` 안전 헬퍼 추가 — int() 변환 실패 시 기본값 반환 (6곳 적용)
+- POST 엔드포인트 4곳: `get_json(force=True)` → `get_json(silent=True)` + None 체크 → 400
+- US-044, US-045 (QA 중복 스토리) passes: true로 마킹
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- Flask의 `get_json(force=True)`는 Content-Type 무시하고 파싱하지만 잘못된 JSON에서 예외 발생 — `silent=True`가 안전
+- 쿼리 파라미터는 항상 문자열 — int() 직접 변환은 위험
+
+## Loop 24 — US-047: API 요청 파라미터 유효성 검증
+
+**작업 내용:**
 - `_int_param()` 안전 헬퍼 함수 추가 — ValueError/TypeError 시 기본값 반환
 - 6개 엔드포인트의 `int(request.args.get(...))` → `_int_param(...)` 교체
 - 4개 POST 엔드포인트의 `get_json(force=True)` → `get_json(silent=True)` + None 체크 → 400 반환
