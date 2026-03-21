@@ -120,7 +120,7 @@
         "네트워크 끊김 시 자동 재연결",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-006",

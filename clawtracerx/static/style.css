@@ -274,6 +274,25 @@ body {
   color: var(--text-0) !important;
 }
 
+/* Live streaming indicator */
+.btn-live-active {
+  border-color: var(--success) !important;
+  color: var(--success) !important;
+}
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  margin-right: 4px;
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
 .btn {
   padding: 7px 14px;
   border-radius: var(--radius-sm);

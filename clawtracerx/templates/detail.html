@@ -13,6 +13,10 @@
     <button class="btn btn-outline btn-sm" id="sort-btn" @click="toggleSort()"
             x-text="sortNewest ? _t('detail.sort_newest') : _t('detail.sort_oldest')">Newest first</button>
     <button class="btn btn-outline btn-sm" @click="exportJSON()" data-i18n="detail.export_json">Export JSON</button>
+    <button class="btn btn-outline btn-sm" :class="{ 'btn-live-active': liveActive }" @click="toggleLive()" id="live-btn">
+      <span class="live-dot" x-show="liveActive"></span>
+      <span x-text="liveLabel">Live</span>
+    </button>
     <a href="/session/{{ session_id }}/graph" class="btn btn-outline" id="graph-btn" data-i18n="detail.graph">Graph View</a>
   </div>
 </div>
@@ -59,6 +63,10 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('detailPage', () => ({
     sortNewest: true,
     loaded: false,
+    liveActive: false,
+    liveLabel: 'Live',
+    _evtSource: null,
+    _reconnectCount: 0,
 
     async init() {
       await loadSession();
@@ -116,6 +124,89 @@ document.addEventListener('alpine:init', () => {
       a.download = SESSION_ID.slice(0, 10) + '.json';
       a.click();
       URL.revokeObjectURL(a.href);
+    },
+
+    toggleLive() {
+      if (this.liveActive) {
+        this._closeLive();
+      } else {
+        this._startLive();
+      }
+    },
+
+    _startLive() {
+      const self = this;
+      self.liveActive = true;
+      self.liveLabel = 'Live';
+      self._reconnectCount = 0;
+
+      const es = new EventSource(`/api/session/${SESSION_ID}/stream`);
+      self._evtSource = es;
+
+      es.addEventListener('init', function() {
+        // Already loaded — just confirm connection
+      });
+
+      es.addEventListener('update', function(e) {
+        const data = JSON.parse(e.data);
+        if (data.new_turns && data.new_turns.length && sessionData) {
+          sessionData.turns.push(...data.new_turns);
+          // Append new turn cards
+          const container = qs('#turns-container');
+          data.new_turns.forEach(function(t) {
+            const div = document.createElement('div');
+            div.innerHTML = renderSingleTurn(t);
+            while (div.firstChild) container.appendChild(div.firstChild);
+          });
+          _autoScroll();
+        }
+      });
+
+      es.addEventListener('patch', function(e) {
+        const data = JSON.parse(e.data);
+        if (data.turn && sessionData) {
+          // Replace last turn in data
+          const idx = sessionData.turns.findIndex(function(t) { return t.index === data.index; });
+          if (idx >= 0) sessionData.turns[idx] = data.turn;
+          // Re-render last turn card
+          const cards = qsa('#turns-container > .turn-card');
+          const lastCard = cards[cards.length - 1];
+          if (lastCard) {
+            const div = document.createElement('div');
+            div.innerHTML = renderSingleTurn(data.turn);
+            lastCard.replaceWith(div.firstElementChild || div);
+          }
+          _autoScroll();
+        }
+      });
+
+      es.addEventListener('done', function() {
+        self.liveLabel = 'Complete';
+        self._closeLive();
+      });
+
+      es.addEventListener('error', function() {
+        if (self._reconnectCount < 5) {
+          self._reconnectCount++;
+          // EventSource auto-reconnects
+        } else {
+          self._closeLive();
+          self.liveLabel = 'Live';
+        }
+      });
+
+      es.addEventListener('timeout', function() {
+        self._closeLive();
+        self.liveLabel = 'Live';
+      });
+    },
+
+    _closeLive() {
+      if (this._evtSource) {
+        this._evtSource.close();
+        this._evtSource = null;
+      }
+      this.liveActive = false;
     },
 
     toggleSort() {
@@ -396,6 +487,19 @@ function collapseAllTurns() {
   qsa('.turn-body:not(.collapsed)').forEach(el => el.classList.add('collapsed'));
   qsa('.workflow-body:not(.collapsed)').forEach(el => el.classList.add('collapsed'));
   qsa('.subagent-body:not(.collapsed)').forEach(el => el.classList.add('collapsed'));
+}
+
+/* Render a single turn card for live append */
+function renderSingleTurn(t) {
+  return renderTurn(t, 0);
+}
+
+/* Auto-scroll if user is near bottom */
+function _autoScroll() {
+  const el = document.scrollingElement || document.documentElement;
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 150) {
+    window.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }
 }
 
 /* loadSession is called from Alpine init */

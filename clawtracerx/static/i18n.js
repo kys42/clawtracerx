@@ -138,6 +138,8 @@
       'detail.matches': '개 일치',
       'detail.clear_filter': '초기화',
       'detail.export_json': 'JSON 내보내기',
+      'detail.live': '실시간',
+      'detail.live_complete': '완료',
 
       // === Cost 페이지 ===
       'cost.title': '비용 대시보드',
@@ -487,6 +489,8 @@
       'detail.matches': ' matches',
       'detail.clear_filter': 'Clear',
       'detail.export_json': 'Export JSON',
+      'detail.live': 'Live',
+      'detail.live_complete': 'Complete',
 
       // === Cost ===
       'cost.title': 'Cost Dashboard',

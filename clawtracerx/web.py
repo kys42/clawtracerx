@@ -338,6 +338,89 @@ def create_app():
             headers={"Content-Disposition": f"attachment; filename={session_id[:10]}.json"},
         )
 
+    @app.route("/api/session/<session_id>/stream")
+    def api_session_stream(session_id):
+        """SSE stream for real-time session detail monitoring."""
+        file_path = _resolve(session_id)
+        if not file_path:
+            return jsonify({"error": "session not found"}), 404
+
+        def generate():
+            last_size = 0
+            last_turn_count = 0
+            event_id = 0
+            idle_count = 0
+
+            # Initial state — just send turn count so client knows baseline
+            try:
+                analysis = parse_session(file_path, recursive_subagents=True)
+                data = _serialize_analysis(analysis)
+                last_size = file_path.stat().st_size
+                last_turn_count = len(data.get("turns", []))
+                event_id += 1
+                yield f"id: {event_id}\nevent: init\ndata: {json.dumps({'turn_count': last_turn_count})}\n\n"
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+                return
+
+            while True:
+                time.sleep(0.5)
+                try:
+                    current_size = file_path.stat().st_size
+                except OSError:
+                    idle_count += 1
+                    if idle_count >= 600:
+                        yield "event: timeout\ndata: {}\n\n"
+                        return
+                    if idle_count % 30 == 0:
+                        yield ": heartbeat\n\n"
+                    continue
+
+                if current_size == last_size:
+                    idle_count += 1
+                    if idle_count % 30 == 0:
+                        yield ": heartbeat\n\n"
+                    continue
+
+                idle_count = 0
+                last_size = current_size
+
+                try:
+                    analysis = parse_session(file_path, recursive_subagents=True)
+                    data = _serialize_analysis(analysis)
+                    turns = data.get("turns", [])
+                    new_count = len(turns)
+
+                    if new_count > last_turn_count:
+                        delta = {
+                            "new_turns": turns[last_turn_count:],
+                            "total_turns": new_count,
+                        }
+                        last_turn_count = new_count
+                        event_id += 1
+                        yield f"id: {event_id}\nevent: update\ndata: {json.dumps(delta)}\n\n"
+                        if turns[-1].get("stop_reason") == "stop":
+                            yield "event: done\ndata: {}\n\n"
+                            return
+                    elif new_count == last_turn_count and turns:
+                        event_id += 1
+                        yield f"id: {event_id}\nevent: patch\ndata: {json.dumps({'index': turns[-1]['index'], 'turn': turns[-1]})}\n\n"
+                        if turns[-1].get("stop_reason") == "stop":
+                            yield "event: done\ndata: {}\n\n"
+                            return
+                except Exception as e:
+                    yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+        return Response(
+            stream_with_context(generate()),
+            content_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     @app.route("/api/cost")
     def api_cost():
         period = request.args.get("period", "week")
