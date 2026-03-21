@@ -1111,6 +1111,24 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-053",
+      "title": "schedule.html + settings.html DOM null safety",
+      "category": "bugfix",
+      "priority": 53,
+      "description": "schedule.html의 renderSummary/renderHeartbeats/renderCronJobs와 settings.html의 toggleConfig()에서 getElementById() 결과에 null 체크 없이 접근하여 DOM 요소 누락 시 크래시.",
+      "steps": [
+        "schedule.html: renderSummary/renderHeartbeats/renderCronJobs에 null 가드 추가",
+        "schedule.html: catch 블록의 getElementById도 null 체크",
+        "settings.html: toggleConfig() 내 config-content/config-path null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }

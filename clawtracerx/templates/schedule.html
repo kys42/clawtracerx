@@ -108,6 +108,7 @@ function renderActiveHoursBar(activeHours) {
 
 function renderSummary(summary, jobs) {
   const el = document.getElementById('sched-summary');
+  if (!el) return;
   let nearestNext = null;
   for (const j of jobs) {
     if (j.enabled && j.next_run_at_ms) {
@@ -140,6 +141,7 @@ function renderSummary(summary, jobs) {
 
 function renderHeartbeats(heartbeats) {
   const el = document.getElementById('heartbeats');
+  if (!el) return;
   if (!heartbeats.length) {
     el.innerHTML = '<div style="color:var(--text-3);padding:20px">' + _t('schedule.no_heartbeat') + '</div>';
     return;
@@ -187,6 +189,7 @@ function renderHeartbeats(heartbeats) {
 
 function renderCronJobs(jobs) {
   const el = document.getElementById('cron-jobs');
+  if (!el) return;
   if (!jobs.length) {
     el.innerHTML = '<div style="color:var(--text-3);padding:20px">' + _t('schedule.no_jobs') + '</div>';
     return;
@@ -310,7 +313,8 @@ document.addEventListener('alpine:init', () => {
         this.loaded = true;
       } catch (e) {
         console.error('Schedule load error:', e);
-        document.getElementById('cron-jobs').innerHTML =
+        var errEl = document.getElementById('cron-jobs');
+        if (errEl) errEl.innerHTML =
           '<div style="color:var(--error);padding:20px">' + _t('schedule.load_failed') + ' ' + escHtml(e.message) + '</div>';
       } finally {
         this.loading = false;

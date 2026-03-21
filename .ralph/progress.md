@@ -376,3 +376,11 @@
 - rpc_call(): 응답 json.loads 실패 시 continue로 건너뜀
 
 **결과:** ruff 통과, pytest 160 tests 전부 통과
+
+## Loop 30 — US-053: schedule.html + settings.html DOM null safety
+
+**작업 내용:**
+- schedule.html: renderSummary/renderHeartbeats/renderCronJobs + catch 블록에 null 가드 추가 (4곳)
+- settings.html: toggleConfig() 내 config-content/config-path 요소 null 체크
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과

@@ -206,16 +206,18 @@ document.addEventListener('alpine:init', () => {
     async toggleConfig() {
       this.showConfig = !this.showConfig;
       if (this.showConfig && !this.configLoaded) {
-        document.getElementById('config-content').textContent = _t('settings.loading');
+        var cfgEl = document.getElementById('config-content');
+        var pathEl = document.getElementById('config-path');
+        if (cfgEl) cfgEl.textContent = _t('settings.loading');
         try {
           const res = await fetchJSON('/api/openclaw-config');
-          document.getElementById('config-path').textContent = res.path || '';
-          document.getElementById('config-content').textContent = res.ok
+          if (pathEl) pathEl.textContent = res.path || '';
+          if (cfgEl) cfgEl.textContent = res.ok
             ? JSON.stringify(res.config, null, 2)
             : (_t('settings.error') + ' ' + (res.error || ''));
           this.configLoaded = true;
         } catch(e) {
-          document.getElementById('config-content').textContent = _t('settings.error') + ' ' + e.message;
+          if (cfgEl) cfgEl.textContent = _t('settings.error') + ' ' + e.message;
         }
       }
     },
