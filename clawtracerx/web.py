@@ -8,6 +8,7 @@ import glob as _glob
 import io
 import json
 import logging
+import logging.handlers
 import os
 import re
 import shutil
@@ -125,7 +126,9 @@ def _build_tool_desc_map() -> dict:
 _lab_log_file = Path(_get_base_path()).parent / "lab.log"
 _lab_logger = logging.getLogger("ctrace.lab")
 _lab_logger.setLevel(logging.INFO)
-_lab_handler = logging.FileHandler(_lab_log_file, encoding="utf-8")
+_lab_handler = logging.handlers.RotatingFileHandler(
+    _lab_log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
 _lab_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
 _lab_logger.addHandler(_lab_handler)
 

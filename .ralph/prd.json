@@ -694,6 +694,24 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-032",
+      "title": "Lab 로그 파일 RotatingFileHandler로 디스크 성장 제한",
+      "category": "bugfix",
+      "priority": 32,
+      "description": "web.py의 lab.log가 FileHandler를 사용하여 무제한 성장. 장기 운영 시 디스크 공간 소진 위험. RotatingFileHandler(5MB, 3백업)로 교체.",
+      "steps": [
+        "import logging.handlers 추가",
+        "FileHandler → RotatingFileHandler(maxBytes=5MB, backupCount=3) 변경",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "lab.log가 5MB 초과 시 자동 로테이션",
+        "최대 3개 백업 파일 유지",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }

@@ -130,3 +130,16 @@
 **배운 점:**
 - Python 3.9의 `open()` 기본 인코딩은 시스템 로케일에 따라 다름 — macOS는 UTF-8이지만 명시적으로 지정하는 것이 안전
 - `errors="replace"`는 데이터 무결성을 약간 희생하지만 파서 안정성을 크게 높임
+
+## Loop 13 — US-032: Lab 로그 파일 RotatingFileHandler로 디스크 성장 제한
+
+**작업 내용:**
+- `web.py`에 `import logging.handlers` 추가
+- `FileHandler` → `RotatingFileHandler(maxBytes=5*1024*1024, backupCount=3)` 교체
+- lab.log가 5MB 초과 시 자동 로테이션, 최대 3개 백업 유지 (lab.log.1, .2, .3)
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- `logging.handlers`는 `import logging`만으로는 사용 불가 — 별도 `import logging.handlers` 필요
+- RotatingFileHandler는 스레드 안전함 — 기존 _lab_log_lock과 별도의 잠금 불필요
