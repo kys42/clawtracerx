@@ -482,6 +482,31 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-022",
+      "title": "iterdir() OSError 방어 일괄 적용 — 크래시 방지",
+      "category": "bugfix",
+      "priority": 22,
+      "description": "session_parser.py의 _find_child_session_by_id(line 1248), _find_child_session_by_label(line 1285), line 436, line 1531과 web.py의 _resolve(line 1127), api_agents(line 568), api_health(line 992,995), cli.py(line 517)에서 AGENTS_DIR.iterdir()가 try-except OSError 없이 호출됨. 같은 파일의 line 313-314는 이미 방어 처리됨. 디렉토리 삭제/권한 변경 시 전체 애플리케이션 크래시. 모든 미방어 iterdir() 호출에 try-except OSError 래핑.",
+      "steps": [
+        "session_parser.py _find_child_session_by_id(): line 1248 AGENTS_DIR.iterdir() try-except OSError 래핑",
+        "session_parser.py _find_child_session_by_label(): line 1285 동일 처리",
+        "session_parser.py line 436 parent.iterdir() try-except OSError 래핑",
+        "session_parser.py line 1531 AGENTS_DIR.iterdir() try-except OSError 래핑",
+        "web.py _resolve(): line 1127 try-except OSError 래핑 → return None",
+        "web.py api_agents(): line 568 try-except OSError 래핑",
+        "web.py api_health(): line 992-995 try-except OSError 래핑",
+        "cli.py line 517 AGENTS_DIR.iterdir() try-except OSError 래핑",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 iterdir() 호출이 try-except OSError로 래핑됨",
+        "AGENTS_DIR 접근 불가 시 크래시 대신 빈 결과/None 반환",
+        "기존 160 테스트 전부 통과",
+        "ruff 통과"
+      ],
+      "passes": true
     }
   ]
 }

@@ -433,7 +433,11 @@ def _resolve_child_from_transcript(spawn, transcript: str):
     parent = tp.parent
     stem = tp.name  # e.g. "uuid.jsonl"
     if parent.exists():
-        for f in parent.iterdir():
+        try:
+            deleted_candidates = list(parent.iterdir())
+        except OSError:
+            deleted_candidates = []
+        for f in deleted_candidates:
             if f.name.startswith(stem) and ".deleted." in f.name:
                 child_analysis = parse_session(f, recursive_subagents=True)
                 spawn.child_turns = child_analysis.turns
@@ -1245,14 +1249,19 @@ def _find_child_session_by_id(session_id: str, agent_id: str) -> Optional[Path]:
     agent_dir = AGENTS_DIR / agent_id
     if agent_dir.exists():
         search_dirs.append(agent_dir / "sessions")
-    for d in AGENTS_DIR.iterdir():
-        if d.is_dir() and d.name != agent_id:
-            search_dirs.append(d / "sessions")
+    try:
+        for d in AGENTS_DIR.iterdir():
+            if d.is_dir() and d.name != agent_id:
+                search_dirs.append(d / "sessions")
+    except OSError:
+        pass
 
     for sessions_dir in search_dirs:
-        if not sessions_dir.exists():
+        try:
+            entries = list(sessions_dir.iterdir())
+        except OSError:
             continue
-        for f in sessions_dir.iterdir():
+        for f in entries:
             if f.name.startswith(session_id):
                 if f.suffix == ".jsonl" or ".jsonl.deleted." in f.name:
                     return f
@@ -1282,15 +1291,20 @@ def _find_child_session_by_label(label: str, spawn_label: str, agent_id: str,
     agent_dir = AGENTS_DIR / agent_id
     if agent_dir.exists():
         search_dirs.append(agent_dir / "sessions")
-    for d in AGENTS_DIR.iterdir():
-        if d.is_dir() and d.name != agent_id:
-            search_dirs.append(d / "sessions")
+    try:
+        for d in AGENTS_DIR.iterdir():
+            if d.is_dir() and d.name != agent_id:
+                search_dirs.append(d / "sessions")
+    except OSError:
+        pass
 
     candidates = []
     for sessions_dir in search_dirs:
-        if not sessions_dir.exists():
+        try:
+            entries = list(sessions_dir.iterdir())
+        except OSError:
             continue
-        for f in sessions_dir.iterdir():
+        for f in entries:
             if not (f.suffix == ".jsonl" or ".jsonl.deleted." in f.name):
                 continue
             try:
@@ -1528,7 +1542,10 @@ def list_sessions(agent_id: Optional[str] = None, last_n: int = 20,
             agents = [agent_dir]
     else:
         if AGENTS_DIR.exists():
-            agents = [d for d in AGENTS_DIR.iterdir() if d.is_dir()]
+            try:
+                agents = [d for d in AGENTS_DIR.iterdir() if d.is_dir()]
+            except OSError:
+                agents = []
 
     for agent_dir in agents:
         aid = agent_dir.name

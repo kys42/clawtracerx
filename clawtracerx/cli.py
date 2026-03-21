@@ -514,7 +514,11 @@ def _resolve_session(ref: str) -> Optional[Path]:
         return None
 
     # Try UUID prefix search across all agents
-    for agent_dir in AGENTS_DIR.iterdir():
+    try:
+        agent_dirs = list(AGENTS_DIR.iterdir())
+    except OSError:
+        return None
+    for agent_dir in agent_dirs:
         if not agent_dir.is_dir():
             continue
         sessions_dir = agent_dir / "sessions"

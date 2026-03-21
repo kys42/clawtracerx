@@ -565,7 +565,11 @@ def create_app():
     def api_agents():
         agents = []
         if _sp.AGENTS_DIR.exists():
-            for d in sorted(_sp.AGENTS_DIR.iterdir()):
+            try:
+                dirs = sorted(_sp.AGENTS_DIR.iterdir())
+            except OSError:
+                dirs = []
+            for d in dirs:
                 if d.is_dir():
                     sessions_dir = d / "sessions"
                     count = len(list(sessions_dir.glob("*.jsonl"))) if sessions_dir.exists() else 0
@@ -989,11 +993,15 @@ def create_app():
         # 3. Agents directory
         agents_dir = _sp.AGENTS_DIR
         if agents_dir.exists():
-            agent_count = sum(1 for d in agents_dir.iterdir() if d.is_dir())
+            try:
+                agent_dirs = [d for d in agents_dir.iterdir() if d.is_dir()]
+            except OSError:
+                agent_dirs = []
+            agent_count = len(agent_dirs)
             session_count = sum(
                 sum(1 for _ in (d / "sessions").glob("*.jsonl"))
-                for d in agents_dir.iterdir()
-                if d.is_dir() and (d / "sessions").exists()
+                for d in agent_dirs
+                if (d / "sessions").exists()
             )
             checks["agents"] = {"ok": True, "agents": agent_count, "sessions": session_count}
         else:
@@ -1124,7 +1132,11 @@ def _resolve(session_id: str):
     Searches for both active .jsonl files and soft-deleted
     .jsonl.deleted.{timestamp} files.
     """
-    for agent_dir in _sp.AGENTS_DIR.iterdir():
+    try:
+        agent_dirs = list(_sp.AGENTS_DIR.iterdir())
+    except OSError:
+        return None
+    for agent_dir in agent_dirs:
         if not agent_dir.is_dir():
             continue
         sessions_dir = agent_dir / "sessions"
@@ -1134,9 +1146,12 @@ def _resolve(session_id: str):
         for f in sessions_dir.glob(f"{session_id}*.jsonl"):
             return f
         # Try .deleted.* variants
-        for f in sessions_dir.iterdir():
-            if f.name.startswith(session_id) and ".jsonl.deleted." in f.name:
-                return f
+        try:
+            for f in sessions_dir.iterdir():
+                if f.name.startswith(session_id) and ".jsonl.deleted." in f.name:
+                    return f
+        except OSError:
+            continue
     return None
 
 
