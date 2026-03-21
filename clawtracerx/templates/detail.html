@@ -174,6 +174,7 @@ document.addEventListener('alpine:init', () => {
 
       es.addEventListener('init', function() {
         self.liveLabel = 'Live';
+        self._reconnectCount = 0;
       });
 
       es.addEventListener('update', function(e) {
@@ -217,13 +218,18 @@ document.addEventListener('alpine:init', () => {
       });
 
       es.addEventListener('error', function() {
-        if (self._reconnectCount < 5) {
-          self._reconnectCount++;
-          // EventSource auto-reconnects
-        } else {
-          self._closeLive();
-          self.liveLabel = 'Live';
+        if (es.readyState === EventSource.CLOSED) {
+          if (self._reconnectCount < 5) {
+            var delay = Math.pow(2, self._reconnectCount) * 1000;
+            self._reconnectCount++;
+            self.liveLabel = 'Reconnecting...';
+            self._reconnectTimer = setTimeout(function() { self._startLive(); }, delay);
+          } else {
+            self._closeLive();
+            self.liveLabel = 'Live';
+          }
         }
+        // CONNECTING: browser auto-reconnects
       });
 
       es.addEventListener('timeout', function() {
@@ -233,11 +239,13 @@ document.addEventListener('alpine:init', () => {
     },
 
     _closeLive() {
+      if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
       if (this._evtSource) {
         this._evtSource.close();
         this._evtSource = null;
       }
       this.liveActive = false;
+      this._reconnectCount = 0;
     },
 
     toggleSort() {

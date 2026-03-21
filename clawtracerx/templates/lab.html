@@ -136,6 +136,9 @@ let currentSessionId = null;   // JSONL file UUID — for streaming/viewing
 let currentSessionKey = null;  // gateway routing key — for sending
 let currentAgentId = 'main';
 let eventSource = null;        // SSE connection
+let sseReconnectCount = 0;
+const SSE_MAX_RECONNECT = 5;
+let sseReconnectTimer = null;
 let lastTurnCount = 0;
 let isSending = false;
 let isMac = false;
@@ -528,6 +531,7 @@ function startStream() {
   eventSource.addEventListener('init', function(e) {
     const data = JSON.parse(e.data);
     console.log('[SSE] init:', data.turns?.length, 'turns');
+    sseReconnectCount = 0; // Reset on successful connection
     removePendingMessage();
     if (data.turns && data.turns.length > 0) {
       qs('#timeline-empty').style.display = 'none';
@@ -586,22 +590,36 @@ function startStream() {
     autoExpandLatestTurn();
   });
 
-  // Error / reconnect
+  // Error / reconnect with exponential backoff
   eventSource.addEventListener('error', function() {
     console.warn('[SSE] error, readyState:', eventSource.readyState);
     if (eventSource.readyState === EventSource.CLOSED) {
-      setStatus('idle');
+      if (sseReconnectCount < SSE_MAX_RECONNECT) {
+        var delay = Math.pow(2, sseReconnectCount) * 1000; // 1s, 2s, 4s, 8s, 16s
+        sseReconnectCount++;
+        console.log('[SSE] reconnecting in', delay, 'ms (attempt', sseReconnectCount + ')');
+        setStatus('connecting');
+        sseReconnectTimer = setTimeout(function() { startStream(); }, delay);
+      } else {
+        setStatus('idle');
+        showToast(_t('lab.connection_lost') || 'Connection lost. Click to reconnect.', 'error');
+        sseReconnectCount = 0;
+      }
     }
+    // CONNECTING state: browser auto-reconnects, just wait
   });
 
   // Server timeout
   eventSource.addEventListener('timeout', function() {
     console.log('[SSE] timeout');
     setStatus('idle');
+    sseReconnectCount = 0;
   });
 }
 
 function stopStream() {
+  if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
+  sseReconnectCount = 0;
   if (eventSource) {
     eventSource.close();
     eventSource = null;

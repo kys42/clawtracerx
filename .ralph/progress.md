@@ -228,3 +228,19 @@
 **배운 점:**
 - div onclick 패턴은 키보드/스크린리더에서 완전히 무시됨 — tabindex+role+keydown 필수
 - 모달 포커스 트랩은 querySelectorAll('button, [href], ...')로 focusable 요소 목록 수집 필요
+
+## Loop 19 — US-039: Lab SSE 재연결 + 상태 표시 개선
+
+**작업 내용:**
+- Lab SSE: readyState CLOSED 시 exponential backoff 재연결 (1s, 2s, 4s, 8s, 16s), 최대 5회
+- 최대 재시도 초과 시 showToast로 사용자 알림
+- init 이벤트 수신 시 reconnectCount 리셋
+- stopStream()에서 reconnect 타이머 정리
+- detail.html Live SSE에도 동일 패턴 적용 (readyState 체크 + backoff + 타이머 정리)
+- i18n에 `lab.connection_lost` 키 추가 (ko/en)
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- EventSource error 이벤트는 readyState로 구분: CONNECTING=transient(브라우저 자동 재연결), CLOSED=permanent(수동 재연결 필요)
+- clearTimeout으로 pending reconnect 정리 안 하면 stopStream 후에도 자동 재연결 발생

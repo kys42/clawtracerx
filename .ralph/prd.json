@@ -859,7 +859,7 @@
         "최대 재시도 후 사용자에게 명확한 알림",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-040",
