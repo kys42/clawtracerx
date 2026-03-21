@@ -201,7 +201,7 @@ function renderTurn(t, animIdx) {
         <span class="stat-chip tokens">${fmtTokens(t.usage.totalTokens || 0)}</span>
         ${(t.cache_hit_rate > 0) ? `<span class="stat-chip cache">${Math.round(t.cache_hit_rate * 100)}% ${_t('turns.cache')}</span>` : ''}
         ${t.thinking_level ? `<span class="stat-chip thinking">💭 ${t.thinking_level}</span>` : ''}
-        ${typeof showRaw === 'function' ? `<button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" data-i18n-title="turns.view_raw" title="${_t('turns.view_raw')}">{ }</button>` : ''}
+        ${typeof showRaw === 'function' ? `<button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" data-i18n-title="turns.view_raw" title="${_t('turns.view_raw')}" aria-label="${_t('turns.view_raw')}">{ }</button>` : ''}
       </div>
     </div>
     <div class="turn-body collapsed" id="turn-body-${t.index}">

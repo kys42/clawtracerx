@@ -44,7 +44,7 @@
         "Expand All/Collapse All 동작",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-003",

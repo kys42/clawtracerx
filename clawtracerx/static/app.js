@@ -18,8 +18,46 @@ async function fetchJSONSafe(url, fallback) {
     return await fetchJSON(url);
   } catch (e) {
     console.error('Fetch error:', e);
+    showErrorBanner(e.message, function() { return fetchJSONSafe(url, fallback); });
     return fallback !== undefined ? fallback : [];
   }
+}
+
+/** Show a dismissible error banner at the top of the content area. */
+function showErrorBanner(message, retryFn) {
+  var existing = document.getElementById('error-banner');
+  if (existing) existing.remove();
+
+  var banner = document.createElement('div');
+  banner.id = 'error-banner';
+  banner.className = 'error-banner';
+  banner.setAttribute('role', 'alert');
+
+  var msg = document.createElement('span');
+  msg.className = 'error-banner-msg';
+  msg.textContent = message || 'An error occurred';
+  banner.appendChild(msg);
+
+  if (retryFn) {
+    var retryBtn = document.createElement('button');
+    retryBtn.className = 'btn btn-sm btn-outline error-banner-retry';
+    retryBtn.textContent = 'Retry';
+    retryBtn.onclick = function() {
+      banner.remove();
+      retryFn();
+    };
+    banner.appendChild(retryBtn);
+  }
+
+  var dismissBtn = document.createElement('button');
+  dismissBtn.className = 'btn-close error-banner-dismiss';
+  dismissBtn.innerHTML = '&times;';
+  dismissBtn.setAttribute('aria-label', 'Dismiss error');
+  dismissBtn.onclick = function() { banner.remove(); };
+  banner.appendChild(dismissBtn);
+
+  var content = document.querySelector('.content');
+  if (content) content.insertBefore(banner, content.firstChild);
 }
 
 function fmtTokens(n) {

@@ -15,7 +15,13 @@
   <script src="/static/i18n.js"></script>
 </head>
 <body>
-  <nav class="sidebar">
+  <button class="hamburger" id="hamburger-btn" aria-label="Toggle navigation" onclick="document.body.classList.toggle('sidebar-open')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+    </svg>
+  </button>
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="document.body.classList.remove('sidebar-open')"></div>
+  <nav class="sidebar" id="sidebar">
     <div class="sidebar-brand">
       <div class="brand-logo">
         <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -105,20 +111,20 @@
       <span data-i18n="update.available">New version available:</span>
       <strong class="update-version"></strong>
       <a class="update-link" target="_blank" data-i18n="update.view">View Release</a>
-      <button class="update-dismiss" onclick="dismissUpdate()">&times;</button>
+      <button class="update-dismiss" onclick="dismissUpdate()" aria-label="Dismiss update notification">&times;</button>
     </div>
     {% block content %}{% endblock %}
   </main>
 
   <!-- 공통 텍스트 전문 보기 modal -->
-  <div id="text-modal" class="modal" onclick="if(event.target===this)closeTextModal()">
+  <div id="text-modal" class="modal" role="dialog" aria-modal="true" onclick="if(event.target===this)closeTextModal()">
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="text-modal-title"></h3>
         <div class="modal-toolbar">
-          <button id="text-modal-copy" class="modal-tool-btn" onclick="copyModalText()">Copy</button>
-          <button id="text-modal-toggle" class="modal-tool-btn" onclick="toggleModalMarkdown()">Raw</button>
-          <button class="btn-close" onclick="closeTextModal()">&times;</button>
+          <button id="text-modal-copy" class="modal-tool-btn" onclick="copyModalText()" aria-label="Copy text">Copy</button>
+          <button id="text-modal-toggle" class="modal-tool-btn" onclick="toggleModalMarkdown()" aria-label="Toggle markdown/raw view">Raw</button>
+          <button class="btn-close" onclick="closeTextModal()" aria-label="Close modal">&times;</button>
         </div>
       </div>
       <div id="text-modal-md" class="md-body modal-scroll" style="display:none"></div>

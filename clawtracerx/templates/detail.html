@@ -8,6 +8,8 @@
 <div class="page-header">
   <a href="/" class="back-link">&larr; <span data-i18n="detail.back">Sessions</span></a>
   <div class="header-actions">
+    <button class="btn btn-outline btn-sm" id="expand-all-btn" onclick="expandAllTurns()" aria-label="Expand all turns">Expand All</button>
+    <button class="btn btn-outline btn-sm" id="collapse-all-btn" onclick="collapseAllTurns()" aria-label="Collapse all turns">Collapse All</button>
     <button class="btn btn-outline btn-sm" id="sort-btn" @click="toggleSort()"
             x-text="sortNewest ? _t('detail.sort_newest') : _t('detail.sort_oldest')">Newest first</button>
     <a href="/session/{{ session_id }}/graph" class="btn btn-outline" id="graph-btn" data-i18n="detail.graph">Graph View</a>
@@ -124,7 +126,7 @@ function renderHeader(s) {
       ${s.file_path ? `
       <div class="meta-file-path">
         <code title="${escHtml(s.file_path)}">${escHtml(s.file_path.replace(/^\/Users\/[^/]+/, '~'))}</code>
-        <button class="btn-copy-path" onclick="navigator.clipboard.writeText('${escHtml(s.file_path)}')" title="Copy path">📋</button>
+        <button class="btn-copy-path" onclick="navigator.clipboard.writeText('${escHtml(s.file_path)}')" title="Copy path" aria-label="Copy file path">📋</button>
       </div>` : ''}
       ${contextPanel}
     </div>
@@ -316,6 +318,18 @@ function openFullContent(tcId, field) {
 
 function openFullUserText(turnIdx) {
   openRawModal(`Turn ${turnIdx} — user`, fetchJSON(`/api/session/${SESSION_ID}/turn/${turnIdx}/user-text`));
+}
+
+function expandAllTurns() {
+  qsa('.turn-body.collapsed').forEach(el => el.classList.remove('collapsed'));
+  qsa('.workflow-body.collapsed').forEach(el => el.classList.remove('collapsed'));
+  qsa('.subagent-body.collapsed').forEach(el => el.classList.remove('collapsed'));
+}
+
+function collapseAllTurns() {
+  qsa('.turn-body:not(.collapsed)').forEach(el => el.classList.add('collapsed'));
+  qsa('.workflow-body:not(.collapsed)').forEach(el => el.classList.add('collapsed'));
+  qsa('.subagent-body:not(.collapsed)').forEach(el => el.classList.add('collapsed'));
 }
 
 /* loadSession is called from Alpine init */

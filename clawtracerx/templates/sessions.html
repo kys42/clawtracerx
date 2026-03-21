@@ -206,7 +206,7 @@ async function loadSessions() {
       ? `<span class="stat-chip channel" title="${escHtml(s.channel)}">${chIcon} ${escHtml(s.channel)}</span>`
       : '';
     const pathBtn = s.file_path
-      ? `<button class="sc-path-btn" title="${escHtml(s.file_path)}" onclick="event.stopPropagation();copyPath('${escHtml(s.file_path)}')">📋</button>`
+      ? `<button class="sc-path-btn" title="${escHtml(s.file_path)}" aria-label="Copy file path" onclick="event.stopPropagation();copyPath('${escHtml(s.file_path)}')">📋</button>`
       : '';
 
     return `
