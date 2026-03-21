@@ -226,11 +226,21 @@ function _refreshModalBody(loading) {
   var text   = loading != null ? loading : _modalRawText;
 
   if (_modalIsMarkdown && !loading && typeof marked !== 'undefined') {
-    pre.style.display   = 'none';
-    mdDiv.style.display = 'block';
-    var html = marked.parse(text);
-    mdDiv.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
-    if (toggle) toggle.textContent = 'Raw';
+    try {
+      pre.style.display   = 'none';
+      mdDiv.style.display = 'block';
+      var html = marked.parse(text);
+      mdDiv.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
+      if (toggle) toggle.textContent = 'Raw';
+    } catch (e) {
+      // Markdown parse failed — fallback to raw text
+      console.warn('Markdown parse error, falling back to raw:', e);
+      _modalIsMarkdown = false;
+      mdDiv.style.display = 'none';
+      pre.style.display   = 'block';
+      pre.textContent     = text;
+      if (toggle) toggle.textContent = 'Markdown';
+    }
   } else {
     mdDiv.style.display = 'none';
     pre.style.display   = 'block';

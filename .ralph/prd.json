@@ -935,7 +935,7 @@
         "마크다운 파싱 실패 시 raw 텍스트로 자동 폴백",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }

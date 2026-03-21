@@ -285,3 +285,19 @@
 **배운 점:**
 - `OrderedDict.move_to_end()` + `popitem(last=False)` 조합으로 간단한 LRU 캐시 구현 가능
 - 재귀 깊이 제한은 모든 중간 함수에 depth를 전파해야 함 — 6개 함수 시그니처 수정 필요
+
+## Loop 23 — US-043: 대형 세션 턴 페이지네이션 + markdown 에러 핸들링
+
+**작업 내용:**
+- turns.js: renderTurns()를 페이지네이션 방식으로 리팩터링 — 초기 50개만 렌더, 나머지는 "Load more" 버튼
+- _turnsPageState로 아이템 목록/렌더 상태 관리, _renderTurnsBatch()로 50개씩 추가
+- compaction divider 위치가 pagination 경계와 겹쳐도 정확히 삽입되도록 처리
+- app.js: marked.parse() try/catch 추가, 실패 시 raw 텍스트로 자동 폴백
+- style.css: .load-more-turns 버튼 스타일 (dashed border, hover 시 accent 색상)
+- i18n: turns.load_more / turns.remaining 키 추가 (ko/en)
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- innerHTML 일괄 삽입 → insertAdjacentHTML + 점진적 추가로 전환하면 대형 DOM 성능 개선
+- workflow group이 pagination 경계를 넘을 수 있으므로 아이템 단위(turn/workflow)로 카운트해야 함

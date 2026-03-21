@@ -649,6 +649,27 @@ body {
 .workflow-body .turn-card { margin: 6px 0; }
 
 /* Compaction divider */
+/* Load more turns pagination button */
+.load-more-turns {
+  display: block;
+  width: 100%;
+  margin: 16px 0;
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-2);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+}
+.load-more-turns:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.05);
+}
+
 .compaction-divider {
   display: flex;
   align-items: center;

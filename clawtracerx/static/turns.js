@@ -24,13 +24,15 @@ function fmtChars(n) {
   return (n / 1000000).toFixed(2) + 'M';
 }
 
+var _turnsPageState = null; // {items, compactionEvents, contextBoundaryIdx, rendered}
+var _TURNS_PAGE_SIZE = 50;
+
 function renderTurns(turns, compactionEvents) {
   const container = qs('#turns-container');
-  let html = '';
 
   // Build compaction boundary: find the first in-context turn index
-  let contextBoundaryIdx = -1;
-  for (let i = 0; i < turns.length; i++) {
+  var contextBoundaryIdx = -1;
+  for (var i = 0; i < turns.length; i++) {
     if (turns[i].in_context && (i === 0 || !turns[i-1].in_context)) {
       contextBoundaryIdx = i;
       break;
@@ -50,7 +52,7 @@ function renderTurns(turns, compactionEvents) {
 
   const items = []; // [{type:'turn', turn, startIdx} | {type:'workflow', turns, startIdx}]
   const processedWorkflows = new Set();
-  let i = 0;
+  i = 0;
   while (i < turns.length) {
     const t = turns[i];
     const gid = t.workflow_group_id;
@@ -61,7 +63,7 @@ function renderTurns(turns, compactionEvents) {
       // Separate workflow turns (wf==gid) from interleaved gap turns (wf==null)
       const workflowTurns = [];
       const gapTurns = [];
-      for (let j = bounds.first; j <= bounds.last; j++) {
+      for (var j = bounds.first; j <= bounds.last; j++) {
         if (turns[j].workflow_group_id === gid) workflowTurns.push({ turn: turns[j], idx: j });
         else gapTurns.push({ turn: turns[j], idx: j });
       }
@@ -80,16 +82,36 @@ function renderTurns(turns, compactionEvents) {
     }
   }
 
-  let animIdx = 0;
-  for (const item of items) {
-    const firstTurnIdx = item.startIdx;
+  // Store state for pagination
+  _turnsPageState = {
+    items: items,
+    compactionEvents: compactionEvents,
+    contextBoundaryIdx: contextBoundaryIdx,
+    rendered: 0,
+  };
+
+  // Render first page
+  container.innerHTML = '';
+  _renderTurnsBatch(container, _TURNS_PAGE_SIZE);
+}
+
+function _renderTurnsBatch(container, count) {
+  if (!_turnsPageState) return;
+  var state = _turnsPageState;
+  var end = Math.min(state.rendered + count, state.items.length);
+  var html = '';
+  var animIdx = state.rendered;
+
+  for (var k = state.rendered; k < end; k++) {
+    var item = state.items[k];
+    var firstTurnIdx = item.startIdx;
     // Insert compaction divider at the context boundary
-    if (firstTurnIdx === contextBoundaryIdx && firstTurnIdx > 0 && compactionEvents.length > 0) {
-      const lastCe = compactionEvents[compactionEvents.length - 1];
-      const tokensBefore = lastCe.tokens_before ? fmtTokens(lastCe.tokens_before) : '?';
-      const tokensAfter  = lastCe.tokens_after  ? fmtTokens(lastCe.tokens_after)  : null;
-      const hookLabel = lastCe.from_hook ? ' ' + _t('turns.hook') : '';
-      const summaryHtml = lastCe.summary ? `
+    if (firstTurnIdx === state.contextBoundaryIdx && firstTurnIdx > 0 && state.compactionEvents.length > 0) {
+      var lastCe = state.compactionEvents[state.compactionEvents.length - 1];
+      var tokensBefore = lastCe.tokens_before ? fmtTokens(lastCe.tokens_before) : '?';
+      var tokensAfter  = lastCe.tokens_after  ? fmtTokens(lastCe.tokens_after)  : null;
+      var hookLabel = lastCe.from_hook ? ' ' + _t('turns.hook') : '';
+      var summaryHtml = lastCe.summary ? `
         <details class="compaction-detail">
           <summary>${_t('turns.summary')} ▾</summary>
           <div class="compaction-summary-text">${escHtml(lastCe.summary)}</div>
@@ -111,7 +133,23 @@ function renderTurns(turns, compactionEvents) {
       html += renderTurn(item.turn, animIdx++);
     }
   }
-  container.innerHTML = html;
+  state.rendered = end;
+
+  // Remove existing "load more" button
+  var existingBtn = container.querySelector('.load-more-turns');
+  if (existingBtn) existingBtn.remove();
+
+  container.insertAdjacentHTML('beforeend', html);
+
+  // Add "load more" button if more items remain
+  var remaining = state.items.length - state.rendered;
+  if (remaining > 0) {
+    var btn = document.createElement('button');
+    btn.className = 'btn btn-outline load-more-turns';
+    btn.textContent = (_t('turns.load_more') || 'Load more turns') + ' (' + remaining + ' ' + (_t('turns.remaining') || 'remaining') + ')';
+    btn.onclick = function() { _renderTurnsBatch(container, _TURNS_PAGE_SIZE); };
+    container.appendChild(btn);
+  }
 }
 
 function renderWorkflowGroup(turns, animIdx) {
