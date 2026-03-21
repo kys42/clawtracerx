@@ -160,7 +160,11 @@ document.addEventListener('alpine:init', () => {
     async loadLogs() {
       try {
         const data = await fetchJSON('/api/logs?file=' + this.logTab + '&lines=50');
-        this.logContent = (data.lines || []).join('\n') || 'No log entries.';
+        if (data.missing) {
+          this.logContent = 'Log file not created yet. It will appear after the first request/action.';
+        } else {
+          this.logContent = (data.lines || []).join('\n') || 'No log entries.';
+        }
         // Auto-scroll log viewer
         this.$nextTick(() => {
           const el = document.getElementById('log-viewer');

@@ -132,6 +132,16 @@ _lab_handler = logging.handlers.RotatingFileHandler(
 _lab_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
 _lab_logger.addHandler(_lab_handler)
 
+# --- Web request logger ---
+_web_log_file = Path(_get_base_path()).parent / "web.log"
+_web_logger = logging.getLogger("ctrace.web")
+_web_logger.setLevel(logging.INFO)
+_web_handler = logging.handlers.RotatingFileHandler(
+    _web_log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
+_web_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+_web_logger.addHandler(_web_handler)
+
 # In-memory log for UI display (last 100 entries) — thread-safe deque
 _lab_activity_log: deque = deque(maxlen=100)
 _lab_log_lock = threading.Lock()
@@ -158,6 +168,18 @@ def create_app():
     @app.context_processor
     def inject_globals():
         return {'home_dir': os.path.expanduser('~')}
+
+    # --- Request logging ---
+    @app.after_request
+    def _log_request(response):
+        # Skip static files and SSE streams
+        if not request.path.startswith("/static") and not request.path.endswith("/stream"):
+            _web_logger.info(
+                "%s %s %s %s",
+                request.method, request.path, response.status_code,
+                request.remote_addr,
+            )
+        return response
 
     # --- Pages ---
 
@@ -962,7 +984,7 @@ def create_app():
             abort(400, "Invalid log file")
         log_path = Path(_get_base_path()).parent / allowed[file_name]
         if not log_path.exists():
-            return jsonify({"lines": [], "file": file_name})
+            return jsonify({"lines": [], "file": file_name, "missing": True})
         try:
             all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
             return jsonify({"lines": all_lines[-lines_count:], "file": file_name})

@@ -244,3 +244,16 @@
 **배운 점:**
 - EventSource error 이벤트는 readyState로 구분: CONNECTING=transient(브라우저 자동 재연결), CLOSED=permanent(수동 재연결 필요)
 - clearTimeout으로 pending reconnect 정리 안 하면 stopStream 후에도 자동 재연결 발생
+
+## Loop 20 — US-040: Settings 로그 뷰어 web.log 초기화
+
+**작업 내용:**
+- web.py에 web.log RotatingFileHandler 추가 (5MB, 3백업)
+- after_request 훅으로 HTTP 요청 로깅 (static/SSE 제외)
+- /api/logs에서 파일 미존재 시 `missing: true` 필드 반환
+- settings.html에서 missing 파일일 때 "아직 생성되지 않음" 메시지 표시
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- Flask after_request는 모든 응답에 대해 호출됨 — static 파일과 SSE 스트림은 제외해야 로그가 과도해지지 않음
