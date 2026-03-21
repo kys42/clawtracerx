@@ -189,7 +189,7 @@
         "하드코딩 영문 문자열 i18n 적용",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-009",

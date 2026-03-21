@@ -8,8 +8,8 @@
 <div class="page-header">
   <a href="/" class="back-link">&larr; <span data-i18n="detail.back">Sessions</span></a>
   <div class="header-actions">
-    <button class="btn btn-outline btn-sm" id="expand-all-btn" onclick="expandAllTurns()" aria-label="Expand all turns">Expand All</button>
-    <button class="btn btn-outline btn-sm" id="collapse-all-btn" onclick="collapseAllTurns()" aria-label="Collapse all turns">Collapse All</button>
+    <button class="btn btn-outline btn-sm" id="expand-all-btn" onclick="expandAllTurns()" aria-label="Expand all turns" data-i18n="detail.expand_all">Expand All</button>
+    <button class="btn btn-outline btn-sm" id="collapse-all-btn" onclick="collapseAllTurns()" aria-label="Collapse all turns" data-i18n="detail.collapse_all">Collapse All</button>
     <button class="btn btn-outline btn-sm" id="sort-btn" @click="toggleSort()"
             x-text="sortNewest ? _t('detail.sort_newest') : _t('detail.sort_oldest')">Newest first</button>
     <button class="btn btn-outline btn-sm" @click="exportJSON()" data-i18n="detail.export_json">Export JSON</button>

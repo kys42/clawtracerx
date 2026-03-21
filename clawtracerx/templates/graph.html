@@ -63,7 +63,7 @@ async function init() {
   const graphData = await fetchJSONSafe(`/api/session/${SESSION_ID}/graph`, {});
 
   if (!graphData || !graphData.nodes || !graphData.nodes.length) {
-    container.innerHTML = '<div class="empty-state">No graph data available.</div>';
+    container.innerHTML = '<div class="empty-state">' + _t('graph.no_data') + '</div>';
     return;
   }
 

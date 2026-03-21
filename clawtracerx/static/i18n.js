@@ -133,6 +133,8 @@
       'detail.system': '시스템',
       'detail.turn': '턴',
       'detail.error': '오류:',
+      'detail.expand_all': '전체 펼치기',
+      'detail.collapse_all': '전체 접기',
       'detail.search_placeholder': '턴 검색...',
       'detail.filter_all_tools': '전체 도구',
       'detail.matches': '개 일치',
@@ -180,6 +182,7 @@
       'graph.turns': '턴',
       'graph.tools': '도구',
       'graph.open_child': '하위 세션 열기',
+      'graph.no_data': '그래프 데이터가 없습니다.',
 
       // === Lab 페이지 ===
       'lab.title': '실험실',
@@ -485,6 +488,8 @@
       'detail.system': 'System',
       'detail.turn': 'Turn',
       'detail.error': 'Error:',
+      'detail.expand_all': 'Expand All',
+      'detail.collapse_all': 'Collapse All',
       'detail.search_placeholder': 'Search turns...',
       'detail.filter_all_tools': 'All tools',
       'detail.matches': ' matches',
@@ -532,6 +537,7 @@
       'graph.turns': 'Turns',
       'graph.tools': 'Tools',
       'graph.open_child': 'Open Child Session',
+      'graph.no_data': 'No graph data available.',
 
       // === Lab ===
       'lab.title': 'Lab',
