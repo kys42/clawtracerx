@@ -444,6 +444,25 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-020",
+      "title": "cli.py future annotations + iterdir OSError 방어 + 파일 카운트 최적화",
+      "category": "bugfix",
+      "priority": 20,
+      "description": "cli.py에 from __future__ import annotations 누락 (US-018에서 빠짐). session_parser.py의 _find_child_session_file()에서 AGENTS_DIR.iterdir()가 OSError 미처리 (디렉토리 삭제/권한 문제 시 크래시). web.py /api/health의 len(list(glob()))을 sum(1 for ...)으로 최적화.",
+      "steps": [
+        "cli.py 상단에 from __future__ import annotations 추가",
+        "session_parser.py _find_child_session_file(): AGENTS_DIR.iterdir() 호출을 try/except OSError로 래핑",
+        "web.py health 엔드포인트의 len(list(glob())) → sum(1 for ...) 최적화",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 Python 소스 파일에 from __future__ import annotations 존재",
+        "_find_child_session_file이 OSError에 안전",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }

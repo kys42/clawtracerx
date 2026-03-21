@@ -991,7 +991,7 @@ def create_app():
         if agents_dir.exists():
             agent_count = sum(1 for d in agents_dir.iterdir() if d.is_dir())
             session_count = sum(
-                len(list((d / "sessions").glob("*.jsonl")))
+                sum(1 for _ in (d / "sessions").glob("*.jsonl"))
                 for d in agents_dir.iterdir()
                 if d.is_dir() and (d / "sessions").exists()
             )

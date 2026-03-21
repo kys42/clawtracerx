@@ -309,13 +309,19 @@ def find_subagent_child_session(child_session_key: str) -> Optional[Path]:
     if not session_id:
         return None
     # Search all agent session dirs
-    for agent_dir in AGENTS_DIR.iterdir():
+    try:
+        agent_dirs = list(AGENTS_DIR.iterdir())
+    except OSError:
+        return None
+    for agent_dir in agent_dirs:
         if not agent_dir.is_dir():
             continue
         sessions_dir = agent_dir / "sessions"
-        if not sessions_dir.exists():
+        try:
+            entries = list(sessions_dir.iterdir())
+        except OSError:
             continue
-        for f in sessions_dir.iterdir():
+        for f in entries:
             if not f.name.startswith(session_id):
                 continue
             # Match {uuid}.jsonl or {uuid}.jsonl.deleted.{ts}
