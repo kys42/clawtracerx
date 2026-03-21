@@ -320,7 +320,7 @@
         "SSE 데이터 손상 시 에러 배너 표시 (크래시 없음)",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-014",

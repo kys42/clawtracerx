@@ -211,7 +211,8 @@ function _refreshModalBody(loading) {
   if (_modalIsMarkdown && !loading && typeof marked !== 'undefined') {
     pre.style.display   = 'none';
     mdDiv.style.display = 'block';
-    mdDiv.innerHTML = marked.parse(text);
+    var html = marked.parse(text);
+    mdDiv.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
     if (toggle) toggle.textContent = 'Raw';
   } else {
     mdDiv.style.display = 'none';

@@ -220,7 +220,10 @@ def create_app():
         if not file_path:
             abort(404, "Session not found")
 
-        analysis = parse_session(file_path, recursive_subagents=True)
+        try:
+            analysis = parse_session(file_path, recursive_subagents=True)
+        except (OSError, json.JSONDecodeError, KeyError) as e:
+            abort(400, f"Bad session data: {e}")
         return jsonify(_serialize_analysis(analysis))
 
     @app.route("/api/session/<session_id>/graph")
@@ -230,7 +233,10 @@ def create_app():
         if not file_path:
             abort(404, "Session not found")
 
-        analysis = parse_session(file_path, recursive_subagents=True)
+        try:
+            analysis = parse_session(file_path, recursive_subagents=True)
+        except (OSError, json.JSONDecodeError, KeyError) as e:
+            abort(400, f"Bad session data: {e}")
         nodes, edges = _build_graph(analysis)
         return jsonify({"nodes": nodes, "edges": edges})
 

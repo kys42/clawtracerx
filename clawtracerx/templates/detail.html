@@ -156,7 +156,8 @@ document.addEventListener('alpine:init', () => {
       });
 
       es.addEventListener('update', function(e) {
-        const data = JSON.parse(e.data);
+        var data;
+        try { data = JSON.parse(e.data); } catch(err) { return; }
         if (data.new_turns && data.new_turns.length && sessionData) {
           sessionData.turns.push(...data.new_turns);
           // Append new turn cards
@@ -171,7 +172,8 @@ document.addEventListener('alpine:init', () => {
       });
 
       es.addEventListener('patch', function(e) {
-        const data = JSON.parse(e.data);
+        var data;
+        try { data = JSON.parse(e.data); } catch(err) { return; }
         if (data.turn && sessionData) {
           // Replace last turn in data
           const idx = sessionData.turns.findIndex(function(t) { return t.index === data.index; });
