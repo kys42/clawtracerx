@@ -174,3 +174,16 @@
 **배운 점:**
 - Home 페이지의 /api/cost 호출은 period 파라미터 없으면 기본 "week"로 필터링됨 — Total Cost엔 period=all 필수
 - fetchJSON의 에러 텍스트가 HTML 페이지 전체를 포함할 수 있음 — 항상 태그 strip 필요
+
+## Loop 15 — US-035: 검색/필터/드릴다운 기능 보완
+
+**작업 내용:**
+- 세션 검색 `data-search`에 `type`과 `channel` 추가 — "heartbeat" 검색이 이제 동작
+- 검색 결과 카운트 표시 ("3 of 50 sessions") 추가
+- Live 버튼, 비용 차트 드릴다운, URL 쿼리 파라미터 필터는 이미 구현되어 있어 변경 불필요
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- 기존 코드 검색이 중요 — PRD에 "구현 필요"로 적혀있어도 이미 구현된 경우가 많음
+- 세션 카드의 data-search 속성에 모든 검색 가능 필드를 포함해야 텍스트 검색이 제대로 동작

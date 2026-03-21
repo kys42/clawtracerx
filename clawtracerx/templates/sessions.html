@@ -20,11 +20,12 @@
 
 <div x-show="loading" class="loading-bar"></div>
 
-<div class="search-bar" style="margin-bottom:12px">
+<div class="search-bar" style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
   <input type="text" class="input-search" id="session-search"
          :placeholder="_t('sessions.search_placeholder')"
          data-i18n-placeholder="sessions.search_placeholder"
-         @input="debouncedFilterCards()">
+         @input="debouncedFilterCards()" style="flex:1">
+  <span id="search-count" style="color:var(--text-3);font-size:12px;white-space:nowrap"></span>
 </div>
 
 <div class="filter-bars">
@@ -226,7 +227,7 @@ async function loadSessions() {
       ? `<span class="stat-chip high-cost">${_t('sessions.high_cost')}</span>` : '';
 
     return `
-    <div class="session-card" data-type="${s.type}" data-search="${escHtml((s.session_id + ' ' + s.agent_id + ' ' + (s.last_message || '') + ' ' + (s.model || '')).toLowerCase())}" onclick="location.href='/session/${s.session_id}'">
+    <div class="session-card" data-type="${s.type}" data-search="${escHtml((s.session_id + ' ' + s.agent_id + ' ' + s.type + ' ' + (s.last_message || '') + ' ' + (s.model || '') + ' ' + (s.channel || '')).toLowerCase())}" onclick="location.href='/session/${s.session_id}'">
       <div class="sc-agent-panel" style="background:${hexAlpha(aColor,0.15)};color:${aColor}">
         <span>${s.agent_id}</span>
         <span class="sc-agent-time">${relTime}</span>
@@ -331,12 +332,18 @@ document.addEventListener('alpine:init', () => {
     filterCards() {
       const q = (qs('#session-search').value || '').toLowerCase().trim();
       const cards = qsa('.session-card');
+      const total = cards.length;
       let visible = 0;
       cards.forEach(c => {
         const match = !q || (c.dataset.search || '').includes(q);
         c.style.display = match ? '' : 'none';
         if (match) visible++;
       });
+      // Result count
+      const countEl = qs('#search-count');
+      if (countEl) {
+        countEl.textContent = q ? (visible + ' of ' + total + ' sessions') : '';
+      }
       // Show "no match" message
       let noMatch = qs('#no-match-msg');
       if (!visible && q) {
