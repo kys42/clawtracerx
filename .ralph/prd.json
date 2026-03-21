@@ -712,6 +712,25 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-033",
+      "title": "서브에이전트 감지를 sessions.json 기반으로 수정",
+      "category": "bugfix",
+      "priority": 33,
+      "description": "기존 서브에이전트 감지가 파일 경로에 'subagent' 문자열 포함 여부로 판단하여 실제로 작동하지 않음. sessions.json의 세션 키 패턴(:subagent:)과 spawnedBy 필드를 활용하여 정확한 감지로 교체.",
+      "steps": [
+        "list_sessions()에서 sessions.json 로드 → 세션 키 패턴으로 subagent/hook 타입 매핑",
+        "_compute_totals()의 'subagent in str(file_path)'를 _is_subagent_session() 함수로 교체",
+        "_quick_scan_session()의 동일한 깨진 체크 제거 (list_sessions에서 오버라이드)",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "서브에이전트 세션이 sessions.json 기반으로 정확히 분류됨",
+        "기존 cron/heartbeat 감지 로직 유지",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }

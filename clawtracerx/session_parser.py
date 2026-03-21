@@ -1087,10 +1087,29 @@ def _compute_totals(analysis: SessionAnalysis, turns: list, file_path: Path) -> 
             analysis.session_type = "cron"
         elif first_source == "heartbeat":
             analysis.session_type = "heartbeat"
-        elif "subagent" in str(file_path):
+        elif _is_subagent_session(file_path, analysis.agent_id, analysis.session_id):
             analysis.session_type = "subagent"
         else:
             analysis.session_type = "chat"
+
+
+def _is_subagent_session(file_path: Path, agent_id: str, session_id: str) -> bool:
+    """Check if a session is a subagent by checking sessions.json key pattern."""
+    meta = load_session_metadata(agent_id, session_id)
+    if meta and meta.get("spawnedBy"):
+        return True
+    # Fallback: check sessions.json keys for :subagent: pattern
+    sessions_file = AGENTS_DIR / agent_id / "sessions" / SESSIONS_JSON
+    if sessions_file.exists():
+        try:
+            with open(sessions_file, encoding="utf-8") as f:
+                data = json.load(f)
+            for key, entry in data.items():
+                if entry.get("sessionId", "").startswith(session_id):
+                    return ":subagent:" in key
+        except (OSError, json.JSONDecodeError):
+            pass
+    return False
 
 
 def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> SessionAnalysis:
@@ -1552,10 +1571,31 @@ def list_sessions(agent_id: Optional[str] = None, last_n: int = 20,
         sessions_dir = agent_dir / "sessions"
         if not sessions_dir.exists():
             continue
+
+        # Load sessions.json for session key → type mapping
+        session_key_types = {}  # session_id → type from key pattern
+        sessions_json = sessions_dir / SESSIONS_JSON
+        if sessions_json.exists():
+            try:
+                with open(sessions_json, encoding="utf-8") as sjf:
+                    sj_data = json.load(sjf)
+                for key, entry in sj_data.items():
+                    sid = entry.get("sessionId", "")
+                    if ":subagent:" in key or entry.get("spawnedBy"):
+                        session_key_types[sid] = "subagent"
+                    elif ":hook:" in key:
+                        session_key_types[sid] = "hook"
+            except (OSError, json.JSONDecodeError):
+                pass
+
         for f in sessions_dir.glob("*.jsonl"):
             stat = f.stat()
             # Quick scan: read first few lines for metadata
             meta = _quick_scan_session(f, aid)
+            # Override subagent/hook detection from sessions.json
+            sid = meta.get("session_id", "")
+            if sid in session_key_types:
+                meta["type"] = session_key_types[sid]
             if session_type and meta.get("type") != session_type:
                 continue
             meta["file_path"] = str(f)
@@ -1689,9 +1729,6 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                 dur = (current_turn_last_ts - current_turn_user_ts).total_seconds()
                 if dur > 0:
                     turn_durations.append(dur)
-
-            if "subagent" in str(file_path):
-                session_type = "subagent"
 
             meta["type"] = session_type
             meta["model"] = model

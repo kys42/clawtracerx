@@ -131,6 +131,22 @@
 - Python 3.9의 `open()` 기본 인코딩은 시스템 로케일에 따라 다름 — macOS는 UTF-8이지만 명시적으로 지정하는 것이 안전
 - `errors="replace"`는 데이터 무결성을 약간 희생하지만 파서 안정성을 크게 높임
 
+## Loop 14 — US-033: 서브에이전트 감지를 sessions.json 기반으로 수정
+
+**작업 내용:**
+- **ANALYSIS_REPORT.md BUG-02 수정**: `"subagent" in str(file_path)` 체크가 실제로 작동하지 않는 문제
+- `list_sessions()`: sessions.json을 에이전트별로 로드하여 세션 키에 `:subagent:` 패턴이나 `spawnedBy` 필드가 있으면 `"subagent"` 타입으로 오버라이드
+- `_compute_totals()`: 새 `_is_subagent_session()` 함수 추가 — sessions.json의 `spawnedBy` 필드와 세션 키 패턴 기반 정확한 감지
+- `_quick_scan_session()`: 깨진 `"subagent" in str(file_path)` 체크 제거 (list_sessions에서 오버라이드하므로 불필요)
+- 추가로 `:hook:` 패턴도 감지하여 hook 타입 분류 지원
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- 서브에이전트 JSONL은 일반 세션과 같은 `agents/{id}/sessions/` 디렉토리에 일반 UUID 파일명으로 저장됨 — 경로에 "subagent" 문자열이 포함될 이유 없음
+- sessions.json의 세션 키 형식: `agent:{agentId}:subagent:{uuid}` → `:subagent:` 패턴으로 정확한 감지 가능
+- `load_session_metadata()`가 이미 `startswith` 매칭을 사용하므로 stem UUID의 prefix만으로도 매핑 가능
+
 ## Loop 13 — US-032: Lab 로그 파일 RotatingFileHandler로 디스크 성장 제한
 
 **작업 내용:**
