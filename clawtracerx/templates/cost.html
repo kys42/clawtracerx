@@ -92,6 +92,7 @@ function destroyChart(id) {
 
 function renderApexBar(containerId, dataMap) {
   const el = qs(`#${containerId}`);
+  if (!el) return;
   destroyChart(containerId);
   if (!dataMap || !Object.keys(dataMap).length) {
     el.innerHTML = '<div class="empty">' + _t('cost.no_data') + '</div>';
@@ -172,6 +173,7 @@ function renderApexBar(containerId, dataMap) {
 
 function renderApexArea(containerId, dataMap) {
   const el = qs(`#${containerId}`);
+  if (!el) return;
   destroyChart(containerId);
   if (!dataMap || !Object.keys(dataMap).length) {
     el.innerHTML = '<div class="empty">' + _t('cost.no_data') + '</div>';
@@ -250,7 +252,8 @@ async function loadCost(period, agent) {
   const data = await fetchJSONSafe(`/api/cost?period=${period}&agent=${agent}`, {});
 
   // Hero metric cards
-  qs('#cost-summary').innerHTML = `
+  const summaryEl = qs('#cost-summary');
+  if (summaryEl) summaryEl.innerHTML = `
     <div class="summary-card hero">
       <div class="summary-value cost">${fmtCost(data.total_cost)}</div>
       <div class="summary-label">${_t('cost.total_cost')}</div>
@@ -274,6 +277,7 @@ async function loadCost(period, agent) {
 
 function renderAgentTypeTable(containerId, byAgentType, byType) {
   const el = qs(`#${containerId}`);
+  if (!el) return;
   if (!byAgentType || !Object.keys(byAgentType).length) {
     el.innerHTML = '<div class="empty">' + _t('cost.no_data') + '</div>';
     return;

@@ -83,6 +83,7 @@
 <script>
 function renderHealth(h) {
   const grid = document.getElementById('health-grid');
+  if (!grid) return;
   const c = h.checks;
   const cards = [];
 
@@ -147,7 +148,7 @@ document.addEventListener('alpine:init', () => {
         const cfg = await fetchJSON('/api/settings');
         this.dirInput = cfg.openclaw_dir || '';
         const info = document.getElementById('effective-info');
-        info.innerHTML =
+        if (info) info.innerHTML =
           '<span class="settings-eff-label">' + _t('settings.effective') + '</span>' +
           '<code>' + escHtml(cfg.effective_openclaw_dir) + '</code>';
       } catch(e) {
@@ -193,6 +194,7 @@ document.addEventListener('alpine:init', () => {
 
     async refreshHealth(bustCache) {
       const grid = document.getElementById('health-grid');
+      if (!grid) return;
       grid.innerHTML = '<div class="health-card loading">' + _t('settings.checking') + '</div>';
       try {
         const url = bustCache ? '/api/health?t=' + Date.now() : '/api/health';

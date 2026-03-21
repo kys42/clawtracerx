@@ -1146,6 +1146,29 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-055",
+      "title": "cost.html qs() null safety — DOM 요소 방어적 접근",
+      "category": "bugfix",
+      "priority": 55,
+      "description": "cost.html의 renderApexBar(), renderApexArea(), renderAgentTypeTable(), loadCost()에서 qs() 반환값에 null 체크 없이 .innerHTML 접근. DOM 요소가 누락되면 런타임 크래시 발생. settings.html의 renderHealth(), refreshHealth(), init()에서도 getElementById() 결과에 null 체크 누락.",
+      "steps": [
+        "cost.html: renderApexBar() — qs() 후 if (!el) return 가드",
+        "cost.html: renderApexArea() — 동일 패턴",
+        "cost.html: renderAgentTypeTable() — 동일 패턴",
+        "cost.html: loadCost() — qs('#cost-summary') null 체크",
+        "settings.html: renderHealth() — grid null 체크",
+        "settings.html: refreshHealth() — grid null 체크",
+        "settings.html: init() — info null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없이 graceful 처리",
+        "기존 UI 동작 변경 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }
