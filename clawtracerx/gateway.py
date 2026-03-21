@@ -116,7 +116,10 @@ def _connect() -> websocket.WebSocket:
 
     # 1. Receive connect.challenge event
     raw = ws.recv()
-    challenge = json.loads(raw)
+    try:
+        challenge = json.loads(raw)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Invalid JSON from gateway: {raw[:200]}")
     if challenge.get("type") != "event" or challenge.get("event") != "connect.challenge":
         raise RuntimeError(f"Expected connect.challenge, got: {raw[:200]}")
 
@@ -172,7 +175,10 @@ def _connect() -> websocket.WebSocket:
 
     # 4. Receive auth response
     raw = ws.recv()
-    resp = json.loads(raw)
+    try:
+        resp = json.loads(raw)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Invalid auth response JSON: {raw[:200]}")
     if resp.get("type") == "res" and resp.get("id") == connect_id:
         if not resp.get("ok", False):
             raise RuntimeError(f"Auth failed: {resp.get('error', {})}")
@@ -200,7 +206,10 @@ def rpc_call(method: str, params: dict, timeout: int = 30) -> dict:
         deadline = time.time() + timeout
         while time.time() < deadline:
             raw = ws.recv()
-            resp = json.loads(raw)
+            try:
+                resp = json.loads(raw)
+            except json.JSONDecodeError:
+                continue  # Skip malformed messages
             if resp.get("type") == "res" and resp.get("id") == req_id:
                 if not resp.get("ok", False):
                     raise RuntimeError(f"RPC error ({method}): {resp.get('error', {})}")

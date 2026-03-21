@@ -1110,7 +1110,7 @@
         "비정상 JSON 응답 시 깔끔한 에러 메시지",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }

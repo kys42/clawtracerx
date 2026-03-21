@@ -360,3 +360,19 @@
 **배운 점:**
 - `request.get_json(force=True)`는 Content-Type 무시하고 파싱하지만 잘못된 JSON에서 500 에러 발생
 - `get_json(silent=True)`는 파싱 실패 시 None 반환 — 더 안전한 패턴
+
+## Loop 28 — US-051: graph.html null safety
+
+**작업 내용:**
+- init/fitView: container null 체크 + clientWidth/Height 기본값
+- showPanel/closePanel: panel DOM 요소 null 체크
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+## Loop 29 — US-052: gateway.py JSON 파싱 에러 핸들링
+
+**작업 내용:**
+- _connect(): challenge/auth 응답 json.loads를 try/except로 감싸고 RuntimeError로 래핑
+- rpc_call(): 응답 json.loads 실패 시 continue로 건너뜀
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
