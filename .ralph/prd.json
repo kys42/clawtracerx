@@ -525,6 +525,58 @@
         "ruff 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-024",
+      "title": "모바일 완전 대응 — 전 페이지 터치 UX + 반응형 레이아웃",
+      "category": "design",
+      "priority": 24,
+      "description": "모든 페이지를 모바일(375px~768px)에서 완전히 사용 가능하게 만든다. 현재 햄버거 메뉴와 기본 반응형은 US-002에서 추가했지만, 각 페이지별 세부 레이아웃(차트, 테이블, 모달, 필터바, 턴 카드, Lab 2컬럼 등)이 모바일에서 깨지거나 사용하기 어려운 부분을 전부 수정한다. 터치 타겟 최소 44px, 스와이프/터치 친화적 인터랙션, 테이블 수평 스크롤, 모달 전체화면, 차트 높이 자동 조정 등.",
+      "steps": [
+        "모든 템플릿(home, sessions, detail, cost, schedule, settings, lab, graph)을 375px 뷰포트에서 확인하며 깨지는 부분 수집",
+        "style.css: @media(max-width:768px) 블록에 페이지별 수정 — 카드 패딩 축소, 테이블 overflow-x:auto, 필터바 세로 스택, 차트 height 조정",
+        "sessions.html: 세션 카드 칩을 2줄 wrap, 검색바 full-width, Export 버튼 아이콘만",
+        "detail.html: 턴 카드 패딩 축소, 도구호출 결과 truncate 줄임, Expand All 버튼 축소, Live 토글 위치 조정, raw 모달 전체화면",
+        "cost.html: 차트 세로 스택(2컬럼→1컬럼), 바 차트 높이 자동, Agent×Type 테이블 수평 스크롤",
+        "schedule.html: 크론 카드 패딩 축소, 24시간 바 높이 축소, 최근 실행 테이블 수평 스크롤",
+        "lab.html: 2컬럼→1컬럼 스택, 사이드바(컨텍스트) 접이식, 메시지 입력 sticky bottom",
+        "graph.html: 캔버스 터치 드래그/핀치줌 지원, 노드 패널 바텀시트로 전환",
+        "base.html: 햄버거 메뉴 열었을 때 오버레이 터치로 닫기 확인",
+        "버튼/링크 터치 타겟 최소 44px 확인, padding 조정",
+        "브라우저 DevTools 모바일 뷰포트(iPhone SE 375px, iPhone 14 390px)에서 전 페이지 확인"
+      ],
+      "acceptanceCriteria": [
+        "375px 뷰포트에서 모든 페이지가 깨지지 않고 사용 가능",
+        "터치 타겟 44px 이상",
+        "테이블은 수평 스크롤, 차트는 높이 자동 조정",
+        "Lab 페이지 모바일에서 1컬럼 레이아웃",
+        "모달이 모바일에서 전체화면",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-025",
+      "title": "모바일 기능 동작 분석 + 추가 개선 태스크 생성",
+      "category": "meta",
+      "priority": 25,
+      "description": "US-024 완료 후, 실제 모바일 환경에서의 기능 동작을 분석한다. 각 페이지를 375px 뷰포트로 열어 모든 인터랙션(검색, 필터, 내보내기, SSE 라이브, 차트 클릭, 턴 펼침/접기, Lab 전송, 로그 뷰어 등)을 점검하고, 동작하지 않거나 UX가 나쁜 부분을 찾아 prd.json에 US-026~ 스토리로 추가한다. 코드 수정은 하지 않고 PRD만 업데이트.",
+      "steps": [
+        "ctrace web --debug로 서버 실행",
+        "각 페이지를 모바일 뷰포트(375px)에서 렌더링 확인 — HTML/CSS/JS 코드를 읽고 모바일에서 문제될 부분 식별",
+        "세션 검색/필터가 모바일에서 동작하는지 코드 확인",
+        "SSE 라이브 스트리밍이 모바일 Safari/Chrome에서 동작하는지 EventSource 호환성 확인",
+        "차트 드릴다운(바 클릭→이동)이 터치에서 동작하는지 ApexCharts 터치 이벤트 확인",
+        "Lab 메시지 전송 + 컨텍스트 편집이 모바일에서 동작하는지 확인",
+        "발견한 문제를 US-026~ 스토리로 prd.json에 추가 (최소 3개)",
+        "이 스토리 자체를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리가 prd.json에 추가됨",
+        "각 스토리가 구체적 문제 설명 + steps + acceptanceCriteria 포함",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": false
     }
   ]
 }

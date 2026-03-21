@@ -35,3 +35,27 @@
 - 모바일에서 사이드바를 60px 고정으로 축소하면 아이콘만 보여 사용성이 낮음 — 완전 숨기고 햄버거로 슬라이드 인하는 게 더 나음
 - `@media(hover:hover)` 래핑으로 터치 디바이스의 "sticky hover" 문제를 예방할 수 있음
 - `--text-3`을 올리면 disabled 상태와 일반 텍스트의 구분이 약해질 수 있으므로, disabled는 opacity로 처리하는 게 더 안전
+
+## Loop 7 — US-024: 모바일 완전 대응 — 전 페이지 터치 UX + 반응형 레이아웃
+
+**작업 내용:**
+- style.css 끝에 US-024 전용 모바일 반응형 섹션 추가 (~200줄)
+- **모달 전체화면**: `.modal`, `.diff-modal-overlay` 모두 768px 이하에서 padding:0, border-radius:0, height:100%
+- **터치 타겟 44px**: `.btn`, `.btn-icon`, `.btn-close`, `.nav-link`, `.type-chip`, `.agent-chip`, `.hamburger` 모두 최소 44px
+- **iOS 줌 방지**: 모든 input/select/textarea에 `font-size: 16px` 적용 (768px 이하)
+- **Lab input bar 수정**: `left: 0` (기존 `left: 60px` 오류 수정)
+- **Detail 페이지**: turn-header wrap, turn-body 패딩 축소, tc-result 스크롤 제한, ctx-table 수평 스크롤
+- **Cost 페이지**: summary 1컬럼, 차트 높이 축소, breakdown 테이블 min-width로 수평 스크롤 보장
+- **Schedule 페이지**: cron card 패딩 축소, runs table 수평 스크롤
+- **Home 페이지**: stat-card 2열 wrap, feature-grid 1컬럼, 값 폰트 축소
+- **Sessions 페이지**: page-header 세로 스택, search full-width, session-card 세로 레이아웃
+- **Settings 페이지**: header/section 패딩 축소
+- **Graph 페이지**: canvas touch-action:none (터치 드래그 지원)
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- 기존 768px 미디어쿼리가 여러 곳에 분산되어 있어 한 곳에 모으는 것보다 섹션별로 추가하는 게 유지보수에 유리
+- iOS Safari는 input font-size < 16px일 때 자동 줌하므로 반드시 16px 적용 필요
+- `min-height: 44px`이 `height`보다 안전 — 내용이 길어질 때 깨지지 않음
+- Lab input bar의 `left: var(--sidebar-w)` → 모바일에서는 sidebar가 숨겨지므로 반드시 `left: 0`으로 덮어씌워야 함

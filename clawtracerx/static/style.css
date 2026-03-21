@@ -3650,3 +3650,273 @@ body {
 .home-stat-card:nth-child(3) { animation-delay: 120ms; }
 .home-stat-card:nth-child(4) { animation-delay: 180ms; }
 .home-stat-card:nth-child(5) { animation-delay: 240ms; }
+
+/* ========================================
+   US-024: Mobile Full Responsive
+   ======================================== */
+
+/* --- Modals fullscreen on mobile --- */
+@media (max-width: 768px) {
+  .modal {
+    padding: 0;
+  }
+  .modal-content {
+    max-width: 100%;
+    max-height: 100%;
+    height: 100%;
+    border-radius: 0;
+    border: none;
+  }
+  .modal-header {
+    padding: 12px 16px;
+  }
+  .raw-json {
+    padding: 12px 16px;
+    font-size: 12px;
+  }
+
+  .diff-modal-overlay {
+    padding: 0;
+  }
+  .diff-modal-box {
+    max-width: 100%;
+    max-height: 100%;
+    height: 100%;
+    border-radius: 0;
+    border: none;
+  }
+  .diff-modal-header {
+    padding: 12px 16px;
+  }
+  .diff-pre {
+    padding: 12px 16px;
+    font-size: 11px;
+  }
+}
+
+/* --- Touch targets: 44px minimum on mobile --- */
+@media (max-width: 768px) {
+  .btn {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+  .btn-sm {
+    min-height: 36px;
+    padding: 6px 12px;
+  }
+  .btn-icon {
+    width: 44px;
+    height: 44px;
+    font-size: 13px;
+  }
+  .btn-close {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 22px;
+    padding: 0;
+  }
+  .nav-link {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+  .type-chip {
+    min-height: 36px;
+    padding: 6px 12px;
+  }
+  .agent-chip {
+    min-height: 36px;
+    padding: 6px 12px;
+  }
+  .lang-btn {
+    min-height: 36px;
+  }
+  .hamburger {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* --- iOS zoom prevention: 16px inputs --- */
+@media (max-width: 768px) {
+  .input-text,
+  .input-textarea,
+  .input-select,
+  .input-search,
+  select,
+  textarea,
+  input[type="text"],
+  input[type="search"],
+  input[type="email"],
+  input[type="number"] {
+    font-size: 16px;
+  }
+}
+
+/* --- Lab input bar fix on mobile --- */
+@media (max-width: 768px) {
+  .lab-input-sticky {
+    left: 0;
+    padding: 10px 12px;
+  }
+}
+
+/* --- Detail page mobile --- */
+@media (max-width: 768px) {
+  .turn-card {
+    margin-left: 0;
+  }
+  .turn-header {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 12px;
+  }
+  .turn-body > * {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .tc-result {
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .context-panel {
+    margin: 0;
+  }
+  .ctx-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .delivery-tags {
+    padding: 6px 12px;
+  }
+}
+
+/* --- Cost page mobile --- */
+@media (max-width: 768px) {
+  .cost-summary {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .cost-grid {
+    gap: 12px;
+  }
+  #chart-agent,
+  #chart-type,
+  #chart-model {
+    min-height: 180px;
+  }
+  #chart-daily {
+    min-height: 180px;
+  }
+  .cost-breakdown-wrap {
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
+  .cost-breakdown-wrap table {
+    min-width: 500px;
+  }
+}
+
+/* --- Schedule page mobile --- */
+@media (max-width: 768px) {
+  .cron-card-header {
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cron-card-timing {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .cron-card-detail {
+    padding: 0 12px 10px;
+  }
+  .cron-runs-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .hb-grid {
+    gap: 8px;
+  }
+}
+
+/* --- Home page mobile --- */
+@media (max-width: 768px) {
+  .home-hero {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+  .hero-subtitle { display: none; }
+  .home-stats {
+    padding: 10px 16px;
+    gap: 8px;
+  }
+  .home-stat-card {
+    flex: 1 1 calc(50% - 4px);
+    padding: 10px 12px;
+  }
+  .stat-value {
+    font-size: 20px;
+  }
+  .home-features {
+    padding: 16px 16px 24px;
+  }
+  .feature-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .feature-grid-bottom {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .feature-card {
+    padding: 16px;
+    gap: 12px;
+  }
+}
+
+/* --- Sessions page mobile --- */
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .input-search {
+    width: 100%;
+  }
+  .filter-bars {
+    gap: 4px;
+  }
+  .agent-filter-bar {
+    gap: 4px;
+  }
+  .session-card {
+    flex-direction: column;
+  }
+  .sc-body {
+    padding: 10px 12px;
+  }
+  .sc-msg {
+    font-size: 12px;
+  }
+}
+
+/* --- Settings page mobile --- */
+@media (max-width: 768px) {
+  .settings-header {
+    padding: 16px 16px 0;
+  }
+  .settings-section {
+    margin: 16px;
+    padding: 16px;
+  }
+}
+
+/* --- Graph page mobile: touch-friendly --- */
+@media (max-width: 768px) {
+  canvas {
+    touch-action: none;
+  }
+}
