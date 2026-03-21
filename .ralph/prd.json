@@ -1058,6 +1058,24 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-050",
+      "title": "turns.js null safety: optional chaining + 빈 배열 가드",
+      "category": "bugfix",
+      "priority": 50,
+      "description": "renderTurn()에서 t.cost.total, t.usage.totalTokens에 optional chaining 없이 접근하여 null/undefined 시 런타임 크래시. renderWorkflowGroup()에 빈 배열 가드 없음.",
+      "steps": [
+        "turns.js: t.cost.total → t.cost?.total, t.usage.totalTokens → t.usage?.totalTokens",
+        "turns.js: renderWorkflowGroup 시작에 빈 배열 가드 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "cost/usage가 null인 턴에서도 크래시 없이 렌더링",
+        "빈 workflow group에서 에러 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }

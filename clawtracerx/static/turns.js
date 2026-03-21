@@ -153,6 +153,7 @@ function _renderTurnsBatch(container, count) {
 }
 
 function renderWorkflowGroup(turns, animIdx) {
+  if (!turns || !turns.length) return '';
   const firstTurn = turns[0];
   const lastTurn  = turns[turns.length - 1];
   const gid = firstTurn.workflow_group_id;
@@ -235,8 +236,8 @@ function renderTurn(t, animIdx) {
         ${t.tool_calls.length ? `<span class="stat-chip tools">${t.tool_calls.length} ${_t('turns.tools')}</span>` : ''}
         ${t.subagent_spawns.length ? `<span class="stat-chip subagents">${t.subagent_spawns.length} ${_t('turns.subagents')}</span>` : ''}
         <span class="stat-chip duration">${fmtDuration(t.duration_ms)}</span>
-        <span class="stat-chip cost">${fmtCost(t.cost.total || 0)}</span>
-        <span class="stat-chip tokens">${fmtTokens(t.usage.totalTokens || 0)}</span>
+        <span class="stat-chip cost">${fmtCost(t.cost?.total || 0)}</span>
+        <span class="stat-chip tokens">${fmtTokens(t.usage?.totalTokens || 0)}</span>
         ${(t.cache_hit_rate > 0) ? `<span class="stat-chip cache">${Math.round(t.cache_hit_rate * 100)}% ${_t('turns.cache')}</span>` : ''}
         ${t.thinking_level ? `<span class="stat-chip thinking">💭 ${t.thinking_level}</span>` : ''}
         ${typeof showRaw === 'function' ? `<button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" data-i18n-title="turns.view_raw" title="${_t('turns.view_raw')}" aria-label="${_t('turns.view_raw')}">{ }</button>` : ''}

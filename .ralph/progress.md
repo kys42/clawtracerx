@@ -329,6 +329,14 @@
 
 **결과:** ruff 통과, pytest 160 tests 전부 통과
 
+## Loop 27 — US-050: turns.js null safety
+
+**작업 내용:**
+- `t.cost.total` → `t.cost?.total`, `t.usage.totalTokens` → `t.usage?.totalTokens` (optional chaining)
+- `renderWorkflowGroup()` 빈 배열 가드 추가
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
 ## Loop 24 — US-047: API 요청 파라미터 유효성 검증
 
 **작업 내용:**
