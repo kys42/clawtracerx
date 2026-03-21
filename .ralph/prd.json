@@ -364,7 +364,7 @@
         "Esc로 필터 초기화",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-016",

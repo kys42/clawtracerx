@@ -29,7 +29,7 @@
   <input type="text" class="input-search" id="turn-search"
          :placeholder="_t('detail.search_placeholder')"
          data-i18n-placeholder="detail.search_placeholder"
-         @input="filterTurns()" style="flex:1;min-width:200px">
+         @input="debouncedFilterTurns()" style="flex:1;min-width:200px">
   <select class="input-select" id="tool-filter" @change="filterTurns()">
     <option value="" data-i18n="detail.filter_all_tools">All tools</option>
   </select>
@@ -68,10 +68,25 @@ document.addEventListener('alpine:init', () => {
     _evtSource: null,
     _reconnectCount: 0,
 
+    debouncedFilterTurns: null,
+
     async init() {
       await loadSession();
       this.loaded = true;
       this.populateToolFilter();
+      this.debouncedFilterTurns = debounce(() => this.filterTurns(), 300);
+
+      // Keyboard shortcuts
+      const self = this;
+      document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'f' && self.loaded) {
+          e.preventDefault();
+          qs('#turn-search').focus();
+        }
+        if (e.key === 'Escape') {
+          self.clearFilters();
+        }
+      });
     },
 
     populateToolFilter() {
@@ -142,7 +157,7 @@ document.addEventListener('alpine:init', () => {
         self._evtSource = null;
       }
       self.liveActive = true;
-      self.liveLabel = 'Live';
+      self.liveLabel = 'Connecting...';
       self._reconnectCount = 0;
 
       // Cleanup on page unload
@@ -152,7 +167,7 @@ document.addEventListener('alpine:init', () => {
       self._evtSource = es;
 
       es.addEventListener('init', function() {
-        // Already loaded — just confirm connection
+        self.liveLabel = 'Live';
       });
 
       es.addEventListener('update', function(e) {

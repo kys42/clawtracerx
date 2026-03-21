@@ -24,7 +24,7 @@
   <input type="text" class="input-search" id="session-search"
          :placeholder="_t('sessions.search_placeholder')"
          data-i18n-placeholder="sessions.search_placeholder"
-         @input="filterCards()">
+         @input="debouncedFilterCards()">
 </div>
 
 <div class="filter-bars">
@@ -273,6 +273,8 @@ document.addEventListener('alpine:init', () => {
     hasMore: false,
     agents: [],
 
+    debouncedFilterCards: null,
+
     async init() {
       // Apply URL query params (e.g., from cost chart drill-down)
       const params = new URLSearchParams(location.search);
@@ -282,6 +284,15 @@ document.addEventListener('alpine:init', () => {
       await this.loadAgents();
       await this.reload();
       document.addEventListener('langchange', () => this.reload());
+      this.debouncedFilterCards = debounce(() => this.filterCards(), 300);
+
+      // Keyboard shortcut: Ctrl+F for search
+      document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'f') {
+          e.preventDefault();
+          qs('#session-search').focus();
+        }
+      });
     },
 
     setType(type) {
