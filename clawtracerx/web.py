@@ -530,14 +530,14 @@ def create_app():
                 "agent_id": job.get("agentId", ""),
                 "enabled": job.get("enabled", False),
                 "schedule_expr": schedule.get("expr", ""),
-                "schedule_tz": schedule.get("tz", ""),
+                "timezone": schedule.get("tz", ""),
                 "wake_mode": job.get("wakeMode", ""),
                 "last_status": state.get("lastStatus", ""),
                 "last_run_at_ms": state.get("lastRunAtMs"),
                 "last_duration_ms": state.get("lastDurationMs"),
                 "next_run_at_ms": state.get("nextRunAtMs"),
                 "consecutive_errors": state.get("consecutiveErrors", 0),
-                "payload_message": job.get("payload", {}).get("message", ""),
+                "payload_message": job.get("payload", {}).get("message", "") or job.get("payload", {}).get("text", ""),
                 "runs": runs,
             })
         jobs.sort(key=lambda j: (not j["enabled"], j.get("next_run_at_ms") or float('inf')))

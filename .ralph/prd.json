@@ -655,6 +655,27 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-030",
+      "title": "Gateway RPC 파라미터 키 오류 + Schedule 필드 불일치 수정",
+      "category": "bugfix",
+      "priority": 30,
+      "description": "ANALYSIS_REPORT.md에 문서화된 5개 버그 수정: (1) sessions.patch의 sessionKey→key, (2) sessions.reset의 sessionKey→key, (3) schedule API의 schedule_tz→timezone 필드명 통일, (4) systemEvent 페이로드 text 필드 폴백, (5) send_agent_message의 model 파라미터가 무시되는 문제에 대한 주석 추가",
+      "steps": [
+        "gateway.py: patch_session/reset_session의 sessionKey를 key로 변경",
+        "web.py: schedule_tz를 timezone으로 변경하여 프론트와 일치",
+        "web.py: payload_message에 text 필드 폴백 추가",
+        "gateway.py: send_agent_message에 model 무시 주석 추가",
+        "관련 테스트 확인 및 통과"
+      ],
+      "acceptanceCriteria": [
+        "sessions.patch/reset RPC에 올바른 key 파라미터 전달",
+        "Schedule에서 타임존이 정상 표시",
+        "systemEvent 페이로드 텍스트 정상 표시",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }

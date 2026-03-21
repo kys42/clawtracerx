@@ -250,14 +250,14 @@ def list_gateway_sessions(agent_id: str = None, limit: int = 30) -> list:
 
 def patch_session(session_key: str, **kwargs) -> dict:
     """Patch session settings via sessions.patch RPC."""
-    params = {"sessionKey": session_key}
+    params = {"key": session_key}
     params.update(kwargs)
     return rpc_call("sessions.patch", params)
 
 
 def reset_session(session_key: str) -> dict:
     """Reset session transcript via sessions.reset RPC."""
-    return rpc_call("sessions.reset", {"sessionKey": session_key})
+    return rpc_call("sessions.reset", {"key": session_key})
 
 
 def list_models() -> list:

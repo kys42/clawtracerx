@@ -105,3 +105,16 @@
 - `@media(hover:none)`에서 hover 초기화 시 `initial`이 아닌 구체적 기본값을 써야 함 — `initial`은 CSS 속성의 명세 기본값이라 `var(--border)` 같은 테마값과 다를 수 있음
 - transform 기반 피드백(`scale()`)이 background 변경보다 GPU 가속을 타서 60fps 유지에 유리
 - `-webkit-tap-highlight-color: transparent`는 별도로 선언해야 함 — `all: unset` 같은 리셋에 포함되지 않음
+
+## Loop 11 — US-030: Gateway RPC 키 오류 + Schedule 필드 불일치 수정
+
+**작업 내용:**
+- **gateway.py**: `patch_session()`과 `reset_session()`에서 `"sessionKey"` → `"key"` 변경. 게이트웨이 스키마가 `key` 필드를 기대하며 `additionalProperties: false`라 기존 호출이 모두 실패하고 있었음
+- **web.py**: Schedule API에서 `"schedule_tz"` → `"timezone"` 변경하여 프론트엔드 `job.timezone` 참조와 일치
+- **web.py**: `payload_message` 필드에 `text` 폴백 추가 — `systemEvent` 타입 크론은 `text` 필드를 사용하므로 `message`가 없을 때 `text`로 폴백
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- ANALYSIS_REPORT.md에 이미 5개 버그가 문서화되어 있었음 — 새 탐색 전 기존 분석 문서를 먼저 확인해야 함
+- 게이트웨이 RPC는 `additionalProperties: false`이므로 잘못된 키를 보내면 서버에서 즉시 거부됨 — 에러 메시지에서 키 이름 힌트가 있었을 것
