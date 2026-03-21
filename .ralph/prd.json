@@ -277,6 +277,135 @@
         "각 스토리 구체적 steps + acceptanceCriteria 포함",
         "코드 수정 없이 PRD만 업데이트"
       ],
+      "passes": true
+    },
+    {
+      "id": "US-012",
+      "title": "메모리 누수 방지 — 무한 증가 캐시 + EventSource 정리",
+      "category": "bugfix",
+      "priority": 12,
+      "description": "web.py의 _poll_file_cache가 무한 증가하여 장기 운영 시 메모리 누수. app.js의 window._textBuf도 모달 닫아도 삭제 안 됨. detail.html의 EventSource가 페이지 이탈 시 정리 안 됨 (beforeunload 미등록). Live 토글 빠르게 반복하면 중복 EventSource 생성 가능.",
+      "steps": [
+        "web.py: _poll_file_cache에 maxsize 제한 (100) + LRU 퇴출 적용",
+        "app.js: closeTextModal()에서 _textBuf 해당 키 삭제 (or 전체 리셋)",
+        "detail.html: window beforeunload 이벤트에서 _closeLive() 호출",
+        "detail.html: _startLive()에서 기존 _evtSource가 있으면 먼저 close",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "_poll_file_cache 최대 100개 유지",
+        "모달 닫으면 _textBuf 정리됨",
+        "페이지 이탈 시 EventSource 자동 정리",
+        "Live 빠르게 토글해도 중복 생성 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-013",
+      "title": "XSS 방지 — marked.parse DOMPurify + parse_session 에러 그레이스풀",
+      "category": "security",
+      "priority": 13,
+      "description": "app.js의 showTextModal에서 marked.parse() 결과를 innerHTML로 삽입하여 마크다운 내 <script> 태그가 실행될 수 있음. 또한 web.py의 api_session_detail에서 parse_session 호출 시 손상된 JSONL에 대해 500 에러 대신 그레이스풀 400 반환 필요. SSE 핸들러의 JSON.parse도 try-catch 미적용.",
+      "steps": [
+        "base.html: DOMPurify CDN 추가 (https://cdn.jsdelivr.net/npm/dompurify)",
+        "app.js: _refreshModalBody에서 marked.parse 후 DOMPurify.sanitize() 적용",
+        "web.py: api_session_detail, api_session_graph에 try-except 래핑 → 400 Bad Session Data",
+        "detail.html: SSE update/patch 핸들러의 JSON.parse를 try-catch로 감싸기",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "마크다운에 <script>alert(1)</script> 포함해도 실행 안 됨",
+        "손상된 JSONL 파싱 시 500 대신 400 반환",
+        "SSE 데이터 손상 시 에러 배너 표시 (크래시 없음)",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-014",
+      "title": "SSE 스트리밍 성능 개선 — 델타 파싱 + 매직 넘버 상수화",
+      "category": "performance",
+      "priority": 14,
+      "description": "api_session_stream과 api_lab_stream이 0.5초마다 전체 JSONL을 재파싱하여 대용량 세션에서 CPU 과부하. 파일 크기만 변경 감지하고 새 줄만 읽는 델타 파싱으로 전환. 또한 600(5분 타임아웃), 30(하트비트), 0.5(폴링 간격) 등 매직 넘버를 상수로 추출.",
+      "steps": [
+        "web.py: SSE_POLL_INTERVAL, SSE_TIMEOUT_CYCLES, SSE_HEARTBEAT_INTERVAL 상수 정의",
+        "web.py: api_session_stream에서 last_size 기반으로 새 줄만 읽어서 파싱하는 _delta_parse 헬퍼 도입",
+        "web.py: api_lab_stream에도 동일 패턴 적용",
+        "기존 SSE 테스트 + 새 유닛 테스트 통과",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "매직 넘버 0개 (모두 상수화)",
+        "파일 크기 변경 시 새 줄만 파싱 (전체 재파싱 아님)",
+        "기존 동작 변경 없음 (init/update/patch/done 이벤트)",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-015",
+      "title": "검색/필터 UX 개선 — 디바운스 + 키보드 단축키 + 연결 상태 표시",
+      "category": "ux",
+      "priority": 15,
+      "description": "detail.html의 filterTurns()가 키 입력마다 호출되어 대량 턴에서 렉 발생. sessions.html의 filterCards()도 동일. Live 버튼이 연결 중 상태를 표시하지 않아 사용자가 여러 번 클릭. 키보드 단축키(Ctrl+F 검색, Esc 필터 초기화)가 없음.",
+      "steps": [
+        "detail.html: filterTurns를 300ms 디바운스로 래핑",
+        "sessions.html: filterCards를 300ms 디바운스로 래핑",
+        "detail.html: Live 버튼 연결 중 'Connecting...' 상태 표시 (init 이벤트 수신까지)",
+        "detail.html: Ctrl+F → 턴 검색 입력 포커스, Esc → 필터 초기화",
+        "sessions.html: Ctrl+F → 세션 검색 입력 포커스",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "검색 입력 시 300ms 디바운스 적용",
+        "Live 버튼에 Connecting 상태 표시",
+        "Ctrl+F로 검색 입력 포커스",
+        "Esc로 필터 초기화",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-016",
+      "title": "SSE 스트리밍 + 내보내기 + 캐시 테스트 확대",
+      "category": "testing",
+      "priority": 16,
+      "description": "US-004~006에서 추가한 기능(검색, 내보내기, 라이브 스트리밍, 캐시, 로그)의 서버 측 테스트가 부족. 특히 SSE 스트리밍 이벤트 생성 로직, CSV 내보내기 필드 정확성, 로그 뷰어 라인 수 제한, 캐시 무효화 시나리오를 커버해야 함.",
+      "steps": [
+        "test_web.py: /api/sessions/export CSV 필드 검증 (헤더 + 데이터 행 매칭)",
+        "test_web.py: /api/session/<id>/export JSON 구조 검증 (turns, session_id 필드)",
+        "test_web.py: /api/logs lines 파라미터 제한 검증 (최대 200줄)",
+        "test_web.py: /api/session/<id>/stream SSE 초기 이벤트 검증 (mock 파일 변경)",
+        "test_session_parser.py: _read_jsonl, _extract_metadata, _build_id_map 단위 테스트",
+        "pytest -v 통과 + 새 테스트 10개 이상"
+      ],
+      "acceptanceCriteria": [
+        "CSV 내보내기 필드 정확성 테스트 통과",
+        "SSE 초기 이벤트 생성 테스트 통과",
+        "새 서브함수 단위 테스트 통과",
+        "새 테스트 10개 이상 추가",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-017",
+      "title": "web.py 남은 except Exception as e 정리 + 타입 힌트 보강",
+      "category": "code-quality",
+      "priority": 17,
+      "description": "US-007에서 except Exception: pass 패턴을 제거했으나 web.py에 아직 except Exception as e: 패턴이 10곳 이상 남아있음 (라우트 핸들러 내). KeyboardInterrupt/SystemExit도 잡히는 문제. 또한 _poll_file_cache, _lab_activity_log 등 모듈 수준 변수에 타입 힌트 누락.",
+      "steps": [
+        "web.py: 모든 라우트 핸들러의 except Exception as e → 구체적 예외 타입으로 변경",
+        "web.py: _poll_file_cache, _tool_desc_cache, _lab_activity_log 타입 힌트 보강",
+        "web.py: import csv as _csv → import csv (언더스코어 접두사 제거)",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "except Exception as e 패턴 최소화 (불가피한 경우 주석으로 이유 명시)",
+        "모듈 수준 변수 타입 힌트 존재",
+        "ruff + pytest 통과"
+      ],
       "passes": false
     }
   ]
