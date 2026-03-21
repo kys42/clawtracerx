@@ -797,6 +797,87 @@
         "각 스토리가 구체적 문제 + steps + acceptanceCriteria 포함",
         "코드 수정 없이 PRD만 업데이트"
       ],
+      "passes": true
+    },
+    {
+      "id": "US-037",
+      "title": "CSV Export UTF-8 BOM + 개행 이스케이프 + 필드 보강",
+      "category": "bugfix",
+      "priority": 37,
+      "description": "sessions.html의 exportCSV()에서 (1) UTF-8 BOM(\\uFEFF) 미포함으로 Excel에서 한글 깨짐, (2) last_message에 개행 문자 포함 시 CSV 파싱 깨짐, (3) file_size/tool_calls/errors 등 표시 데이터가 export에 누락.",
+      "steps": [
+        "sessions.html exportCSV(): Blob 생성 시 앞에 '\\uFEFF' BOM 추가",
+        "필드 값의 개행 문자를 공백으로 치환 후 CSV 셀에 삽입",
+        "header에 file_size, tool_calls, errors, subagents, channel 필드 추가 + 데이터 행도 매칭",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "다운로드된 CSV를 Excel에서 열면 한글이 정상 표시됨 (BOM 존재)",
+        "개행 포함 메시지가 CSV 구조를 깨뜨리지 않음",
+        "export 필드가 UI 표시 데이터와 일치",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-038",
+      "title": "접근성: 세션 카드 키보드 내비게이션 + 모달 포커스 트랩",
+      "category": "a11y",
+      "priority": 38,
+      "description": "세션 카드가 div onclick으로 구현되어 Tab/Enter 키보드 내비게이션 불가. 텍스트 모달에 포커스 트랩이 없어 Tab 키로 모달 밖으로 이탈 가능. (1) 세션 카드에 tabindex='0', role='link', Enter/Space keydown 핸들러 추가. (2) showTextModal()에서 포커스를 모달 내부로 이동, Tab 순환 트랩, 닫을 때 원래 요소로 포커스 복원.",
+      "steps": [
+        "sessions.html: session-card div에 tabindex='0' role='link' aria-label 추가",
+        "sessions.html: Enter/Space keydown 이벤트로 카드 클릭 동작",
+        "app.js showTextModal(): 열 때 모달 내 첫 포커스 가능 요소로 focus()",
+        "app.js: Tab 키 트랩 — 모달 내 포커스 가능 요소들 사이에서만 순환",
+        "app.js closeTextModal(): 닫을 때 이전 activeElement로 포커스 복원",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "Tab 키로 세션 카드 간 이동 가능, Enter로 세션 열림",
+        "모달 열린 상태에서 Tab이 모달 밖으로 나가지 않음",
+        "모달 닫으면 이전 요소에 포커스 복원",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-039",
+      "title": "Lab SSE 재연결 + 상태 표시 개선",
+      "category": "bugfix",
+      "priority": 39,
+      "description": "Lab의 SSE 스트리밍에서 네트워크 오류 시 자동 재연결이 없어 사용자에게 silent failure 발생. error 이벤트 핸들러가 CLOSED 상태만 체크하여 transient 오류 복구 불가. (1) 재연결 시 exponential backoff 로직 추가, (2) 최대 재시도 횟수 제한 + 사용자 알림, (3) detail.html의 Live SSE도 동일 패턴 적용.",
+      "steps": [
+        "lab.html SSE error 핸들러: readyState가 CONNECTING이면 재연결 대기 표시, CLOSED면 backoff 재연결 시도",
+        "reconnectCount + maxReconnect(5) + 지수 백오프(1s, 2s, 4s, 8s, 16s)",
+        "최대 재시도 초과 시 사용자에게 '연결 끊김' 토스트 + 수동 재연결 버튼",
+        "detail.html Live SSE에도 동일 재연결 로직 적용",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "네트워크 일시 끊김 후 자동 재연결됨",
+        "최대 재시도 후 사용자에게 명확한 알림",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-040",
+      "title": "Settings 로그 뷰어: web.log 초기화 + 파일 없음 표시",
+      "category": "bugfix",
+      "priority": 40,
+      "description": "Settings 페이지 로그 뷰어에서 web.log가 존재하지 않아 항상 빈 결과. lab.log는 RotatingFileHandler로 생성되지만 web.log는 아무 곳에서도 생성하지 않음. /api/logs 엔드포인트가 파일 미존재를 빈 배열로 반환하여 사용자가 오류 상황을 인지 불가.",
+      "steps": [
+        "web.py: Flask 앱에 web.log RotatingFileHandler 추가 (lab.log와 동일 패턴, 5MB, 3백업)",
+        "/api/logs 엔드포인트: 파일 미존재 시 {error: 'file not found', lines: []} 반환",
+        "settings.html: error 응답 시 '로그 파일이 아직 생성되지 않았습니다' 메시지 표시",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "web.log가 Flask 요청 로그를 기록",
+        "파일 없을 때 사용자에게 명확한 메시지 표시",
+        "ruff + pytest 통과"
+      ],
       "passes": false
     }
   ]

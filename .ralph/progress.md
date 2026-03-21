@@ -187,3 +187,19 @@
 **배운 점:**
 - 기존 코드 검색이 중요 — PRD에 "구현 필요"로 적혀있어도 이미 구현된 경우가 많음
 - 세션 카드의 data-search 속성에 모든 검색 가능 필드를 포함해야 텍스트 검색이 제대로 동작
+
+## Loop 16 — US-036: 심화 기능 테스트 + 엣지케이스 탐색
+
+**작업 내용:**
+- 8개 점검 항목 코드 리뷰 완료, 6개 구체적 이슈 발견
+- US-037: CSV Export BOM/개행/필드 누락
+- US-038: 접근성 (세션 카드 키보드 nav + 모달 포커스 트랩)
+- US-039: Lab SSE 재연결 로직 부재
+- US-040: Settings web.log 미존재
+
+**결과:** 코드 수정 없이 PRD에 4개 새 스토리 추가
+
+**배운 점:**
+- web.log는 아무 곳에서도 생성하지 않아 Settings 로그 뷰어가 항상 빈 결과 표시
+- CSV export에서 BOM 없으면 Excel이 UTF-8을 인식 못함 — Windows 사용자 고려 필수
+- EventSource의 error 이벤트는 transient/permanent 구분이 어려움 — readyState 체크 필수
