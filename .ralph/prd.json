@@ -235,7 +235,7 @@
         "fetchJSON 미사용 (fetchJSONSafe로 통일)",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-011",

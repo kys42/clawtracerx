@@ -283,7 +283,7 @@ function renderHeader(s) {
       ${s.file_path ? `
       <div class="meta-file-path">
         <code title="${escHtml(s.file_path)}">${escHtml(s.file_path.replace(/^\/Users\/[^/]+/, '~'))}</code>
-        <button class="btn-copy-path" onclick="navigator.clipboard.writeText('${escHtml(s.file_path)}')" title="Copy path" aria-label="Copy file path">📋</button>
+        <button class="btn-copy-path" onclick="navigator.clipboard.writeText('${escHtml(s.file_path)}').catch(function(){})" title="Copy path" aria-label="Copy file path">📋</button>
       </div>` : ''}
       ${contextPanel}
     </div>

@@ -297,7 +297,7 @@ document.addEventListener('alpine:init', () => {
           { key: 'tools',    label: _t('home.stat.tools'),    value: fmtTokens(totalTools) },
         ];
       } catch(e) {
-        console.error('homeStats error:', e);
+        showErrorBanner(e.message);
       } finally {
         this.loading = false;
       }

@@ -225,7 +225,8 @@ function removePendingMessage() {
 // --- Textarea auto-resize + keyboard ---
 function autoResizeTextarea(el) {
   el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+  var maxH = Math.min(window.innerHeight * 0.3, 200);
+  el.style.height = Math.min(el.scrollHeight, maxH) + 'px';
 }
 
 // --- Lab message draft (localStorage) ---

@@ -1475,6 +1475,7 @@ body {
   gap: 16px;
 }
 .cost-grid .full-width { grid-column: 1 / -1; }
+.cost-grid .card { overflow-x: auto; }
 
 /* ApexCharts containers */
 #chart-agent, #chart-type, #chart-model { min-height: 160px; }
