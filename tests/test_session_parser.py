@@ -406,3 +406,90 @@ class TestBuildIdMap:
         assert "a1" in result
         assert len(result) == 2
         assert result["a1"]["role"] == "assistant"
+
+
+# ---------------------------------------------------------------------------
+# _parse_announce_match
+# ---------------------------------------------------------------------------
+
+class TestParseAnnounceMatch:
+    def test_basic_stats_extraction(self):
+        text = 'Stats: runtime 1m25s • tokens 12.5K (in 8K / out 4.5K)'
+        m = sp._ANNOUNCE_RE.search(text)
+        assert m is not None
+        result = sp._parse_announce_match(m)
+        assert result["runtime_ms"] == 85_000
+        assert result["total_tokens"] == 12_500
+        assert result["input_tokens"] == 8_000
+        assert result["output_tokens"] == 4_500
+
+    def test_new_format_session_id(self):
+        text = '[sessionId: 9520bb0d-fed2-4b35-abcd-1234567890ab] A subagent task "research" just completed.\nStats: runtime 45s • tokens 3K (in 2K / out 1K)'
+        m = sp._ANNOUNCE_RE.search(text)
+        assert m is not None
+        result = sp._parse_announce_match(m, full_text=text)
+        assert result["session_id"] == "9520bb0d-fed2-4b35-abcd-1234567890ab"
+        assert result["label"] == "research"
+
+    def test_label_extraction(self):
+        text = 'A subagent task "code-review" just completed.\nStats: runtime 2m10s • tokens 50K (in 30K / out 20K)'
+        m = sp._ANNOUNCE_RE.search(text)
+        result = sp._parse_announce_match(m, full_text=text)
+        assert result["label"] == "code-review"
+        assert "session_id" not in result
+
+    def test_invalid_groups_returns_none(self):
+        """When regex match groups are invalid, should return None."""
+        import re
+        # Create a fake match with only 1 group (needs 4)
+        fake_m = re.search(r"(.*)", "not-a-number")
+        result = sp._parse_announce_match(fake_m)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# load_subagent_runs edge cases
+# ---------------------------------------------------------------------------
+
+class TestLoadSubagentRuns:
+    def test_missing_file_returns_empty(self, monkeypatch, tmp_path):
+        sp._subagent_cache = None
+        monkeypatch.setattr(sp, "SUBAGENTS_FILE", tmp_path / "nonexistent.json")
+        result = sp.load_subagent_runs()
+        assert result == {}
+        sp._subagent_cache = None
+
+    def test_corrupted_json_returns_empty(self, monkeypatch, tmp_path):
+        sp._subagent_cache = None
+        bad_file = tmp_path / "runs.json"
+        bad_file.write_text("{invalid json")
+        monkeypatch.setattr(sp, "SUBAGENTS_FILE", bad_file)
+        result = sp.load_subagent_runs()
+        assert result == {}
+        sp._subagent_cache = None
+
+    def test_valid_file_returns_runs(self, monkeypatch, tmp_path):
+        sp._subagent_cache = None
+        runs_file = tmp_path / "runs.json"
+        runs_file.write_text(json.dumps({"runs": {"r1": {"status": "done"}}}))
+        monkeypatch.setattr(sp, "SUBAGENTS_FILE", runs_file)
+        result = sp.load_subagent_runs()
+        assert "r1" in result
+        assert result["r1"]["status"] == "done"
+        sp._subagent_cache = None
+
+
+# ---------------------------------------------------------------------------
+# _find_child_session_file edge cases
+# ---------------------------------------------------------------------------
+
+class TestFindChildSessionFile:
+    def test_nonexistent_agents_dir(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sp, "AGENTS_DIR", tmp_path / "nonexistent")
+        result = sp.find_subagent_child_session("agent:foo:chat:9520bb0d-fed2-4b35-abcd-1234567890ab")
+        assert result is None
+
+    def test_invalid_key_returns_none(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(sp, "AGENTS_DIR", tmp_path)
+        result = sp.find_subagent_child_session("short")
+        assert result is None

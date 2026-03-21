@@ -463,6 +463,25 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-021",
+      "title": "테스트 커버리지 4차 — _parse_announce_match + load_subagent_runs 엣지 케이스",
+      "category": "testing",
+      "priority": 21,
+      "description": "_parse_announce_match()는 서브에이전트 announce 텍스트에서 runtime/tokens/sessionId를 추출하는 핵심 함수지만 테스트 0개. load_subagent_runs()의 TOCTOU 수정(US-019)도 테스트 미커버. _find_child_session_file의 OSError 방어(US-020)도 테스트 필요.",
+      "steps": [
+        "test_session_parser.py: TestParseAnnounceMatch 클래스 — 정상 매치, sessionId 추출, label 추출, 잘못된 매치 시 None 반환",
+        "test_session_parser.py: load_subagent_runs — 파일 없을 때 빈 dict, JSON 손상 시 빈 dict",
+        "test_session_parser.py: _find_child_session_file — AGENTS_DIR 없을 때 None 반환",
+        "pytest -v 통과 + 새 테스트 6개 이상"
+      ],
+      "acceptanceCriteria": [
+        "_parse_announce_match 테스트 3개 이상",
+        "load_subagent_runs 엣지 케이스 테스트 2개 이상",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }
