@@ -1169,6 +1169,24 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-056",
+      "title": "lab.html DOM null safety — qs() 반환값 방어",
+      "category": "bugfix",
+      "priority": 56,
+      "description": "lab.html의 loadContextFiles(), loadActivityLog(), showPendingMessage()에서 qs() 반환값에 null 체크 없이 .innerHTML/.appendChild 접근. DOM 요소 누락 시 런타임 크래시.",
+      "steps": [
+        "loadContextFiles(): container null 체크",
+        "loadActivityLog(): container null 체크",
+        "showPendingMessage(): container, timeline-empty null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없이 graceful 처리",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }

@@ -209,7 +209,9 @@ function hideElapsedAfterDelay() {
 function insertPendingMessage(text) {
   removePendingMessage();
   const container = qs('#turns-container');
-  qs('#timeline-empty').style.display = 'none';
+  if (!container) return;
+  const emptyEl = qs('#timeline-empty');
+  if (emptyEl) emptyEl.style.display = 'none';
   const card = document.createElement('div');
   card.className = 'pending-msg-card';
   card.id = 'pending-msg';
@@ -661,6 +663,7 @@ function setStatus(status) {
 async function loadContextFiles() {
   const files = await fetchJSONSafe('/api/lab/context');
   const container = qs('#context-files');
+  if (!container) return;
 
   if (!files || !files.length) {
     container.innerHTML = '<div class="empty">' + _t('lab.no_context') + '</div>';
@@ -776,6 +779,7 @@ async function resetContextFile(name) {
 async function loadActivityLog() {
   const entries = await fetchJSONSafe('/api/lab/activity');
   const container = qs('#activity-log');
+  if (!container) return;
   if (!entries || !entries.length) {
     container.innerHTML = '<span class="dim">' + _t('lab.no_activity') + '</span>';
     return;
