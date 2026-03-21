@@ -384,3 +384,11 @@
 - settings.html: toggleConfig() 내 config-content/config-path 요소 null 체크
 
 **결과:** ruff 통과, pytest 160 tests 전부 통과
+
+## Loop 31 — US-054: CLI parse_session 에러 핸들링
+
+**작업 내용:**
+- cmd_analyze(): parse_session try/except (OSError, JSONDecodeError, KeyError) 추가
+- cmd_context(): 동일 패턴 적용
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과

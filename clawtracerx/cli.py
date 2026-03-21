@@ -139,7 +139,11 @@ def cmd_analyze(session_ref: str, no_subagents: bool = False):
         print(f"{RED}Session not found: {session_ref}{RESET}")
         return
 
-    analysis = parse_session(file_path, recursive_subagents=not no_subagents)
+    try:
+        analysis = parse_session(file_path, recursive_subagents=not no_subagents)
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        print(f"{RED}Failed to parse session: {e}{RESET}")
+        return
     _print_analysis(analysis, depth=0)
 
 
@@ -537,7 +541,11 @@ def cmd_context(session_ref: str):
         print(f"{RED}Session not found: {session_ref}{RESET}")
         return
 
-    analysis = parse_session(file_path, recursive_subagents=False)
+    try:
+        analysis = parse_session(file_path, recursive_subagents=False)
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        print(f"{RED}Failed to parse session: {e}{RESET}")
+        return
 
     print(f"\n{BOLD}Context Injection for session {CYAN}{analysis.session_id[:10]}{RESET} {BOLD}({analysis.agent_id}){RESET}")
     print("=" * 60)

@@ -1129,6 +1129,23 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-054",
+      "title": "CLI parse_session 에러 핸들링",
+      "category": "bugfix",
+      "priority": 54,
+      "description": "cli.py의 cmd_analyze()와 cmd_context()에서 parse_session() 호출에 try/except가 없어 손상된 JSONL 파일에서 크래시 발생.",
+      "steps": [
+        "cmd_analyze(): parse_session try/except (OSError, JSONDecodeError, KeyError)",
+        "cmd_context(): 동일 패턴 적용",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "손상된 세션 파일에서 깔끔한 에러 메시지 표시",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }
