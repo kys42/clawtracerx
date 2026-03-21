@@ -257,7 +257,7 @@
         "기존 108개 테스트 전부 통과 (동작 변경 없음)",
         "ruff 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-FINAL",

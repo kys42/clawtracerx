@@ -684,21 +684,8 @@ _parse_cache: dict = {}  # {path_str: (mtime, SessionAnalysis)}
 _PARSE_CACHE_MAX = 50
 
 
-def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> SessionAnalysis:
-    """Parse a session JSONL file into a SessionAnalysis."""
-    file_path = Path(file_path)
-
-    # mtime-based cache check
-    path_key = str(file_path)
-    try:
-        current_mtime = file_path.stat().st_mtime
-    except OSError:
-        current_mtime = None
-
-    if current_mtime is not None and path_key in _parse_cache:
-        cached_mtime, cached_result = _parse_cache[path_key]
-        if cached_mtime == current_mtime:
-            return cached_result
+def _read_jsonl(file_path: Path) -> list:
+    """Read a JSONL file and return list of parsed JSON objects."""
     lines = []
     with open(file_path) as f:
         for raw_line in f:
@@ -709,31 +696,16 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 lines.append(json.loads(raw_line))
             except json.JSONDecodeError:
                 continue
+    return lines
 
-    # Detect agent_id from path
-    agent_id = "unknown"
-    parts = file_path.parts
-    try:
-        agents_idx = parts.index("agents")
-        if agents_idx + 1 < len(parts):
-            agent_id = parts[agents_idx + 1]
-    except ValueError:
-        pass
 
-    # Extract session_id from filename (handles both .jsonl and .jsonl.deleted.*)
-    fname = file_path.name.split(".jsonl")[0]  # strip .jsonl and anything after
-    session_id = fname.split("-topic-")[0]
+def _extract_metadata(lines: list, analysis: SessionAnalysis) -> tuple:
+    """First pass: extract session metadata from lines.
 
-    analysis = SessionAnalysis(
-        session_id=session_id,
-        agent_id=agent_id,
-        file_path=str(file_path),
-    )
-
-    # First pass: extract metadata
+    Returns (model, provider, api, thinking_level) for use in turn building.
+    """
     current_model = ""
     current_provider = ""
-    current_api = ""
     current_thinking_level = ""
 
     for entry in lines:
@@ -760,9 +732,12 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     analysis.model = current_model
     analysis.provider = current_provider
     analysis.thinking_level = current_thinking_level
+    return current_model, current_provider, "", current_thinking_level
 
-    # Build id → message info map for parent-chain lookups
-    id_to_msg_info = {}  # id -> {"role": str, "stop_reason": str, "model": str}
+
+def _build_id_map(lines: list) -> dict:
+    """Build id → message info map for parent-chain lookups."""
+    id_to_msg_info = {}
     for entry in lines:
         eid = entry.get("id")
         if eid and entry.get("type") == "message":
@@ -772,16 +747,29 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 "stop_reason": msg.get("stopReason", ""),
                 "model": msg.get("model", ""),
             }
+    return id_to_msg_info
 
-    # Second pass: build turns
-    # A turn starts with a user message (or a proactive/delivery assistant message)
-    # and includes all assistant messages + tool results until the next boundary.
+
+def _build_turns(
+    lines: list,
+    analysis: SessionAnalysis,
+    id_to_msg_info: dict,
+    initial_model: str,
+    initial_provider: str,
+    initial_api: str,
+    initial_thinking_level: str,
+    recursive_subagents: bool,
+) -> list:
+    """Second pass: build Turn objects from message entries."""
     turns = []
     current_turn = None
-    pending_tool_calls = {}  # id -> ToolCall
+    pending_tool_calls = {}
     turn_raw_lines = []
-    current_thinking_level = ""
-    _turn_round_idx = 0  # assistant message round counter within current turn
+    current_model = initial_model
+    current_provider = initial_provider
+    current_api = initial_api
+    current_thinking_level = initial_thinking_level
+    _turn_round_idx = 0
 
     for entry in lines:
         etype = entry.get("type")
@@ -802,13 +790,11 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         ts = _ts_to_dt(msg.get("timestamp") or entry.get("timestamp"))
 
         if role == "user":
-            # Finalize previous turn
             if current_turn is not None:
                 current_turn.raw_lines = turn_raw_lines
                 _finalize_turn(current_turn, pending_tool_calls)
                 turns.append(current_turn)
 
-            # Start new turn
             user_text = ""
             content = msg.get("content", [])
             if isinstance(content, list):
@@ -832,13 +818,10 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 api=current_api,
                 thinking_level=current_thinking_level,
             )
-            # 채널 메시지 파싱 (discord / telegram / whatsapp / slack / etc.)
             if source in _BRACKET_CHANNEL_MAP or source == "discord":
                 current_turn.channel_meta = _parse_channel_message(user_text, source)
-                # Correct user_source to match actual detected platform
                 if current_turn.channel_meta:
                     current_turn.user_source = current_turn.channel_meta.get("platform", source)
-                    # Set session-level channel from first channel message
                     if not analysis.channel:
                         analysis.channel = current_turn.channel_meta.get("platform", source)
             pending_tool_calls = {}
@@ -854,7 +837,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             current_stop = msg.get("stopReason", "")
 
             is_delivery_mirror = (model_name == "delivery-mirror")
-            # Proactive: parent is an assistant that completed normally (not an error retry)
             is_proactive = (
                 parent_role == "assistant"
                 and not is_delivery_mirror
@@ -863,7 +845,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             )
 
             if is_delivery_mirror:
-                # Merge delivery-mirror into current turn as metadata (not a new turn)
                 if current_turn is not None:
                     dm_text = ""
                     for block in msg.get("content", []):
@@ -874,7 +855,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     turn_raw_lines.append(entry)
                 continue
             elif is_proactive:
-                # Close current turn and start a new one
                 if current_turn is not None:
                     current_turn.raw_lines = turn_raw_lines
                     _finalize_turn(current_turn, pending_tool_calls)
@@ -893,7 +873,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 turn_raw_lines = []
                 _turn_round_idx = 0
             elif current_turn is None:
-                # Assistant message without prior user - create implicit turn
                 current_turn = Turn(
                     index=len(turns),
                     user_text="[implicit]",
@@ -910,9 +889,8 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
 
             turn_raw_lines.append(entry)
             content = msg.get("content", [])
-            _round_thinking_parts: list = []  # thinking in this assistant round
+            _round_thinking_parts: list = []
 
-            # Update model info from this message
             if msg.get("model"):
                 current_turn.model = msg["model"]
                 current_model = msg["model"]
@@ -925,7 +903,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
 
             current_turn.stop_reason = msg.get("stopReason", "")
 
-            # Accumulate usage
             usage = msg.get("usage", {})
             if usage:
                 for k in ("input", "output", "cacheRead", "cacheWrite", "totalTokens"):
@@ -935,7 +912,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     for k in ("input", "output", "cacheRead", "cacheWrite", "total"):
                         current_turn.cost[k] = current_turn.cost.get(k, 0) + msg_cost.get(k, 0)
 
-            # Parse content items
             if isinstance(content, list):
                 for c in content:
                     if not isinstance(c, dict):
@@ -944,14 +920,13 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
 
                     if ctype == "text":
                         text = c.get("text", "").strip()
-                        if text:  # skip empty/whitespace-only text blocks
+                        if text:
                             current_turn.assistant_texts.append(c.get("text", ""))
 
                     elif ctype == "thinking":
                         thinking_text = c.get("thinking", "")
                         if thinking_text:
                             _round_thinking_parts.append(thinking_text)
-                            # maintain backward-compat thinking_text (merged)
                             if current_turn.thinking_text:
                                 current_turn.thinking_text += "\n" + thinking_text
                             else:
@@ -974,7 +949,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                         pending_tool_calls[tc.id] = tc
                         current_turn.tool_calls.append(tc)
 
-            # Record per-round thinking in thinking_blocks
             round_thinking = "\n".join(_round_thinking_parts) or None
             while len(current_turn.thinking_blocks) <= _turn_round_idx:
                 current_turn.thinking_blocks.append(None)
@@ -1001,11 +975,9 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             duration_ms = details.get("durationMs")
             status = details.get("status", "")
 
-            # Check for error in details
             if details.get("error") or details.get("status") == "error":
                 is_error = True
 
-            # Match to pending tool call
             if tc_id in pending_tool_calls:
                 tc = pending_tool_calls[tc_id]
                 tc.result_text = _truncate(result_text, 500)
@@ -1014,7 +986,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 tc.is_error = is_error
                 tc.status = status
             else:
-                # Orphan result - still record it
                 tc = ToolCall(
                     id=tc_id,
                     name=tool_name,
@@ -1027,12 +998,10 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 )
                 current_turn.tool_calls.append(tc)
 
-            # Check if this is a sessions_spawn result
             if tool_name == "sessions_spawn":
                 child_key = details.get("childSessionKey", "")
                 run_id = details.get("runId", "")
                 if child_key or run_id:
-                    # Get spawn arguments from matching toolCall
                     spawn_args = {}
                     if tc_id in pending_tool_calls:
                         spawn_args = pending_tool_calls[tc_id].arguments
@@ -1045,7 +1014,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                         child_session_id=_extract_session_id_from_key(child_key),
                     )
 
-                    # Enrich from subagent registry
                     reg = get_subagent_run(run_id)
                     if reg:
                         started = reg.get("startedAt", 0)
@@ -1057,7 +1025,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                         if not spawn.label:
                             spawn.label = reg.get("label", "")
 
-                    # Recursively parse child session
                     if recursive_subagents and child_key:
                         child_file = find_subagent_child_session(child_key)
                         if child_file:
@@ -1074,24 +1041,11 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         _finalize_turn(current_turn, pending_tool_calls)
         turns.append(current_turn)
 
-    # Enrich subagent spawns from announce messages (uses real sessionId from announce prefix)
-    _enrich_spawns_from_announces(turns, agent_id=agent_id)
+    return turns
 
-    # Last-resort: load child sessions for spawns still missing child_turns
-    # (handles delivery_mirror case where routing UUID ≠ file UUID, no announce turn)
-    if recursive_subagents:
-        _try_load_missing_children(turns, agent_id=agent_id)
 
-    # Group consecutive turns that form a continuous workflow chain
-    _assign_workflow_groups(turns)
-
-    # Compute in_context based on compaction events
-    if analysis.compaction_events:
-        _compute_context_status(turns, lines, analysis.compaction_events)
-
-    analysis.turns = turns
-
-    # Calculate totals
+def _compute_totals(analysis: SessionAnalysis, turns: list, file_path: Path) -> None:
+    """Calculate total cost, tokens, duration, and detect session type."""
     for turn in turns:
         analysis.total_cost += turn.cost.get("total", 0)
         analysis.total_tokens += turn.usage.get("totalTokens", 0)
@@ -1101,7 +1055,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         last_turn = turns[-1]
         last_ts = last_turn.timestamp
         if first_ts and last_ts:
-            # Use the last raw line timestamp for more accuracy
             for raw in reversed(last_turn.raw_lines):
                 raw_ts = _ts_to_dt(raw.get("message", {}).get("timestamp") or raw.get("timestamp"))
                 if raw_ts:
@@ -1109,7 +1062,7 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     break
             analysis.total_duration_ms = int((last_ts - first_ts).total_seconds() * 1000)
 
-    # Detect session type from first user message (skip proactive turns)
+    # Detect session type
     if turns:
         first_real_turn = next(
             (t for t in turns if t.user_source != "proactive"),
@@ -1124,6 +1077,68 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             analysis.session_type = "subagent"
         else:
             analysis.session_type = "chat"
+
+
+def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> SessionAnalysis:
+    """Parse a session JSONL file into a SessionAnalysis."""
+    file_path = Path(file_path)
+
+    # mtime-based cache check
+    path_key = str(file_path)
+    try:
+        current_mtime = file_path.stat().st_mtime
+    except OSError:
+        current_mtime = None
+
+    if current_mtime is not None and path_key in _parse_cache:
+        cached_mtime, cached_result = _parse_cache[path_key]
+        if cached_mtime == current_mtime:
+            return cached_result
+
+    # Read and parse JSONL
+    lines = _read_jsonl(file_path)
+
+    # Detect agent_id and session_id from path
+    agent_id = "unknown"
+    parts = file_path.parts
+    try:
+        agents_idx = parts.index("agents")
+        if agents_idx + 1 < len(parts):
+            agent_id = parts[agents_idx + 1]
+    except ValueError:
+        pass
+    fname = file_path.name.split(".jsonl")[0]
+    session_id = fname.split("-topic-")[0]
+
+    analysis = SessionAnalysis(
+        session_id=session_id, agent_id=agent_id, file_path=str(file_path),
+    )
+
+    # First pass: extract metadata
+    model, provider, api, thinking_level = _extract_metadata(lines, analysis)
+
+    # Build parent-chain lookup map
+    id_to_msg_info = _build_id_map(lines)
+
+    # Second pass: build turns from messages
+    turns = _build_turns(
+        lines, analysis, id_to_msg_info,
+        model, provider, api, thinking_level,
+        recursive_subagents,
+    )
+
+    # Post-processing: enrich spawns, assign workflow groups, compute context
+    _enrich_spawns_from_announces(turns, agent_id=agent_id)
+    if recursive_subagents:
+        _try_load_missing_children(turns, agent_id=agent_id)
+    _assign_workflow_groups(turns)
+    if analysis.compaction_events:
+        _compute_context_status(turns, lines, analysis.compaction_events)
+
+    analysis.turns = turns
+
+    # Calculate totals and detect session type
+    _compute_totals(analysis, turns, file_path)
 
     # Enrich from sessions.json metadata
     meta = load_session_metadata(agent_id, session_id)
@@ -1142,7 +1157,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     if current_mtime is not None:
         _parse_cache[path_key] = (current_mtime, analysis)
         if len(_parse_cache) > _PARSE_CACHE_MAX:
-            # Evict oldest entry
             oldest_key = next(iter(_parse_cache))
             del _parse_cache[oldest_key]
 
