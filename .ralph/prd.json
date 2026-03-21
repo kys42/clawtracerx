@@ -936,6 +936,128 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-044",
+      "title": "QA 버그 수정: 404 HTML 노출 + Loading 잔류 + Home $0 + Lab soon + toast",
+      "category": "bugfix",
+      "priority": 44,
+      "description": "QA 리포트(docs/qa/qa-report-2026-03-21.md)에서 발견된 MEDIUM 이슈 일괄 수정. (1) BUG-003: detail 페이지 404 시 에러 배너에 raw HTML 전체 노출 — app.js fetchJSONSafe에서 HTTP 에러 응답 body의 HTML 태그를 strip하고 간결한 메시지만 표시. (2) BUG-004: 404 후 'Loading session...' 텍스트 영구 잔류 — detail.html에서 API 실패 시 로딩 영역을 에러 메시지 + '← Sessions' 링크로 교체. (3) BUG-005: Home 페이지 Total Cost $0인데 Cost 페이지는 $20.94 — home.html 또는 /api/home의 비용 계산 로직이 Cost 페이지와 동일한 기간을 사용하는지 확인/수정. (4) BUG-008: Lab 네비 'soon' 뱃지 — Lab은 구현 완료인데 사이드바에서 opacity/pointer-events로 비활성. 제거하여 접근 가능하게. (5) BUG-006: base.html에 toast-container div 없음 — showToast 함수가 컨테이너를 찾지 못해 토스트 알림 불가. base.html body 하단에 추가.",
+      "steps": [
+        "app.js fetchJSONSafe: catch에서 response body가 HTML이면(<로 시작) 태그 제거 후 텍스트만 추출, 또는 status code + statusText만 사용",
+        "detail.html: loadSession() 에러 시 #turns-container 또는 로딩 영역의 innerHTML을 에러 메시지 + '← Sessions' 링크로 교체",
+        "home.html 또는 web.py /api/home: total_cost 계산이 전체 기간인지 확인, Cost 페이지 /api/cost와 동일한 로직 사용하도록 수정",
+        "base.html: Lab 네비 링크의 opacity, pointer-events, 'soon' 뱃지 제거",
+        "base.html: </body> 앞에 <div id='toast-container' class='toast-container'></div> 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "존재하지 않는 세션 접속 시 에러 배너에 HTML 태그 없는 깔끔한 메시지 표시",
+        "에러 시 Loading 텍스트 사라지고 돌아가기 링크 표시",
+        "Home과 Cost 페이지의 비용 수치 일관",
+        "Lab 네비 링크 클릭하여 /lab 접속 가능",
+        "showToast() 호출 시 토스트가 화면에 표시됨",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-045",
+      "title": "QA 기능 보완: 세션 검색 동작 수정 + Live 토글 UI + 차트 드릴다운",
+      "category": "feature",
+      "priority": 45,
+      "description": "QA 리포트 HIGH 이슈 수정. (1) BUG-001: 세션 검색 — sessions.html에서 검색 입력 시 세션 카드가 필터링되지 않음. 클라이언트 사이드 필터 로직(session_id, agent_id, last_message 매칭) 확인 및 수정. 검색 결과 카운트('N of M sessions') 표시 추가. (2) BUG-002: Live 토글 — detail.html에 Live 버튼 추가, 클릭 시 /api/session/:id/stream SSE 연결, update 이벤트로 새 턴 append, patch로 마지막 턴 교체, done시 자동 종료. 초록 점 pulse 애니메이션. 스크롤 위치 보존. (3) BUG-007: 비용 차트 드릴다운 — cost.html ApexCharts에 events.dataPointSelection 핸들러 추가, 클릭 시 location.href='/?agent=xxx'로 이동. sessions.html에서 URL ?agent= 파라미터 자동 적용.",
+      "steps": [
+        "sessions.html: 검색 input 이벤트 핸들러 디버그 — 카드의 data 속성 또는 텍스트 content로 매칭, display:none 토글 확인. 동작 안 하면 재구현",
+        "sessions.html: 검색 결과 카운트 표시 영역 추가 ('N of M sessions')",
+        "detail.html header-actions에 Live 토글 버튼 추가 (class='btn btn-outline live-toggle')",
+        "detail.html JS: toggleLive() — EventSource 연결/해제, update/patch/done 이벤트 핸들러",
+        "detail.html JS: appendTurn(turnData) — turns.js의 renderTurn 활용, 컨테이너에 추가",
+        "detail.html JS: 스크롤 보존 — 바닥 근처면 자동스크롤, 위면 유지",
+        "style.css: .live-toggle.active에 초록 점 pulse 애니메이션",
+        "cost.html: ApexCharts options에 chart.events.dataPointSelection 핸들러 추가",
+        "sessions.html: DOMContentLoaded에서 URLSearchParams로 ?agent= 파라미터 읽어 필터 자동 적용",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "세션 검색이 타이핑 즉시 필터링 동작 + 결과 카운트 표시",
+        "Live 토글 ON 시 새 턴이 실시간 추가, 기존 턴 유지, 완료 시 자동 종료",
+        "비용 차트 바 클릭 → 해당 에이전트 세션 목록으로 이동",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-046",
+      "title": "QA 심화 테스트 + 추가 이슈 탐색 → PRD 추가",
+      "category": "meta",
+      "priority": 46,
+      "description": "US-044, US-045 완료 후 QA 리포트의 '추가 테스트 필요' 항목들을 코드 레벨에서 점검. (1) Export CSV/JSON 한글 인코딩 (2) SSE 재연결 로직 (3) parse_session 캐시 무효화 (4) 로그 뷰어 settings UI 동작 (5) Lab 컨텍스트 편집 save/diff/reset (6) Lab 초안 localStorage (7) 키보드 접근성 (Tab/Enter) (8) 모달 포커스 트랩. 발견한 이슈를 새 스토리로 추가. 코드 수정 없이 PRD만 업데이트.",
+      "steps": [
+        "각 항목의 관련 코드(HTML/JS/Python)를 읽고 동작 여부 판단",
+        "특히 SSE 재연결(EventSource onerror), 캐시 무효화(mtime 비교), 키보드 접근성(tabindex, role) 집중 확인",
+        "발견한 이슈를 US-047~ 스토리로 prd.json에 추가 (최소 3개)",
+        "이 스토리를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리가 prd.json에 추가됨",
+        "각 스토리가 구체적 문제 + steps + acceptanceCriteria 포함",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-047",
+      "title": "API 요청 파라미터 유효성 검증",
+      "category": "bugfix",
+      "priority": 47,
+      "description": "web.py의 여러 API 엔드포인트에서 int() 변환이 try/except 없이 수행되어 비숫자 입력 시 500 에러 발생. /api/sessions?last=abc, /api/logs?lines=xyz 등. 또한 POST 엔드포인트의 request.get_json(force=True)도 잘못된 JSON 시 500 에러.",
+      "steps": [
+        "web.py: int() 변환을 안전 헬퍼로 교체 (기본값 반환) — 적용 대상: api_sessions, api_sessions_export, api_cost, api_crons, api_session_stream, api_lab_poll, api_logs",
+        "web.py: POST 엔드포인트에 request.get_json(silent=True) + None 체크 → 400 반환",
+        "테스트 추가: 잘못된 파라미터로 API 호출 시 400 반환 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "?last=abc 등 비숫자 입력 시 500 대신 기본값으로 동작",
+        "잘못된 JSON POST 시 400 에러 반환",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-048",
+      "title": "Graph 뷰: 도구 노드 ID 충돌 방지",
+      "category": "bugfix",
+      "priority": 48,
+      "description": "web.py의 _build_graph()와 _add_subagent_graph()에서 도구 노드 ID가 tool:{tc.id[:16]}으로 생성됨. 같은 세션의 다른 도구 호출이 동일한 16자 prefix를 공유하면 D3 그래프에서 노드 충돌/엣지 오류 발생.",
+      "steps": [
+        "web.py: 도구 노드 ID를 tool:{tc.id} 전체 사용 또는 고유 카운터 추가",
+        "그래프 렌더링이 깨지지 않는지 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 도구 노드가 고유 ID를 가짐",
+        "그래프 뷰에서 노드/엣지가 정확히 연결됨",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-049",
+      "title": "세션 검색 필터 변경 시 no-match 메시지 정리",
+      "category": "bugfix",
+      "priority": 49,
+      "description": "sessions.html에서 검색 후 필터(agent/type) 변경 시 reload()가 sessions-list innerHTML을 교체하지만, filterCards()가 동적 생성한 #no-match-msg가 DOM에 잔류할 수 있음. reload() 시 search input과 no-match 메시지를 정리해야 함.",
+      "steps": [
+        "sessions.html reload(): 검색 입력 초기화 + #no-match-msg 제거 + search-count 초기화",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "필터 변경 후 이전 검색 상태가 깨끗이 정리됨",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
     }
   ]
 }

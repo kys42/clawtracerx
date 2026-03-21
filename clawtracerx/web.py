@@ -159,6 +159,15 @@ SSE_TIMEOUT_CYCLES = 600      # idle cycles before timeout (= 5 min at 0.5s)
 SSE_HEARTBEAT_INTERVAL = 30   # idle cycles between heartbeat comments
 
 
+def _int_param(name: str, default: int) -> int:
+    """Safely parse an integer query parameter, returning default on bad input."""
+    val = request.args.get(name, default)
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def create_app():
     _base = _get_base_path()
     app = Flask(__name__,
@@ -212,7 +221,7 @@ def create_app():
     @app.route("/api/sessions")
     def api_sessions():
         agent = request.args.get("agent", "all")
-        last_n = int(request.args.get("last", 50))
+        last_n = _int_param("last", 50)
         session_type = request.args.get("type")
 
         sessions = list_sessions(
@@ -338,7 +347,7 @@ def create_app():
     def api_sessions_export():
         """Export sessions list as CSV."""
         agent = request.args.get("agent", "all")
-        last_n = int(request.args.get("last", 200))
+        last_n = _int_param("last", 200)
         sessions = list_sessions(
             agent_id=None if agent == "all" else agent,
             last_n=last_n,
@@ -530,7 +539,7 @@ def create_app():
 
     @app.route("/api/crons")
     def api_crons():
-        last_n = int(request.args.get("last", 50))
+        last_n = _int_param("last", 50)
         runs = load_cron_runs(last_n=last_n)
         return jsonify([{
             "ts": r.ts,
@@ -618,7 +627,7 @@ def create_app():
     def api_lab_sessions():
         """Return gateway sessions (with real session keys) merged with local file info."""
         agent = request.args.get("agent")
-        limit = int(request.args.get("last", 30))
+        limit = _int_param("last", 30)
         try:
             gw_sessions = gateway.list_gateway_sessions(
                 agent_id=agent if agent and agent != "all" else None,
@@ -649,7 +658,9 @@ def create_app():
 
     @app.route("/api/lab/send", methods=["POST"])
     def api_lab_send():
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
         message = data.get("message", "").strip()
         session_key = data.get("sessionKey", "").strip()
         if not message or not session_key:
@@ -685,7 +696,7 @@ def create_app():
 
     @app.route("/api/lab/poll/<session_id>")
     def api_lab_poll(session_id):
-        since_turns = int(request.args.get("since_turns", 0))
+        since_turns = _int_param("since_turns", 0)
         file_path = _resolve(session_id)
         if not file_path:
             return jsonify({"changed": False, "error": "session not found"})
@@ -879,7 +890,9 @@ def create_app():
             return jsonify({"error": f"Not an allowed file: {filename}"}), 400
         workspace = _get_workspace_dir()
         fp = workspace / filename
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
         content = data.get("content", "")
         # Create backup before overwriting
         _backup_context_file(fp)
@@ -889,7 +902,9 @@ def create_app():
 
     @app.route("/api/lab/settings/<session_key>", methods=["PATCH"])
     def api_lab_settings(session_key):
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
         _log_lab("settings_patch", sessionKey=session_key, **data)
         try:
             result = gateway.patch_session(session_key, **data)
@@ -920,7 +935,9 @@ def create_app():
     @app.route("/api/settings", methods=["POST"])
     def api_settings_save():
         from clawtracerx import config
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
         cfg = config.load()
         if "openclaw_dir" in data:
             new_dir = data["openclaw_dir"].strip()
@@ -978,7 +995,7 @@ def create_app():
     def api_logs():
         """Return last N lines of a log file (whitelist: web.log, lab.log)."""
         file_name = request.args.get("file", "lab")
-        lines_count = min(int(request.args.get("lines", 50)), 200)
+        lines_count = min(_int_param("lines", 50), 200)
         allowed = {"web": "web.log", "lab": "lab.log"}
         if file_name not in allowed:
             abort(400, "Invalid log file")

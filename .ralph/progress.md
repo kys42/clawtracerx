@@ -301,3 +301,17 @@
 **배운 점:**
 - innerHTML 일괄 삽입 → insertAdjacentHTML + 점진적 추가로 전환하면 대형 DOM 성능 개선
 - workflow group이 pagination 경계를 넘을 수 있으므로 아이템 단위(turn/workflow)로 카운트해야 함
+
+## Loop 24 — US-047: API 요청 파라미터 유효성 검증
+
+**작업 내용:**
+- `_int_param()` 안전 헬퍼 함수 추가 — ValueError/TypeError 시 기본값 반환
+- 6개 엔드포인트의 `int(request.args.get(...))` → `_int_param(...)` 교체
+- 4개 POST 엔드포인트의 `get_json(force=True)` → `get_json(silent=True)` + None 체크 → 400 반환
+- US-044~046 (이전 QA에서 이미 수정된 중복 스토리) passes:true 처리
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- `request.get_json(force=True)`는 Content-Type 무시하고 파싱하지만 잘못된 JSON에서 500 에러 발생
+- `get_json(silent=True)`는 파싱 실패 시 None 반환 — 더 안전한 패턴
