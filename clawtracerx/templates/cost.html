@@ -156,6 +156,16 @@ function renderApexBar(containerId, dataMap) {
     },
     colors: ['#6366f1'],
     tooltip: { ...APEX_BASE.tooltip, y: { formatter: v => fmtCost(v) } },
+    responsive: [{
+      breakpoint: 480,
+      options: {
+        chart: { height: Math.max(140, categories.length * 32 + 40) },
+        dataLabels: { style: { fontSize: '9px' } },
+        xaxis: { labels: { style: { fontSize: '9px' } } },
+        yaxis: { labels: { style: { fontSize: '10px' } } },
+        plotOptions: { bar: { barHeight: '70%', borderRadius: 3 } },
+      }
+    }],
   });
   charts[containerId].render();
 }
@@ -220,6 +230,16 @@ function renderApexArea(containerId, dataMap) {
       crosshairs: { stroke: { color: '#6366f1', width: 1, dashArray: 3 } },
     },
     dataLabels: { enabled: false },
+    responsive: [{
+      breakpoint: 480,
+      options: {
+        chart: { height: 200 },
+        xaxis: { labels: { style: { fontSize: '9px' }, rotate: -60 } },
+        yaxis: { labels: { style: { fontSize: '9px' } } },
+        markers: { size: 3, hover: { size: 4 } },
+        legend: { position: 'bottom', fontSize: '10px' },
+      }
+    }],
   });
   charts[containerId].render();
 }

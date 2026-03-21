@@ -93,10 +93,11 @@ function renderActiveHoursBar(activeHours) {
   } else {
     return '';
   }
-  let html = '<div class="hb-hours-bar" x-data="{ hoveredHour: null }">';
+  let html = '<div class="hb-hours-bar" x-data="{ hoveredHour: null }" @touchstart.outside="hoveredHour = null">';
   for (let h = 0; h < 24; h++) {
     html += '<div class="hb-hour-seg' + (activeSet.has(h) ? ' active' : '') + '"'
-      + ' @mouseenter="hoveredHour = ' + h + '" @mouseleave="hoveredHour = null">'
+      + ' @mouseenter="hoveredHour = ' + h + '" @mouseleave="hoveredHour = null"'
+      + ' @touchstart.prevent="hoveredHour = hoveredHour === ' + h + ' ? null : ' + h + '">'
       + '<span class="hb-hour-tooltip" x-show="hoveredHour === ' + h + '" x-transition.duration.150ms>' + h + ':00</span>'
       + '</div>';
   }

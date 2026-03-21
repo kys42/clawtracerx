@@ -635,7 +635,7 @@
         "375px에서 ApexCharts 라벨이 겹치지 않음",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-029",

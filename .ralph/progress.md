@@ -75,3 +75,18 @@
 - D3 zoom은 SVG에서 touch-action CSS가 없으면 iOS Safari에서 기본 스크롤로 처리됨
 - Alpine.js의 @mouseenter/@mouseleave는 터치 이벤트를 발생시키지 않음 — @touchstart 별도 처리 필요
 - ApexCharts는 `responsive` 배열로 breakpoint별 config 덮어쓰기 가능
+
+## Loop 9 — US-028: Schedule 24시간 바 터치 툴팁 + ApexCharts 모바일 responsive
+
+**작업 내용:**
+- **schedule.html**: `hb-hour-seg`에 `@touchstart.prevent` 이벤트 추가 — 터치 시 hoveredHour 토글 (같은 시간 재탭하면 닫기)
+- **schedule.html**: `hb-hours-bar`에 `@touchstart.outside="hoveredHour = null"` 추가 — 바 외부 터치 시 툴팁 닫기
+- **cost.html**: `renderApexBar`에 `responsive` 배열 추가 — 480px 이하에서 차트 높이 축소, dataLabels/axis 폰트 9px, barHeight 70%, borderRadius 3
+- **cost.html**: `renderApexArea`에 `responsive` 배열 추가 — 480px 이하에서 차트 높이 200px, x축 라벨 9px + rotate -60°, markers 축소, legend bottom 배치
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- Alpine.js의 `@touchstart.outside` 디렉티브로 외부 터치 감지를 간결하게 처리할 수 있음 — document 레벨 리스너 직접 등록 불필요
+- `@touchstart.prevent`를 사용하면 터치 시 mouseenter 이벤트 발생을 막아 hover/touch 충돌 방지
+- ApexCharts의 `responsive`는 차트 인스턴스별로 설정해야 함 — APEX_BASE에 넣으면 모든 차트에 같은 breakpoint 적용되어 bar/area 차트가 다른 최적값 불가
