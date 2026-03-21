@@ -9,9 +9,12 @@ from clawtracerx.cli import (
     _fmt_size,
     _fmt_tokens,
     _icon,
+    cmd_context,
     cmd_cost,
     cmd_crons,
+    cmd_raw,
     cmd_sessions,
+    cmd_subagents,
 )
 
 
@@ -158,3 +161,48 @@ class TestCmdCrons:
         cmd_crons(job="job-abc")
         captured = capsys.readouterr()
         assert "Daily Cleanup" in captured.out
+
+
+class TestCmdRaw:
+    def test_raw_valid_turn(self, capsys, mock_openclaw_dir, minimal_session_path):
+        cmd_raw(str(minimal_session_path), 0)
+        captured = capsys.readouterr()
+        assert "Raw JSONL" in captured.out
+
+    def test_raw_nonexistent_session(self, capsys, mock_openclaw_dir, monkeypatch):
+        import clawtracerx.cli as _cli
+        monkeypatch.setattr(_cli, "AGENTS_DIR", mock_openclaw_dir / "agents")
+        cmd_raw("00000000-nope", 0)
+        captured = capsys.readouterr()
+        assert "not found" in captured.out.lower()
+
+    def test_raw_out_of_range_turn(self, capsys, mock_openclaw_dir, minimal_session_path):
+        cmd_raw(str(minimal_session_path), 999)
+        captured = capsys.readouterr()
+        assert "not found" in captured.out.lower()
+
+
+class TestCmdSubagents:
+    def test_no_subagents(self, capsys, mock_openclaw_dir):
+        cmd_subagents()
+        captured = capsys.readouterr()
+        assert "No subagent" in captured.out
+
+
+class TestCmdContext:
+    def test_context_valid_session(self, capsys, mock_openclaw_dir, minimal_session_path):
+        cmd_context(str(minimal_session_path))
+        captured = capsys.readouterr()
+        assert "Context" in captured.out or "context" in captured.out.lower()
+
+    def test_context_nonexistent_session(self, capsys, mock_openclaw_dir, monkeypatch):
+        import clawtracerx.cli as _cli
+        monkeypatch.setattr(_cli, "AGENTS_DIR", mock_openclaw_dir / "agents")
+        cmd_context("00000000-nope")
+        captured = capsys.readouterr()
+        assert "not found" in captured.out.lower()
+
+    def test_context_with_sessions_json(self, capsys, sessions_json, mock_openclaw_dir, minimal_session_path):
+        cmd_context(str(minimal_session_path))
+        captured = capsys.readouterr()
+        assert "Context" in captured.out or "aabbccdd" in captured.out

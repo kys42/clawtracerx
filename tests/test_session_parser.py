@@ -304,3 +304,42 @@ class TestGetRawTurnLines:
     def test_invalid_index_returns_empty(self, minimal_session_path):
         assert sp.get_raw_turn_lines(minimal_session_path, 999) == []
         assert sp.get_raw_turn_lines(minimal_session_path, -1) == []
+
+
+class TestParseCache:
+    def test_cache_hit(self, minimal_session_path, monkeypatch):
+        monkeypatch.setattr(sp, "_parse_cache", {})
+        monkeypatch.setattr(sp, "_subagent_cache", None)
+        a1 = sp.parse_session(minimal_session_path)
+        a2 = sp.parse_session(minimal_session_path)
+        # Should return same object (cache hit)
+        assert a1 is a2
+        assert str(minimal_session_path) in sp._parse_cache
+
+    def test_cache_invalidation_on_mtime_change(self, minimal_session_path, monkeypatch):
+        import os
+        monkeypatch.setattr(sp, "_parse_cache", {})
+        monkeypatch.setattr(sp, "_subagent_cache", None)
+        a1 = sp.parse_session(minimal_session_path)
+        # Touch file to change mtime
+        os.utime(minimal_session_path, (0, 0))
+        a2 = sp.parse_session(minimal_session_path)
+        assert a1 is not a2  # Re-parsed
+
+    def test_cache_lru_eviction(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sp, "_parse_cache", {})
+        monkeypatch.setattr(sp, "_PARSE_CACHE_MAX", 2)
+        monkeypatch.setattr(sp, "_subagent_cache", None)
+
+        # Create 3 minimal sessions
+        sessions_dir = tmp_path / "agents" / "test" / "sessions"
+        sessions_dir.mkdir(parents=True)
+        for i in range(3):
+            sid = f"cache{i:04d}0-0000-0000-0000-000000000001"
+            f = sessions_dir / f"{sid}.jsonl"
+            f.write_text(json.dumps({"type": "session", "timestamp": 1740000000000, "cwd": "/tmp"}) + "\n"
+                         + json.dumps({"type": "model_change", "modelId": "claude-test", "provider": "anthropic"}))
+            sp.parse_session(f)
+
+        # Only 2 should remain in cache (LRU max = 2)
+        assert len(sp._parse_cache) == 2

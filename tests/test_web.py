@@ -4,6 +4,7 @@ Tests for clawtracerx.web — Flask API endpoints.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 
@@ -140,3 +141,104 @@ class TestApiCost:
     def test_cost_period_month(self, flask_client):
         resp = flask_client.get("/api/cost?period=month")
         assert resp.status_code == 200
+
+
+class TestApiSessionExport:
+    def test_export_session_json(self, flask_client):
+        resp = flask_client.get("/api/session/aabbccdd/export")
+        assert resp.status_code == 200
+        assert resp.content_type == "application/json"
+        data = json.loads(resp.data)
+        assert "session_id" in data
+        assert "turns" in data
+
+    def test_export_session_not_found(self, flask_client):
+        resp = flask_client.get("/api/session/00000000-nope/export")
+        assert resp.status_code == 404
+
+
+class TestApiSessionsExport:
+    def test_export_csv(self, flask_client):
+        resp = flask_client.get("/api/sessions/export")
+        assert resp.status_code == 200
+        assert "text/csv" in resp.content_type
+        text = resp.data.decode()
+        assert "session_id" in text  # CSV header
+
+    def test_export_csv_with_agent_filter(self, flask_client):
+        resp = flask_client.get("/api/sessions/export?agent=test-agent")
+        assert resp.status_code == 200
+
+
+class TestApiLogs:
+    def test_logs_invalid_file(self, flask_client):
+        resp = flask_client.get("/api/logs?file=secret")
+        assert resp.status_code == 400
+
+    def test_logs_nonexistent_file(self, flask_client):
+        resp = flask_client.get("/api/logs?file=lab")
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert "lines" in data
+
+    def test_logs_with_data(self, flask_client, tmp_path, monkeypatch):
+        from clawtracerx import web as _web
+        log_file = Path(_web._get_base_path()).parent / "lab.log"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_file.write_text("line1\nline2\nline3\n")
+        resp = flask_client.get("/api/logs?file=lab&lines=2")
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert len(data["lines"]) == 2
+        # Cleanup
+        if log_file.exists():
+            log_file.unlink()
+
+
+class TestApiSessionStream:
+    def test_stream_not_found(self, flask_client):
+        resp = flask_client.get("/api/session/00000000-nope/stream")
+        assert resp.status_code == 404
+
+
+class TestSerializeAnalysis:
+    def test_serialize_basic(self, mock_openclaw_dir, minimal_session_path):
+        from clawtracerx.session_parser import parse_session
+        from clawtracerx.web import _serialize_analysis
+
+        analysis = parse_session(minimal_session_path)
+        result = _serialize_analysis(analysis)
+        assert "session_id" in result
+        assert "turns" in result
+        assert isinstance(result["turns"], list)
+        assert "total_cost" in result
+        assert "agent_id" in result
+
+    def test_serialize_turn_truncation(self, mock_openclaw_dir, minimal_session_path):
+        from clawtracerx.session_parser import parse_session
+        from clawtracerx.web import _serialize_turn
+
+        analysis = parse_session(minimal_session_path)
+        if analysis.turns:
+            turn_data = _serialize_turn(analysis.turns[0])
+            assert "index" in turn_data
+            assert "user_text" in turn_data
+            assert "tool_calls" in turn_data
+            assert "subagent_spawns" in turn_data
+
+
+class TestGraphPage:
+    def test_graph_page_renders(self, flask_client):
+        resp = flask_client.get("/session/aabbccdd/graph")
+        assert resp.status_code == 200
+
+    def test_graph_api(self, flask_client):
+        resp = flask_client.get("/api/session/aabbccdd/graph")
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert "nodes" in data
+        assert "edges" in data
+
+    def test_graph_api_not_found(self, flask_client):
+        resp = flask_client.get("/api/session/00000000-nope/graph")
+        assert resp.status_code == 404
