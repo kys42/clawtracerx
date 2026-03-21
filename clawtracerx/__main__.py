@@ -13,6 +13,8 @@ Usage:
   ctrace web [--port PORT]
 """
 
+from __future__ import annotations
+
 import argparse
 
 from clawtracerx import __version__

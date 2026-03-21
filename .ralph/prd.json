@@ -407,6 +407,22 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-018",
+      "title": "__main__.py future annotations + 코드 일관성 정리",
+      "category": "code-quality",
+      "priority": 18,
+      "description": "__main__.py에 from __future__ import annotations 누락. 전체 Python 파일 중 유일하게 빠져있어 일관성 깨짐.",
+      "steps": [
+        "__main__.py에 from __future__ import annotations 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 Python 파일에 from __future__ import annotations 존재",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }
