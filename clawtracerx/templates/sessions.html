@@ -14,10 +14,18 @@
       <option value="100">100</option>
       <option value="200">200</option>
     </select>
+    <button class="btn btn-outline btn-sm" @click="exportCSV()" data-i18n="sessions.export_csv">Export CSV</button>
   </div>
 </div>
 
 <div x-show="loading" class="loading-bar"></div>
+
+<div class="search-bar" style="margin-bottom:12px">
+  <input type="text" class="input-search" id="session-search"
+         :placeholder="_t('sessions.search_placeholder')"
+         data-i18n-placeholder="sessions.search_placeholder"
+         @input="filterCards()">
+</div>
 
 <div class="filter-bars">
   <div class="filter-bar-row" id="type-chips">
@@ -55,6 +63,7 @@
 let activeAgent = 'all';
 let activeType  = '';
 let currentLoadCount = 50;
+let _sessionsData = [];  // raw data for search filtering & export
 
 // ── Color palettes ──────────────────────────────────────────────────────────
 // 인덱스별 에이전트 팔레트 (채도 높은 400-level, 전 색상 스펙트럼 커버)
@@ -172,6 +181,7 @@ async function loadSessions() {
   if (activeType) url += `&type=${activeType}`;
 
   const data = await fetchJSONSafe(url, {sessions:[]});
+  _sessionsData = data || [];
   const list = qs('#sessions-list');
 
   if (!data || !data.length) {
@@ -179,6 +189,10 @@ async function loadSessions() {
     qs('#load-more-wrap').style.display = 'none';
     return;
   }
+
+  // Compute high-cost threshold (top 10%)
+  const costs = data.map(s => s.cost || 0).filter(c => c > 0).sort((a, b) => b - a);
+  const highCostThreshold = costs.length >= 3 ? costs[Math.floor(costs.length * 0.1)] : Infinity;
 
   list.innerHTML = data.map(s => {
     const aColor  = agentColor(s.agent_id);
@@ -208,9 +222,11 @@ async function loadSessions() {
     const pathBtn = s.file_path
       ? `<button class="sc-path-btn" title="${escHtml(s.file_path)}" aria-label="Copy file path" onclick="event.stopPropagation();copyPath('${escHtml(s.file_path)}')">📋</button>`
       : '';
+    const highCostBadge = (s.cost || 0) >= highCostThreshold && highCostThreshold < Infinity
+      ? `<span class="stat-chip high-cost">${_t('sessions.high_cost')}</span>` : '';
 
     return `
-    <div class="session-card" data-type="${s.type}" onclick="location.href='/session/${s.session_id}'">
+    <div class="session-card" data-type="${s.type}" data-search="${escHtml((s.session_id + ' ' + s.agent_id + ' ' + (s.last_message || '') + ' ' + (s.model || '')).toLowerCase())}" onclick="location.href='/session/${s.session_id}'">
       <div class="sc-agent-panel" style="background:${hexAlpha(aColor,0.15)};color:${aColor}">
         <span>${s.agent_id}</span>
         <span class="sc-agent-time">${relTime}</span>
@@ -223,7 +239,7 @@ async function loadSessions() {
             <span class="stat-chip turns">${s.turns}${_t('sessions.turns')}</span>
             ${avgTokChip}
             ${toolChip}${subChip}${errChip}${avgChip}
-            ${chBadge}
+            ${chBadge}${highCostBadge}
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
             ${pathBtn}
@@ -258,6 +274,11 @@ document.addEventListener('alpine:init', () => {
     agents: [],
 
     async init() {
+      // Apply URL query params (e.g., from cost chart drill-down)
+      const params = new URLSearchParams(location.search);
+      if (params.get('agent')) { this.activeAgent = params.get('agent'); activeAgent = this.activeAgent; }
+      if (params.get('type')) { this.activeType = params.get('type'); activeType = this.activeType; }
+
       await this.loadAgents();
       await this.reload();
       document.addEventListener('langchange', () => this.reload());
@@ -294,6 +315,45 @@ document.addEventListener('alpine:init', () => {
       this.loading = false;
       const list = qs('#sessions-list');
       this.hasMore = list && list.children.length >= currentLoadCount;
+    },
+
+    filterCards() {
+      const q = (qs('#session-search').value || '').toLowerCase().trim();
+      const cards = qsa('.session-card');
+      let visible = 0;
+      cards.forEach(c => {
+        const match = !q || (c.dataset.search || '').includes(q);
+        c.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      // Show "no match" message
+      let noMatch = qs('#no-match-msg');
+      if (!visible && q) {
+        if (!noMatch) {
+          noMatch = document.createElement('div');
+          noMatch.id = 'no-match-msg';
+          noMatch.className = 'empty';
+          qs('#sessions-list').appendChild(noMatch);
+        }
+        noMatch.textContent = _t('sessions.no_match');
+        noMatch.style.display = '';
+      } else if (noMatch) {
+        noMatch.style.display = 'none';
+      }
+    },
+
+    exportCSV() {
+      if (!_sessionsData.length) return;
+      const header = 'session_id,agent_id,type,model,turns,tokens,cost,started_at\n';
+      const rows = _sessionsData.map(s =>
+        [s.session_id, s.agent_id, s.type, s.model, s.turns, s.tokens, s.cost, s.started_at].map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')
+      ).join('\n');
+      const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'sessions.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
     },
 
     async loadAgents() {

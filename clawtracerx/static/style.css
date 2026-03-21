@@ -243,6 +243,37 @@ body {
 .input-select:hover { border-color: var(--border-emphasis); }
 .input-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); outline: none; }
 
+.input-search {
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  color: var(--text-0);
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+.input-search::placeholder { color: var(--text-3); }
+.input-search:hover { border-color: var(--border-emphasis); }
+.input-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); outline: none; }
+
+.stat-chip.high-cost {
+  background: var(--error-muted);
+  color: var(--error);
+  font-weight: 600;
+  border-color: rgba(239,68,68,0.25);
+}
+
+.sort-arrow {
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.cbt-sortable:hover {
+  color: var(--text-0) !important;
+}
+
 .btn {
   padding: 7px 14px;
   border-radius: var(--radius-sm);

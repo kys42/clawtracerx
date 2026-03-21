@@ -109,6 +109,16 @@ function renderApexBar(containerId, dataMap) {
       ...APEX_BASE.chart,
       type: 'bar',
       height: Math.max(160, categories.length * 38 + 48),
+      events: {
+        dataPointSelection: function(event, chartContext, config) {
+          const label = categories[config.dataPointIndex];
+          if (containerId === 'chart-agent') {
+            location.href = '/?agent=' + encodeURIComponent(label);
+          } else if (containerId === 'chart-type') {
+            location.href = '/?type=' + encodeURIComponent(label);
+          }
+        }
+      },
     },
     plotOptions: {
       bar: {
@@ -268,24 +278,44 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
 
   const fmtCell = (v) => v > 0 ? `<span style="color:var(--text-0);font-weight:500">${fmtCost(v)}</span>` : `<span style="color:var(--text-3)">—</span>`;
 
+  // Sortable columns: store refs for re-rendering
+  const colDefs = [
+    { key: '_agent', label: _t('cost.agent'), style: '', getValue: a => a },
+    ...activeTypes.map(t => ({ key: t, label: typeLabels[t], style: `color:${typeColors[t]}`, getValue: a => byAgentType[a][t] || 0 })),
+    { key: '_total', label: _t('cost.total'), style: 'color:var(--text-1)', getValue: a => rowTotal(a) },
+  ];
+
+  function renderRows(sortKey, sortAsc) {
+    let sorted = [...agents];
+    if (sortKey) {
+      const col = colDefs.find(c => c.key === sortKey);
+      if (col) {
+        sorted.sort((a, b) => {
+          const va = col.getValue(a), vb = col.getValue(b);
+          const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+          return sortAsc ? cmp : -cmp;
+        });
+      }
+    }
+    return sorted.map(a => `
+      <tr>
+        <td class="cbt-agent">${a}</td>
+        ${activeTypes.map(t => `<td class="cbt-val">${fmtCell(byAgentType[a][t] || 0)}</td>`).join('')}
+        <td class="cbt-total">${fmtCost(rowTotal(a))}</td>
+      </tr>
+    `).join('');
+  }
+
   el.innerHTML = `
     <div class="cost-breakdown-wrap">
-      <table class="cost-breakdown-table">
+      <table class="cost-breakdown-table" id="cbt-sortable">
         <thead>
           <tr>
-            <th>${_t('cost.agent')}</th>
-            ${activeTypes.map(t => `<th style="color:${typeColors[t]}">${typeLabels[t]}</th>`).join('')}
-            <th style="color:var(--text-1)">${_t('cost.total')}</th>
+            ${colDefs.map(c => `<th class="cbt-sortable" data-sort-key="${c.key}" style="${c.style};cursor:pointer">${c.label} <span class="sort-arrow"></span></th>`).join('')}
           </tr>
         </thead>
-        <tbody>
-          ${agents.map(a => `
-            <tr>
-              <td class="cbt-agent">${a}</td>
-              ${activeTypes.map(t => `<td class="cbt-val">${fmtCell(byAgentType[a][t] || 0)}</td>`).join('')}
-              <td class="cbt-total">${fmtCost(rowTotal(a))}</td>
-            </tr>
-          `).join('')}
+        <tbody id="cbt-tbody">
+          ${renderRows('_total', false)}
         </tbody>
         <tfoot>
           <tr>
@@ -297,6 +327,22 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
       </table>
     </div>
   `;
+
+  // Attach sort handlers
+  let currentSortKey = '_total', currentSortAsc = false;
+  el.querySelectorAll('.cbt-sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if (currentSortKey === key) { currentSortAsc = !currentSortAsc; }
+      else { currentSortKey = key; currentSortAsc = key === '_agent'; }
+      qs('#cbt-tbody').innerHTML = renderRows(currentSortKey, currentSortAsc);
+      el.querySelectorAll('.sort-arrow').forEach(a => a.textContent = '');
+      th.querySelector('.sort-arrow').textContent = currentSortAsc ? ' ▲' : ' ▼';
+    });
+  });
+  // Set initial arrow
+  const initTh = el.querySelector('[data-sort-key="_total"] .sort-arrow');
+  if (initTh) initTh.textContent = ' ▼';
 }
 
 document.addEventListener('alpine:init', () => {

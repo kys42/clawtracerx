@@ -91,7 +91,7 @@
         "테이블 정렬 동작",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-005",

@@ -3,7 +3,9 @@ ClawTracerX web — Flask web dashboard for OpenClaw agent monitoring.
 """
 from __future__ import annotations
 
+import csv as _csv
 import glob as _glob
+import io
 import json
 import logging
 import os
@@ -294,6 +296,47 @@ def create_app():
             abort(404, "Session not found")
         raw_lines = get_raw_turn_lines(file_path, turn_index)
         return jsonify(raw_lines)
+
+    @app.route("/api/sessions/export")
+    def api_sessions_export():
+        """Export sessions list as CSV."""
+        agent = request.args.get("agent", "all")
+        last_n = int(request.args.get("last", 200))
+        sessions = list_sessions(
+            agent_id=None if agent == "all" else agent,
+            last_n=last_n,
+        )
+        buf = io.StringIO()
+        writer = _csv.writer(buf)
+        writer.writerow(["session_id", "agent_id", "type", "model", "turns",
+                         "tokens", "cost", "started_at", "file_size"])
+        for s in sessions:
+            writer.writerow([
+                s["session_id"], s["agent_id"], s.get("type", "chat"),
+                s.get("model", ""), s.get("turns", 0), s.get("tokens", 0),
+                round(s.get("cost", 0), 6),
+                s.get("started_at", "").isoformat() if hasattr(s.get("started_at", ""), "isoformat") else "",
+                s.get("file_size", 0),
+            ])
+        return Response(
+            buf.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=sessions.csv"},
+        )
+
+    @app.route("/api/session/<session_id>/export")
+    def api_session_export(session_id):
+        """Export single session analysis as JSON."""
+        file_path = _resolve(session_id)
+        if not file_path:
+            abort(404, "Session not found")
+        analysis = parse_session(file_path, recursive_subagents=True)
+        data = _serialize_analysis(analysis)
+        return Response(
+            json.dumps(data, indent=2, ensure_ascii=False),
+            mimetype="application/json",
+            headers={"Content-Disposition": f"attachment; filename={session_id[:10]}.json"},
+        )
 
     @app.route("/api/cost")
     def api_cost():

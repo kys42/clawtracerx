@@ -95,6 +95,10 @@
       'sessions.s_per_turn': '초/턴',
       'sessions.per_turn': '/턴',
       'sessions.turns': '턴',
+      'sessions.search_placeholder': '세션 검색 (ID, 에이전트, 메시지)...',
+      'sessions.no_match': '일치하는 세션 없음',
+      'sessions.export_csv': 'CSV 내보내기',
+      'sessions.high_cost': '고비용',
 
       // === Detail 페이지 ===
       'detail.title': '세션',
@@ -129,6 +133,11 @@
       'detail.system': '시스템',
       'detail.turn': '턴',
       'detail.error': '오류:',
+      'detail.search_placeholder': '턴 검색...',
+      'detail.filter_all_tools': '전체 도구',
+      'detail.matches': '개 일치',
+      'detail.clear_filter': '초기화',
+      'detail.export_json': 'JSON 내보내기',
 
       // === Cost 페이지 ===
       'cost.title': '비용 대시보드',
@@ -435,6 +444,10 @@
       'sessions.s_per_turn': 's/turn',
       'sessions.per_turn': '/turn',
       'sessions.turns': 'turns',
+      'sessions.search_placeholder': 'Search sessions (ID, agent, message)...',
+      'sessions.no_match': 'No matching sessions',
+      'sessions.export_csv': 'Export CSV',
+      'sessions.high_cost': 'High Cost',
 
       // === Detail ===
       'detail.title': 'Session',
@@ -469,6 +482,11 @@
       'detail.system': 'System',
       'detail.turn': 'Turn',
       'detail.error': 'Error:',
+      'detail.search_placeholder': 'Search turns...',
+      'detail.filter_all_tools': 'All tools',
+      'detail.matches': ' matches',
+      'detail.clear_filter': 'Clear',
+      'detail.export_json': 'Export JSON',
 
       // === Cost ===
       'cost.title': 'Cost Dashboard',
