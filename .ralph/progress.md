@@ -322,6 +322,13 @@
 
 **결과:** ruff 통과, pytest 160 tests 전부 통과
 
+## Loop 26 — US-049: 세션 검색 필터 변경 시 정리
+
+**작업 내용:**
+- sessions.html `reload()`: 검색 입력 초기화, search-count 텍스트 초기화, #no-match-msg DOM 제거
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
 ## Loop 24 — US-047: API 요청 파라미터 유효성 검증
 
 **작업 내용:**

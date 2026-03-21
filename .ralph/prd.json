@@ -1057,7 +1057,7 @@
         "필터 변경 후 이전 검색 상태가 깨끗이 정리됨",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }

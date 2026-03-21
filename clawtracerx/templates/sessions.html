@@ -312,6 +312,13 @@ document.addEventListener('alpine:init', () => {
       currentLoadCount = parseInt(this.loadCount, 10);
       activeAgent = this.activeAgent;
       activeType = this.activeType;
+      // Clean up search state from previous filter
+      const searchInput = qs('#session-search');
+      if (searchInput) searchInput.value = '';
+      const countEl = qs('#search-count');
+      if (countEl) countEl.textContent = '';
+      const noMatch = qs('#no-match-msg');
+      if (noMatch) noMatch.remove();
       this.loading = true;
       await loadSessions();
       this.loading = false;
