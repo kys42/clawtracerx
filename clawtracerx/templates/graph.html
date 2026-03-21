@@ -57,8 +57,9 @@ const NODE_COLORS = {
 
 async function init() {
   const container = qs('#graph-container');
-  const W = container.clientWidth;
-  const H = container.clientHeight;
+  if (!container) return;
+  const W = container.clientWidth || 800;
+  const H = container.clientHeight || 600;
 
   const graphData = await fetchJSONSafe(`/api/session/${SESSION_ID}/graph`, {});
 
@@ -226,7 +227,8 @@ function dragEnded(evt, d) { if (!evt.active) simulation.alphaTarget(0); }
 function fitView() {
   if (!allNodes.length) return;
   const container = qs('#graph-container');
-  const W = container.clientWidth, H = container.clientHeight, pad = 80;
+  if (!container) return;
+  const W = container.clientWidth || 800, H = container.clientHeight || 600, pad = 80;
   const xs = allNodes.map(n => n.x), ys = allNodes.map(n => n.y);
   const minX = Math.min(...xs)-pad, maxX = Math.max(...xs)+pad;
   const minY = Math.min(...ys)-pad, maxY = Math.max(...ys)+pad;
@@ -295,7 +297,8 @@ function computeTreePositions() {
 }
 
 function showPanel(node) {
-  qs('#panel-title').textContent = `${node.type}: ${node.label}`;
+  var panelTitle = qs('#panel-title');
+  if (panelTitle) panelTitle.textContent = `${node.type}: ${node.label}`;
   const items = [
     [_t('graph.type'),     node.type],
     [_t('graph.status'),   node.status || node.outcome || '—'],
@@ -315,11 +318,13 @@ function showPanel(node) {
   if (node.child_session_id) {
     html += `<a href="/session/${node.child_session_id}" class="btn btn-primary btn-sm" style="margin-top:10px;display:inline-flex">${_t('graph.open_child')}</a>`;
   }
-  qs('#panel-body').innerHTML = html;
-  qs('#node-panel').style.display = 'block';
+  var panelBody = qs('#panel-body');
+  if (panelBody) panelBody.innerHTML = html;
+  var nodePanel = qs('#node-panel');
+  if (nodePanel) nodePanel.style.display = 'block';
 }
 
-function closePanel() { qs('#node-panel').style.display = 'none'; }
+function closePanel() { var p = qs('#node-panel'); if (p) p.style.display = 'none'; }
 
 function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
 

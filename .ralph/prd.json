@@ -1076,6 +1076,41 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-051",
+      "title": "graph.html null safety: container/panel DOM 요소 방어",
+      "category": "bugfix",
+      "priority": 51,
+      "description": "graph.html의 init(), fitView(), showPanel(), closePanel()에서 DOM 요소에 null 체크 없이 접근하여 요소가 없을 때 런타임 크래시 발생.",
+      "steps": [
+        "init(): container null 체크 + clientWidth/clientHeight 기본값",
+        "fitView(): container null 체크 + 0 차원 방어",
+        "showPanel(): panel-title, panel-body, node-panel null 체크",
+        "closePanel(): null 체크"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-052",
+      "title": "gateway.py JSON 파싱 에러 핸들링",
+      "category": "bugfix",
+      "priority": 52,
+      "description": "gateway.py의 _connect()와 rpc_call()에서 json.loads(raw) 호출이 try/except 없이 수행됨. 서버가 비정상 응답을 보내면 JSONDecodeError로 크래시.",
+      "steps": [
+        "_connect(): json.loads(raw) try/except 추가 → 의미 있는 에러 메시지",
+        "rpc_call(): json.loads(raw) try/except 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "비정상 JSON 응답 시 깔끔한 에러 메시지",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
     }
   ]
 }

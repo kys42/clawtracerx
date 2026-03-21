@@ -337,6 +337,16 @@
 
 **결과:** ruff 통과, pytest 160 tests 전부 통과
 
+## Loop 28 — US-051: graph.html null safety
+
+**작업 내용:**
+- init(): container null 체크 + clientWidth/Height 기본값 800/600
+- fitView(): container null 체크 + 0 차원 방어
+- showPanel(): panel-title, panel-body, node-panel 개별 null 체크
+- closePanel(): null 체크
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
 ## Loop 24 — US-047: API 요청 파라미터 유효성 검증
 
 **작업 내용:**
