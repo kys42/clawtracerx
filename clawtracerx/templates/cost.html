@@ -7,28 +7,40 @@
 {% endblock %}
 
 {% block content %}
+<div x-data="costPage()" x-init="init()" @langchange.window="loadCostData()">
+
 <div class="page-header">
   <h1 data-i18n="cost.title">Cost Dashboard</h1>
   <div class="filters">
-    <select id="filter-period" class="input-select" onchange="loadCost()">
+    <select id="filter-period" class="input-select" x-model="period" @change="loadCostData()">
       <option value="today" data-i18n="cost.today">Today</option>
-      <option value="week" selected data-i18n="cost.this_week">This Week</option>
+      <option value="week" data-i18n="cost.this_week">This Week</option>
       <option value="month" data-i18n="cost.this_month">This Month</option>
       <option value="all" data-i18n="cost.all_time">All Time</option>
     </select>
-    <select id="filter-agent" class="input-select" onchange="loadCost()">
+    <select id="filter-agent" class="input-select" x-model="agent" @change="loadCostData()">
       <option value="all" data-i18n="cost.all_agents">All Agents</option>
+      <template x-for="a in agents" :key="a.id">
+        <option :value="a.id" x-text="a.id"></option>
+      </template>
     </select>
   </div>
 </div>
 
+<div x-show="loading" class="loading-bar"></div>
+
 <div class="cost-summary" id="cost-summary">
-  <div class="summary-card hero skeleton" style="height:112px"></div>
-  <div class="summary-card skeleton" style="height:112px"></div>
-  <div class="summary-card skeleton" style="height:112px"></div>
+  <template x-if="!loaded">
+    <div style="display:contents">
+      <div class="summary-card hero skeleton" style="height:112px"></div>
+      <div class="summary-card skeleton" style="height:112px"></div>
+      <div class="summary-card skeleton" style="height:112px"></div>
+    </div>
+  </template>
 </div>
 
-<div class="cost-grid">
+<div class="cost-grid" style="position:relative">
+  <div class="chart-loading-overlay" x-show="loading && loaded" x-transition.opacity>Loading...</div>
   <div class="card">
     <h3 data-i18n="cost.by_agent">Cost by Agent</h3>
     <div id="chart-agent"></div>
@@ -49,6 +61,8 @@
     <h3 data-i18n="cost.daily">Daily Cost</h3>
     <div id="chart-daily"></div>
   </div>
+</div>
+
 </div>
 {% endblock %}
 
@@ -200,9 +214,9 @@ function renderApexArea(containerId, dataMap) {
   charts[containerId].render();
 }
 
-async function loadCost() {
-  const period = qs('#filter-period').value;
-  const agent = qs('#filter-agent').value;
+async function loadCost(period, agent) {
+  period = period || qs('#filter-period').value;
+  agent = agent || qs('#filter-agent').value;
   const data = await fetchJSONSafe(`/api/cost?period=${period}&agent=${agent}`, {});
 
   // Hero metric cards
@@ -285,20 +299,26 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
   `;
 }
 
-async function loadAgents() {
-  const agents = await fetchJSONSafe('/api/agents');
-  const sel = qs('#filter-agent');
-  agents.forEach(a => {
-    const opt = document.createElement('option');
-    opt.value = a.id;
-    opt.textContent = a.id;
-    sel.appendChild(opt);
-  });
-}
+document.addEventListener('alpine:init', () => {
+  Alpine.data('costPage', () => ({
+    period: 'week',
+    agent: 'all',
+    agents: [],
+    loading: false,
+    loaded: false,
 
-loadAgents();
-loadCost();
+    async init() {
+      this.agents = await fetchJSONSafe('/api/agents');
+      await this.loadCostData();
+    },
 
-document.addEventListener('langchange', function() { loadCost(); });
+    async loadCostData() {
+      this.loading = true;
+      await loadCost(this.period, this.agent);
+      this.loading = false;
+      this.loaded = true;
+    }
+  }));
+});
 </script>
 {% endblock %}

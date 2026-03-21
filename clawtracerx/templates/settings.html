@@ -3,7 +3,15 @@
 {% block title %}Settings{% endblock %}
 
 {% block content %}
-<div class="toast-container" id="toast-container"></div>
+<div x-data="settingsPage()" x-init="init()" @langchange.window="refreshHealth(false)">
+
+<!-- Toast Manager -->
+<div class="toast-container" id="toast-container">
+  <template x-for="t in toasts" :key="t.id">
+    <div class="toast" :class="t.type" x-text="t.msg" x-transition
+         x-init="setTimeout(() => removeToast(t.id), 4000)"></div>
+  </template>
+</div>
 
 <div class="settings-header">
   <h1 data-i18n="settings.title">Settings</h1>
@@ -19,9 +27,10 @@
   <div class="settings-field-group">
     <label class="settings-label" data-i18n="settings.custom_path">Custom Path</label>
     <div class="settings-input-row">
-      <input type="text" class="input-text" id="openclaw-dir-input"
+      <input type="text" class="input-text" id="openclaw-dir-input" x-model="dirInput"
              data-i18n-placeholder="settings.path_placeholder" placeholder="~/.openclaw (default)">
-      <button class="btn btn-primary btn-sm" id="save-btn" onclick="saveSettings()" data-i18n="settings.save">Save</button>
+      <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving"
+              x-text="saving ? _t('settings.saving') : _t('settings.save')">Save</button>
     </div>
     <div class="settings-effective" id="effective-info"></div>
   </div>
@@ -31,7 +40,7 @@
 <section class="settings-section">
   <div class="settings-section-header">
     <h2 class="settings-section-title" data-i18n="settings.system_status">System Status</h2>
-    <button class="btn btn-outline btn-sm" onclick="refreshHealth(true)" data-i18n="settings.refresh">Refresh</button>
+    <button class="btn btn-outline btn-sm" @click="refreshHealth(true)" data-i18n="settings.refresh">Refresh</button>
   </div>
   <div class="health-grid" id="health-grid">
     <div class="health-card loading" data-i18n="settings.loading">Loading...</div>
@@ -42,151 +51,125 @@
 <section class="settings-section">
   <div class="settings-section-header">
     <h2 class="settings-section-title" data-i18n="settings.config_file">Config File</h2>
-    <button class="btn btn-outline btn-sm" id="config-toggle-btn" onclick="toggleConfig()" data-i18n="settings.show_config">Show Config</button>
+    <button class="btn btn-outline btn-sm" @click="toggleConfig()"
+            x-text="showConfig ? _t('settings.hide_config') : _t('settings.show_config')"></button>
   </div>
-  <div id="config-viewer" style="display:none">
+  <div x-show="showConfig" x-transition.duration.200ms>
     <div class="config-path" id="config-path"></div>
     <div class="config-masked-note" data-i18n="settings.config_masked">Sensitive values are masked.</div>
     <pre class="config-content" id="config-content"></pre>
   </div>
 </section>
 
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-(function() {
-  // --- Load settings ---
-  async function loadSettings() {
-    try {
-      const cfg = await fetchJSON('/api/settings');
-      const input = document.getElementById('openclaw-dir-input');
-      input.value = cfg.openclaw_dir || '';
-      const info = document.getElementById('effective-info');
-      info.innerHTML =
-        '<span class="settings-eff-label">' + _t('settings.effective') + '</span>' +
-        '<code>' + escHtml(cfg.effective_openclaw_dir) + '</code>';
-    } catch(e) {
-      console.error('Failed to load settings', e);
-    }
-  }
+function renderHealth(h) {
+  const grid = document.getElementById('health-grid');
+  const c = h.checks;
+  const cards = [];
 
-  // --- Save settings ---
-  window.saveSettings = async function() {
-    const btn = document.getElementById('save-btn');
-    const dir = document.getElementById('openclaw-dir-input').value.trim();
-    btn.disabled = true;
-    btn.textContent = _t('settings.saving');
-    try {
-      const res = await postJSON('/api/settings', { openclaw_dir: dir });
-      if (res.ok) {
-        showToast(_t('settings.saved_msg'), 'warning');
-      } else {
-        showToast(_t('settings.save_failed'), 'error');
+  cards.push(healthCard(_t('settings.config'), c.config?.ok, [
+    [_t('settings.path'), c.config?.path || '-'],
+    [_t('settings.status'), c.config?.ok ? _t('settings.loaded') : (c.config?.error || 'error')],
+  ]));
+
+  cards.push(healthCard(_t('settings.gateway'), c.gateway?.ok, [
+    [_t('settings.status'), c.gateway?.ok ? _t('settings.connected') : (c.gateway?.error || 'error')],
+    c.gateway?.ok ? [_t('settings.agents'), c.gateway.agents] : null,
+  ].filter(Boolean)));
+
+  cards.push(healthCard(_t('settings.device_identity'), c.device?.ok, [
+    [_t('settings.status'), c.device?.ok ? _t('settings.authenticated') : (c.device?.error || 'error')],
+    c.device?.device_id ? [_t('settings.device_id'), c.device.device_id + '...'] : null,
+  ].filter(Boolean)));
+
+  cards.push(healthCard(_t('settings.agents'), c.agents?.ok, [
+    [_t('settings.status'), c.agents?.ok ? _t('settings.available') : (c.agents?.error || 'error')],
+    c.agents?.ok ? [_t('settings.agents'), c.agents.agents] : null,
+    c.agents?.ok ? [_t('settings.sessions'), c.agents.sessions] : null,
+  ].filter(Boolean)));
+
+  cards.push(healthCard(_t('settings.workspace'), c.workspace?.ok, [
+    [_t('settings.path'), c.workspace?.path || '-'],
+    [_t('settings.status'), c.workspace?.ok ? _t('settings.exists') : _t('settings.not_found')],
+  ]));
+
+  grid.innerHTML = cards.join('') +
+    '<div class="health-meta">' + _t('settings.openclaw_dir_label') + ' <code>' + escHtml(h.openclaw_dir) +
+    '</code> &middot; ' + _t('settings.checked') + ' ' + escHtml(h.timestamp) + '</div>';
+}
+
+function healthCard(title, ok, rows) {
+  const status = ok ? 'ok' : 'err';
+  const dot = '<span class="health-dot ' + status + '"></span>';
+  let html = '<div class="health-card ' + status + '">';
+  html += '<div class="health-card-header">' + dot + '<strong>' + escHtml(title) + '</strong></div>';
+  html += '<div class="health-card-body">';
+  for (const [label, value] of rows) {
+    html += '<div class="health-card-row"><span class="health-card-label">' +
+      escHtml(label) + '</span><span class="health-card-value">' + escHtml(String(value)) + '</span></div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+document.addEventListener('alpine:init', () => {
+  Alpine.data('settingsPage', () => ({
+    dirInput: '',
+    saving: false,
+    showConfig: false,
+    configLoaded: false,
+    toasts: [],
+    _toastId: 0,
+
+    async init() {
+      try {
+        const cfg = await fetchJSON('/api/settings');
+        this.dirInput = cfg.openclaw_dir || '';
+        const info = document.getElementById('effective-info');
+        info.innerHTML =
+          '<span class="settings-eff-label">' + _t('settings.effective') + '</span>' +
+          '<code>' + escHtml(cfg.effective_openclaw_dir) + '</code>';
+      } catch(e) {
+        console.error('Failed to load settings', e);
       }
-    } catch(e) {
-      showToast(_t('settings.error') + ' ' + e.message, 'error');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = _t('settings.save');
-    }
-  };
+      this.refreshHealth(false);
+    },
 
-  // --- Health dashboard ---
-  window.refreshHealth = async function(bustCache) {
-    const grid = document.getElementById('health-grid');
-    grid.innerHTML = '<div class="health-card loading">' + _t('settings.checking') + '</div>';
-    try {
-      const url = bustCache ? '/api/health?t=' + Date.now() : '/api/health';
-      const h = await fetchJSON(url);
-      renderHealth(h);
-    } catch(e) {
-      grid.innerHTML = '<div class="health-card err">' + _t('settings.health_failed') + ' ' + escHtml(e.message) + '</div>';
-    }
-  };
+    async save() {
+      this.saving = true;
+      try {
+        const res = await postJSON('/api/settings', { openclaw_dir: this.dirInput.trim() });
+        if (res.ok) {
+          this.addToast(_t('settings.saved_msg'), 'warning');
+        } else {
+          this.addToast(_t('settings.save_failed'), 'error');
+        }
+      } catch(e) {
+        this.addToast(_t('settings.error') + ' ' + e.message, 'error');
+      } finally {
+        this.saving = false;
+      }
+    },
 
-  function renderHealth(h) {
-    const grid = document.getElementById('health-grid');
-    const c = h.checks;
-    const cards = [];
+    async refreshHealth(bustCache) {
+      const grid = document.getElementById('health-grid');
+      grid.innerHTML = '<div class="health-card loading">' + _t('settings.checking') + '</div>';
+      try {
+        const url = bustCache ? '/api/health?t=' + Date.now() : '/api/health';
+        const h = await fetchJSON(url);
+        renderHealth(h);
+      } catch(e) {
+        grid.innerHTML = '<div class="health-card err">' + _t('settings.health_failed') + ' ' + escHtml(e.message) + '</div>';
+      }
+    },
 
-    // Config
-    cards.push(healthCard(_t('settings.config'), c.config?.ok, [
-      [_t('settings.path'), c.config?.path || '-'],
-      [_t('settings.status'), c.config?.ok ? _t('settings.loaded') : (c.config?.error || 'error')],
-    ]));
-
-    // Gateway
-    cards.push(healthCard(_t('settings.gateway'), c.gateway?.ok, [
-      [_t('settings.status'), c.gateway?.ok ? _t('settings.connected') : (c.gateway?.error || 'error')],
-      c.gateway?.ok ? [_t('settings.agents'), c.gateway.agents] : null,
-    ].filter(Boolean)));
-
-    // Device
-    cards.push(healthCard(_t('settings.device_identity'), c.device?.ok, [
-      [_t('settings.status'), c.device?.ok ? _t('settings.authenticated') : (c.device?.error || 'error')],
-      c.device?.device_id ? [_t('settings.device_id'), c.device.device_id + '...'] : null,
-    ].filter(Boolean)));
-
-    // Agents
-    cards.push(healthCard(_t('settings.agents'), c.agents?.ok, [
-      [_t('settings.status'), c.agents?.ok ? _t('settings.available') : (c.agents?.error || 'error')],
-      c.agents?.ok ? [_t('settings.agents'), c.agents.agents] : null,
-      c.agents?.ok ? [_t('settings.sessions'), c.agents.sessions] : null,
-    ].filter(Boolean)));
-
-    // Workspace
-    cards.push(healthCard(_t('settings.workspace'), c.workspace?.ok, [
-      [_t('settings.path'), c.workspace?.path || '-'],
-      [_t('settings.status'), c.workspace?.ok ? _t('settings.exists') : _t('settings.not_found')],
-    ]));
-
-    grid.innerHTML = cards.join('') +
-      '<div class="health-meta">' + _t('settings.openclaw_dir_label') + ' <code>' + escHtml(h.openclaw_dir) +
-      '</code> &middot; ' + _t('settings.checked') + ' ' + escHtml(h.timestamp) + '</div>';
-  }
-
-  function healthCard(title, ok, rows) {
-    const status = ok ? 'ok' : 'err';
-    const dot = '<span class="health-dot ' + status + '"></span>';
-    let html = '<div class="health-card ' + status + '">';
-    html += '<div class="health-card-header">' + dot + '<strong>' + escHtml(title) + '</strong></div>';
-    html += '<div class="health-card-body">';
-    for (const [label, value] of rows) {
-      html += '<div class="health-card-row"><span class="health-card-label">' +
-        escHtml(label) + '</span><span class="health-card-value">' + escHtml(String(value)) + '</span></div>';
-    }
-    html += '</div></div>';
-    return html;
-  }
-
-  function showToast(msg, type) {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = 'toast ' + (type || 'info');
-    toast.textContent = msg;
-    container.appendChild(toast);
-    setTimeout(() => {
-      toast.classList.add('removing');
-      setTimeout(() => toast.remove(), 300);
-    }, 4000);
-  }
-
-  // --- Config viewer ---
-  let configLoaded = false;
-  window.toggleConfig = async function() {
-    const viewer = document.getElementById('config-viewer');
-    const btn = document.getElementById('config-toggle-btn');
-    const isVisible = viewer.style.display !== 'none';
-    if (isVisible) {
-      viewer.style.display = 'none';
-      btn.textContent = _t('settings.show_config');
-      btn.setAttribute('data-i18n', 'settings.show_config');
-    } else {
-      viewer.style.display = 'block';
-      btn.textContent = _t('settings.hide_config');
-      btn.setAttribute('data-i18n', 'settings.hide_config');
-      if (!configLoaded) {
+    async toggleConfig() {
+      this.showConfig = !this.showConfig;
+      if (this.showConfig && !this.configLoaded) {
         document.getElementById('config-content').textContent = _t('settings.loading');
         try {
           const res = await fetchJSON('/api/openclaw-config');
@@ -194,19 +177,21 @@
           document.getElementById('config-content').textContent = res.ok
             ? JSON.stringify(res.config, null, 2)
             : (_t('settings.error') + ' ' + (res.error || ''));
-          configLoaded = true;
+          this.configLoaded = true;
         } catch(e) {
           document.getElementById('config-content').textContent = _t('settings.error') + ' ' + e.message;
         }
       }
+    },
+
+    addToast(msg, type) {
+      this.toasts.push({ id: ++this._toastId, msg, type: type || 'info' });
+    },
+
+    removeToast(id) {
+      this.toasts = this.toasts.filter(t => t.id !== id);
     }
-  };
-
-  // Init
-  loadSettings();
-  refreshHealth(false);
-
-  document.addEventListener('langchange', function() { refreshHealth(false); });
-})();
+  }));
+});
 </script>
 {% endblock %}

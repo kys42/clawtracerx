@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/static/style.css">
   {% block head %}{% endblock %}
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://unpkg.com/htmx.org@2/dist/htmx.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
   <script src="/static/i18n.js"></script>
 </head>
 <body>
@@ -85,7 +87,15 @@
       </a></li>
     </ul>
     <div class="sidebar-footer">
-      <div class="sidebar-health" id="sidebar-health"></div>
+      <div class="sidebar-health" id="sidebar-health"
+           x-data="sidebarHealth()" x-init="load()" @langchange.window="load()">
+        <template x-for="item in checks" :key="item.key">
+          <div class="health-row">
+            <span class="health-dot" :class="item.ok ? 'ok' : 'err'"></span>
+            <span x-text="item.label"></span>
+          </div>
+        </template>
+      </div>
       <div class="sidebar-info" id="agent-list"></div>
     </div>
   </nav>
@@ -119,29 +129,22 @@
   <script>window._homeDir = "{{ home_dir }}";</script>
   <script src="/static/app.js"></script>
   <script>
-  fetch('/api/health').then(function(r){return r.json()}).then(function(h){
-    var el=document.getElementById('sidebar-health');
-    if(!el)return;
-    var c=h.checks;
-    function dot(ok){return '<span class="health-dot '+(ok?'ok':'err')+'"></span>'}
-    el.innerHTML=
-      '<div class="health-row">'+dot(c.config&&c.config.ok)+' '+_t('health.config')+'</div>'+
-      '<div class="health-row">'+dot(c.gateway&&c.gateway.ok)+' '+_t('health.gateway')+'</div>'+
-      '<div class="health-row">'+dot(c.agents&&c.agents.ok)+' '+_t('health.agents')+(c.agents&&c.agents.ok?' ('+c.agents.agents+')':'')+'</div>'+
-      '<div class="health-row">'+dot(c.device&&c.device.ok)+' '+_t('health.device')+'</div>';
-  }).catch(function(){});
-  document.addEventListener('langchange', function() {
-    fetch('/api/health').then(function(r){return r.json()}).then(function(h){
-      var el=document.getElementById('sidebar-health');
-      if(!el)return;
-      var c=h.checks;
-      function dot(ok){return '<span class="health-dot '+(ok?'ok':'err')+'"></span>'}
-      el.innerHTML=
-        '<div class="health-row">'+dot(c.config&&c.config.ok)+' '+_t('health.config')+'</div>'+
-        '<div class="health-row">'+dot(c.gateway&&c.gateway.ok)+' '+_t('health.gateway')+'</div>'+
-        '<div class="health-row">'+dot(c.agents&&c.agents.ok)+' '+_t('health.agents')+(c.agents&&c.agents.ok?' ('+c.agents.agents+')':'')+'</div>'+
-        '<div class="health-row">'+dot(c.device&&c.device.ok)+' '+_t('health.device')+'</div>';
-    }).catch(function(){});
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('sidebarHealth', () => ({
+      checks: [],
+      async load() {
+        try {
+          const h = await fetch('/api/health').then(r => r.json());
+          const c = h.checks;
+          this.checks = [
+            { key: 'config',  ok: c.config && c.config.ok,   label: _t('health.config') },
+            { key: 'gateway', ok: c.gateway && c.gateway.ok, label: _t('health.gateway') },
+            { key: 'agents',  ok: c.agents && c.agents.ok,   label: _t('health.agents') + (c.agents && c.agents.ok ? ' (' + c.agents.agents + ')' : '') },
+            { key: 'device',  ok: c.device && c.device.ok,   label: _t('health.device') },
+          ];
+        } catch(e) {}
+      }
+    }));
   });
   checkForUpdate();
   </script>

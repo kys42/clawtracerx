@@ -3,42 +3,55 @@
 {% block title %}Sessions{% endblock %}
 
 {% block content %}
+<div x-data="sessionsPage()" x-init="init()">
+
 <div class="page-header">
   <h1 data-i18n="sessions.title">Sessions</h1>
   <div class="filters">
-    <select id="filter-count" class="input-select">
+    <select id="filter-count" class="input-select" x-model="loadCount" @change="reload()">
       <option value="30">30</option>
-      <option value="50" selected>50</option>
+      <option value="50">50</option>
       <option value="100">100</option>
       <option value="200">200</option>
     </select>
   </div>
 </div>
 
+<div x-show="loading" class="loading-bar"></div>
+
 <div class="filter-bars">
   <div class="filter-bar-row" id="type-chips">
-    <button class="type-chip active" data-type="" data-i18n="sessions.type.all">All</button>
-    <button class="type-chip" data-type="chat" data-i18n="sessions.type.chat">💬 Chat</button>
-    <button class="type-chip" data-type="cron" data-i18n="sessions.type.cron">⏰ Cron</button>
-    <button class="type-chip" data-type="heartbeat" data-i18n="sessions.type.hb">💗 HB</button>
-    <button class="type-chip" data-type="subagent" data-i18n="sessions.type.sub">🤖 Sub</button>
+    <button class="type-chip" :class="{ active: activeType === '' }" @click="setType('')" data-i18n="sessions.type.all">All</button>
+    <button class="type-chip" :class="{ active: activeType === 'chat' }" @click="setType('chat')" data-i18n="sessions.type.chat">💬 Chat</button>
+    <button class="type-chip" :class="{ active: activeType === 'cron' }" @click="setType('cron')" data-i18n="sessions.type.cron">⏰ Cron</button>
+    <button class="type-chip" :class="{ active: activeType === 'heartbeat' }" @click="setType('heartbeat')" data-i18n="sessions.type.hb">💗 HB</button>
+    <button class="type-chip" :class="{ active: activeType === 'subagent' }" @click="setType('subagent')" data-i18n="sessions.type.sub">🤖 Sub</button>
   </div>
   <div class="filter-bar-row" id="agent-chips">
-    <button class="agent-chip active" data-agent="all" data-i18n="sessions.agent.all">All</button>
+    <button class="agent-chip" :class="{ active: activeAgent === 'all' }" @click="setAgent('all')" data-i18n="sessions.agent.all">All</button>
+    <template x-for="a in agents" :key="a.id">
+      <button class="agent-chip" :class="{ active: activeAgent === a.id }" @click="setAgent(a.id)">
+        <span class="ac-dot" :style="'background:' + agentColor(a.id)"></span>
+        <span x-text="a.id"></span> <span class="ac-count" x-text="a.sessions"></span>
+      </button>
+    </template>
   </div>
 </div>
 
 <div id="sessions-list">
-  <div class="loading" data-i18n="sessions.loading">Loading...</div>
+  <div class="loading" x-show="!loaded" data-i18n="sessions.loading">Loading...</div>
 </div>
 
-<div id="load-more-wrap" style="text-align:center;margin-top:16px;display:none">
-  <button class="btn btn-outline" id="btn-load-more" data-i18n="sessions.load_more">Load More</button>
+<div id="load-more-wrap" style="text-align:center;margin-top:16px" x-show="hasMore">
+  <button class="btn btn-outline" @click="loadMore()" data-i18n="sessions.load_more">Load More</button>
+</div>
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+/* Alpine sessionsPage is registered below; these globals are still needed for renderSessions */
 let activeAgent = 'all';
 let activeType  = '';
 let currentLoadCount = 50;
@@ -233,83 +246,65 @@ async function loadSessions() {
   qs('#load-more-wrap').style.display = data.length >= currentLoadCount ? '' : 'none';
 }
 
-// ── Type chips ───────────────────────────────────────────────────────────────
-function initTypeChips() {
-  qsa('#type-chips .type-chip').forEach(btn => {
-    const type  = btn.dataset.type;
-    const color = TYPE_COLORS[type];
-    btn.addEventListener('click', () => {
-      qsa('#type-chips .type-chip').forEach(b => {
-        b.classList.remove('active');
-        b.style.cssText = '';
-      });
-      btn.classList.add('active');
-      if (color) {
-        btn.style.background   = hexAlpha(color, 0.12);
-        btn.style.borderColor  = color;
-        btn.style.color        = color;
-      }
+// ── Alpine sessionsPage ──────────────────────────────────────────────────────
+document.addEventListener('alpine:init', () => {
+  Alpine.data('sessionsPage', () => ({
+    activeAgent: 'all',
+    activeType: '',
+    loadCount: '50',
+    loading: false,
+    loaded: false,
+    hasMore: false,
+    agents: [],
+
+    async init() {
+      await this.loadAgents();
+      await this.reload();
+      document.addEventListener('langchange', () => this.reload());
+    },
+
+    setType(type) {
+      this.activeType = type;
       activeType = type;
-      currentLoadCount = parseInt(qs('#filter-count').value, 10);
-      loadSessions();
-    });
-  });
-}
+      this.reload();
+    },
 
-// ── Agent chips ──────────────────────────────────────────────────────────────
-async function loadAgents() {
-  const agents = await fetchJSONSafe('/api/agents');
+    setAgent(id) {
+      this.activeAgent = id;
+      activeAgent = id;
+      this.reload();
+    },
 
-  // 색상 index 순서대로 미리 할당
-  agents.forEach(a => agentColor(a.id));
+    async reload() {
+      currentLoadCount = parseInt(this.loadCount, 10);
+      activeAgent = this.activeAgent;
+      activeType = this.activeType;
+      this.loading = true;
+      await loadSessions();
+      this.loading = false;
+      this.loaded = true;
+      const list = qs('#sessions-list');
+      this.hasMore = list && list.children.length >= currentLoadCount;
+    },
 
-  const bar = qs('#agent-chips');
-  agents.forEach(a => {
-    const btn   = document.createElement('button');
-    btn.className   = 'agent-chip';
-    btn.dataset.agent = a.id;
-    const color = agentColor(a.id);
-    btn.innerHTML = `<span class="ac-dot" style="background:${color}"></span>${escHtml(a.id)} <span class="ac-count">${a.sessions}</span>`;
-    btn.addEventListener('click', () => {
-      qs('#agent-chips .active')?.classList.remove('active');
-      btn.classList.add('active');
-      activeAgent = a.id;
-      currentLoadCount = parseInt(qs('#filter-count').value, 10);
-      loadSessions();
-    });
-    bar.appendChild(btn);
-  });
+    async loadMore() {
+      currentLoadCount += parseInt(this.loadCount, 10);
+      this.loading = true;
+      await loadSessions();
+      this.loading = false;
+      const list = qs('#sessions-list');
+      this.hasMore = list && list.children.length >= currentLoadCount;
+    },
 
-  qs('[data-agent="all"]').addEventListener('click', function() {
-    qs('#agent-chips .active')?.classList.remove('active');
-    this.classList.add('active');
-    activeAgent = 'all';
-    currentLoadCount = parseInt(qs('#filter-count').value, 10);
-    loadSessions();
-  });
-
-  qs('#agent-list').innerHTML = agents.map(a =>
-    `<div class="agent-badge">${a.id} <span class="dim">${a.sessions}</span></div>`
-  ).join('');
-}
-
-// ── Bootstrap ────────────────────────────────────────────────────────────────
-qs('#btn-load-more').addEventListener('click', () => {
-  currentLoadCount += parseInt(qs('#filter-count').value, 10);
-  loadSessions();
-});
-
-qs('#filter-count').addEventListener('change', () => {
-  currentLoadCount = parseInt(qs('#filter-count').value, 10);
-  loadSessions();
-});
-
-initTypeChips();
-loadAgents();
-loadSessions();
-
-document.addEventListener('langchange', function() {
-  loadSessions();
+    async loadAgents() {
+      const agents = await fetchJSONSafe('/api/agents');
+      agents.forEach(a => agentColor(a.id));
+      this.agents = agents;
+      qs('#agent-list').innerHTML = agents.map(a =>
+        `<div class="agent-badge">${a.id} <span class="dim">${a.sessions}</span></div>`
+      ).join('');
+    },
+  }));
 });
 </script>
 {% endblock %}

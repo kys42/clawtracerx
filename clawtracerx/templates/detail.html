@@ -3,20 +3,24 @@
 {% block title %}Session {{ session_id[:10] }}{% endblock %}
 
 {% block content %}
+<div x-data="detailPage()" x-init="init()" @langchange.window="onLangChange()">
+
 <div class="page-header">
   <a href="/" class="back-link">&larr; <span data-i18n="detail.back">Sessions</span></a>
   <div class="header-actions">
-    <button class="btn btn-outline btn-sm" id="sort-btn" onclick="toggleSort()" data-i18n="detail.sort_newest">Newest first</button>
+    <button class="btn btn-outline btn-sm" id="sort-btn" @click="toggleSort()"
+            x-text="sortNewest ? _t('detail.sort_newest') : _t('detail.sort_oldest')">Newest first</button>
     <a href="/session/{{ session_id }}/graph" class="btn btn-outline" id="graph-btn" data-i18n="detail.graph">Graph View</a>
   </div>
 </div>
 
 <div id="session-header" class="card session-header">
-  <div class="loading" data-i18n="detail.loading">Loading session...</div>
+  <div class="loading" data-i18n="detail.loading" x-show="!loaded">Loading session...</div>
 </div>
 
 <div id="turns-container"></div>
 
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -30,23 +34,44 @@ function getSortedTurns(turns) {
   return sortOrder === 'newest' ? [...turns].reverse() : turns;
 }
 
-function toggleSort() {
-  sortOrder = sortOrder === 'newest' ? 'oldest' : 'newest';
-  const btn = qs('#sort-btn');
-  if (btn) btn.textContent = _t('detail.sort_' + sortOrder);
-  if (sessionData) {
-    renderTurns(
-      getSortedTurns(sessionData.turns),
-      sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
-    );
-  }
-}
-
 async function loadSession() {
   sessionData = await fetchJSONSafe(`/api/session/${SESSION_ID}`, {});
   renderHeader(sessionData);
   renderTurns(getSortedTurns(sessionData.turns), []);
 }
+
+document.addEventListener('alpine:init', () => {
+  Alpine.data('detailPage', () => ({
+    sortNewest: true,
+    loaded: false,
+
+    async init() {
+      await loadSession();
+      this.loaded = true;
+    },
+
+    toggleSort() {
+      this.sortNewest = !this.sortNewest;
+      sortOrder = this.sortNewest ? 'newest' : 'oldest';
+      if (sessionData) {
+        renderTurns(
+          getSortedTurns(sessionData.turns),
+          sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
+        );
+      }
+    },
+
+    onLangChange() {
+      if (sessionData) {
+        renderHeader(sessionData);
+        renderTurns(
+          getSortedTurns(sessionData.turns),
+          sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
+        );
+      }
+    }
+  }));
+});
 
 function renderHeader(s) {
   const contextPanel = s.context ? renderContextPanel(s) : '';
@@ -218,8 +243,8 @@ function renderContextPanel(s) {
   const sysPct  = Math.round((ctx.nonProjectContextChars || 0) / maxChars * 100);
 
   return `
-  <details class="context-panel">
-    <summary>
+  <div class="context-panel" x-data="{ ctxOpen: false }">
+    <div class="context-panel-summary" @click="ctxOpen = !ctxOpen" style="cursor:pointer">
       <div class="context-summary-left">
         <span class="context-title">${_t('detail.context_injection')}</span>
         ${ctx.workspaceDir ? `<code style="font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">${ctx.workspaceDir.replace(/^\/Users\/\w+/, '~')}</code>` : ''}
@@ -227,10 +252,10 @@ function renderContextPanel(s) {
       <div class="context-meta">
         <span>${fmtChars(usedChars)} / ${fmtChars(maxChars)}</span>
         <span class="context-pct ${pctClass}">${usagePct}%</span>
-        <span class="context-chevron">▾</span>
+        <span class="context-chevron" :style="ctxOpen ? 'transform:rotate(180deg)' : ''">▾</span>
       </div>
-    </summary>
-    <div class="context-body">
+    </div>
+    <div class="context-body" x-show="ctxOpen" x-transition.duration.200ms>
       <div class="context-section">
         <div class="context-label">${_t('detail.system_prompt')}</div>
         <div class="ctx-usage-bar">
@@ -246,7 +271,7 @@ function renderContextPanel(s) {
       ${skillsHtml}
       ${toolsHtml}
     </div>
-  </details>`;
+  </div>`;
 }
 
 function showRaw(turnIndex) {
@@ -293,18 +318,6 @@ function openFullUserText(turnIdx) {
   openRawModal(`Turn ${turnIdx} — user`, fetchJSON(`/api/session/${SESSION_ID}/turn/${turnIdx}/user-text`));
 }
 
-loadSession();
-
-document.addEventListener('langchange', function() {
-  const btn = qs('#sort-btn');
-  if (btn) btn.textContent = _t('detail.sort_' + sortOrder);
-  if (sessionData) {
-    renderHeader(sessionData);
-    renderTurns(
-      getSortedTurns(sessionData.turns),
-      sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
-    );
-  }
-});
+/* loadSession is called from Alpine init */
 </script>
 {% endblock %}

@@ -24,7 +24,25 @@
 </section>
 
 <!-- Live Stats -->
-<section class="home-stats" id="home-stats"></section>
+<section class="home-stats" id="home-stats"
+         x-data="homeStats()" x-init="load()" @langchange.window="load()">
+  <template x-if="loading">
+    <template x-for="i in 5">
+      <div class="home-stat-card">
+        <div class="stat-label">&nbsp;</div>
+        <div class="stat-loading"></div>
+      </div>
+    </template>
+  </template>
+  <template x-if="!loading">
+    <template x-for="s in stats" :key="s.key">
+      <div class="home-stat-card">
+        <div class="stat-label" x-text="s.label"></div>
+        <div class="stat-value" x-text="s.value" x-transition></div>
+      </div>
+    </template>
+  </template>
+</section>
 
 <!-- Feature Grid -->
 <section class="home-features">
@@ -254,59 +272,37 @@
 
 {% block scripts %}
 <script>
-(function() {
-  async function loadHomeStats() {
-    var container = qs('#home-stats');
-    if (!container) return;
+document.addEventListener('alpine:init', () => {
+  Alpine.data('homeStats', () => ({
+    loading: true,
+    stats: [],
+    async load() {
+      this.loading = true;
+      try {
+        const [costData, sessions] = await Promise.all([
+          fetchJSONSafe('/api/cost', {}),
+          fetchJSONSafe('/api/sessions?last=9999', [])
+        ]);
+        const totalCost = (costData.total && costData.total.cost) || 0;
+        const totalSessions = sessions.length || 0;
+        const totalTurns = sessions.reduce((s, x) => s + (x.turns || 0), 0);
+        const totalTools = sessions.reduce((s, x) => s + (x.tool_calls || 0), 0);
+        const agentSet = new Set(sessions.map(x => x.agent_id).filter(Boolean));
 
-    var keys = ['home.stat.sessions', 'home.stat.turns', 'home.stat.cost', 'home.stat.agents', 'home.stat.tools'];
-    container.innerHTML = keys.map(function(k) {
-      return '<div class="home-stat-card">' +
-        '<div class="stat-label" data-i18n="' + k + '">' + _t(k) + '</div>' +
-        '<div class="stat-loading"></div>' +
-        '</div>';
-    }).join('');
-
-    try {
-      var results = await Promise.all([
-        fetchJSONSafe('/api/cost', {}),
-        fetchJSONSafe('/api/sessions?last=9999', [])
-      ]);
-      var costData = results[0];
-      var sessions = results[1];
-
-      var totalCost = (costData.total && costData.total.cost) || 0;
-      var totalSessions = sessions.length || 0;
-      var totalTurns = sessions.reduce(function(s, x) { return s + (x.turns || 0); }, 0);
-      var totalTools = sessions.reduce(function(s, x) { return s + (x.tool_calls || 0); }, 0);
-      var agentSet = new Set(sessions.map(function(x) { return x.agent_id; }).filter(Boolean));
-
-      var stats = [
-        { key: 'home.stat.sessions', value: totalSessions },
-        { key: 'home.stat.turns',    value: fmtTokens(totalTurns) },
-        { key: 'home.stat.cost',     value: fmtCost(totalCost) },
-        { key: 'home.stat.agents',   value: agentSet.size },
-        { key: 'home.stat.tools',    value: fmtTokens(totalTools) },
-      ];
-
-      container.innerHTML = stats.map(function(s) {
-        return '<div class="home-stat-card">' +
-          '<div class="stat-label" data-i18n="' + s.key + '">' + _t(s.key) + '</div>' +
-          '<div class="stat-value">' + s.value + '</div>' +
-          '</div>';
-      }).join('');
-    } catch(e) {
-      console.error('loadHomeStats error:', e);
+        this.stats = [
+          { key: 'sessions', label: _t('home.stat.sessions'), value: totalSessions },
+          { key: 'turns',    label: _t('home.stat.turns'),    value: fmtTokens(totalTurns) },
+          { key: 'cost',     label: _t('home.stat.cost'),     value: fmtCost(totalCost) },
+          { key: 'agents',   label: _t('home.stat.agents'),   value: agentSet.size },
+          { key: 'tools',    label: _t('home.stat.tools'),    value: fmtTokens(totalTools) },
+        ];
+      } catch(e) {
+        console.error('homeStats error:', e);
+      } finally {
+        this.loading = false;
+      }
     }
-  }
-
-  loadHomeStats();
-
-  document.addEventListener('langchange', function() {
-    document.querySelectorAll('#home-stats .stat-label[data-i18n]').forEach(function(el) {
-      el.textContent = _t(el.dataset.i18n);
-    });
-  });
-})();
+  }));
+});
 </script>
 {% endblock %}

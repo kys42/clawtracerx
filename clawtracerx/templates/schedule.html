@@ -3,18 +3,28 @@
 {% block title %}Schedule{% endblock %}
 
 {% block content %}
+<div x-data="schedulePage()" x-init="load(); startAutoRefresh()" @langchange.window="load()">
+
 <div class="page-header">
   <h1 data-i18n="schedule.title">Schedule</h1>
-  <div class="filters">
-    <button class="btn btn-sm" onclick="loadSchedule()" data-i18n="schedule.refresh">Refresh</button>
+  <div class="filters" style="display:flex;align-items:center;gap:8px">
+    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-2);cursor:pointer">
+      <input type="checkbox" x-model="autoRefreshOn" @change="toggleAutoRefresh()">
+      <span x-text="_t('schedule.auto_refresh')"></span>
+      <span x-show="autoRefreshOn && countdown > 0" x-text="'(' + countdown + 's)'" style="color:var(--text-3);font-size:11px"></span>
+    </label>
+    <button class="btn btn-sm" @click="load()" data-i18n="schedule.refresh">Refresh</button>
   </div>
 </div>
 
+<div x-show="loading" class="loading-bar"></div>
+
 <div class="sched-summary" id="sched-summary">
-  <div class="summary-card skeleton" style="height:100px"></div>
-  <div class="summary-card skeleton" style="height:100px"></div>
-  <div class="summary-card skeleton" style="height:100px"></div>
-  <div class="summary-card skeleton" style="height:100px"></div>
+  <template x-if="!loaded">
+    <template x-for="i in 4">
+      <div class="summary-card skeleton" style="height:100px"></div>
+    </template>
+  </template>
 </div>
 
 <section id="hb-section">
@@ -25,11 +35,16 @@
 <section id="cron-section" style="margin-top:32px">
   <h2 class="section-title" data-i18n="schedule.cron_jobs">Cron Jobs</h2>
   <div id="cron-jobs" class="cron-cards">
-    <div class="skeleton" style="height:60px;border-radius:var(--radius);margin-bottom:8px"></div>
-    <div class="skeleton" style="height:60px;border-radius:var(--radius);margin-bottom:8px"></div>
+    <template x-if="!loaded">
+      <div>
+        <div class="skeleton" style="height:60px;border-radius:var(--radius);margin-bottom:8px"></div>
+        <div class="skeleton" style="height:60px;border-radius:var(--radius);margin-bottom:8px"></div>
+      </div>
+    </template>
   </div>
 </section>
 
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -64,7 +79,6 @@ function statusDotHtml(status, enabled) {
 
 function renderActiveHoursBar(activeHours) {
   if (!activeHours) return '';
-  // activeHours is an object like { start: 9, end: 22 } or array of hours
   let activeSet = new Set();
   if (Array.isArray(activeHours)) {
     activeHours.forEach(function(h) { activeSet.add(h); });
@@ -79,9 +93,12 @@ function renderActiveHoursBar(activeHours) {
   } else {
     return '';
   }
-  let html = '<div class="hb-hours-bar">';
+  let html = '<div class="hb-hours-bar" x-data="{ hoveredHour: null }">';
   for (let h = 0; h < 24; h++) {
-    html += '<div class="hb-hour-seg' + (activeSet.has(h) ? ' active' : '') + '" title="' + h + ':00"></div>';
+    html += '<div class="hb-hour-seg' + (activeSet.has(h) ? ' active' : '') + '"'
+      + ' @mouseenter="hoveredHour = ' + h + '" @mouseleave="hoveredHour = null">'
+      + '<span class="hb-hour-tooltip" x-show="hoveredHour === ' + h + '" x-transition.duration.150ms>' + h + ':00</span>'
+      + '</div>';
   }
   html += '</div>';
   html += '<div class="hb-hours-label"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>';
@@ -96,6 +113,11 @@ function renderSummary(summary, jobs) {
       if (!nearestNext || j.next_run_at_ms < nearestNext) nearestNext = j.next_run_at_ms;
     }
   }
+
+  const nextRunHtml = nearestNext
+    ? '<span x-data="schedCountdown(' + nearestNext + ')" x-text="display"></span>'
+    : '\u2014';
+
   el.innerHTML =
     '<div class="summary-card">' +
       '<div class="summary-label">' + _t('schedule.enabled') + '</div>' +
@@ -111,7 +133,7 @@ function renderSummary(summary, jobs) {
     '</div>' +
     '<div class="summary-card">' +
       '<div class="summary-label">' + _t('schedule.next_run') + '</div>' +
-      '<div class="summary-value" style="font-size:1.2rem">' + fmtRelMs(nearestNext) + '</div>' +
+      '<div class="summary-value" style="font-size:1.2rem">' + nextRunHtml + '</div>' +
     '</div>';
 }
 
@@ -124,28 +146,23 @@ function renderHeartbeats(heartbeats) {
   let html = '';
   for (const hb of heartbeats) {
     html += '<div class="hb-card">';
-
-    // Top row: pulse icon + agent + interval badge
     html += '<div class="hb-card-top">';
     html += '<span class="hb-icon">\u2661</span>';
     html += '<span class="hb-agent">' + escHtml(hb.agent_id) + '</span>';
     html += '<span class="hb-interval">' + _t('schedule.every') + ' ' + escHtml(hb.every) + '</span>';
     html += '</div>';
 
-    // Meta chips: target, model
     html += '<div class="hb-meta">';
     if (hb.target) html += '<span class="hb-chip">' + escHtml(hb.target) + '</span>';
     if (hb.model) html += '<span class="hb-chip">' + escHtml(hb.model) + '</span>';
     html += '</div>';
 
-    // Active hours 24h bar
     if (hb.active_hours) {
       html += '<div class="hb-card-body">';
       html += renderActiveHoursBar(hb.active_hours);
       html += '</div>';
     }
 
-    // Sessions
     if (hb.sessions && hb.sessions.length) {
       html += '<div class="hb-sessions">';
       for (const s of hb.sessions) {
@@ -162,7 +179,7 @@ function renderHeartbeats(heartbeats) {
       html += '<div style="color:var(--text-3);font-size:12px;padding:4px 0">' + _t('schedule.no_sessions') + '</div>';
     }
 
-    html += '</div>'; // hb-card
+    html += '</div>';
   }
   el.innerHTML = html;
 }
@@ -179,7 +196,6 @@ function renderCronJobs(jobs) {
     const errorClass = (job.consecutive_errors > 0 && job.enabled) ? ' error-state' : '';
     html += '<div class="cron-card' + disabledClass + errorClass + '">';
 
-    // Top: status + name + agent + schedule expression
     html += '<div class="cron-card-top">';
     html += '<div class="cron-card-identity">';
     html += statusDotHtml(job.last_status, job.enabled);
@@ -192,7 +208,6 @@ function renderCronJobs(jobs) {
     html += '<span class="cron-expr-badge">' + escHtml(job.schedule_expr) + '</span>';
     html += '</div>';
 
-    // Timing row
     html += '<div class="cron-card-timing">';
     if (job.enabled && job.last_run_at_ms) {
       html += '<div class="cron-time-item"><span class="cron-time-label">' + _t('schedule.last') + '</span><span class="cron-time-value">' + fmtRelMs(job.last_run_at_ms);
@@ -200,7 +215,9 @@ function renderCronJobs(jobs) {
       html += '</span></div>';
     }
     if (job.enabled && job.next_run_at_ms) {
-      html += '<div class="cron-time-item"><span class="cron-time-label">' + _t('schedule.next') + '</span><span class="cron-time-value">' + fmtRelMs(job.next_run_at_ms) + '</span></div>';
+      html += '<div class="cron-time-item"><span class="cron-time-label">' + _t('schedule.next') + '</span><span class="cron-time-value">'
+        + '<span x-data="schedCountdown(' + job.next_run_at_ms + ')" x-text="display"></span>'
+        + '</span></div>';
     }
     if (job.timezone) {
       html += '<div class="cron-time-item"><span class="hb-chip">' + escHtml(job.timezone) + '</span></div>';
@@ -210,16 +227,13 @@ function renderCronJobs(jobs) {
     }
     html += '</div>';
 
-    // Detail: payload + runs
     html += '<div class="cron-card-detail">';
-
     if (job.payload_message) {
       const payloadPreview = truncate(job.payload_message, 300);
       html += '<div class="cron-payload">' + escHtml(payloadPreview) + '</div>';
       html += makeShowFullBtn(_t('turns.show_full'), job.name + ' payload', job.payload_message, 300);
     }
 
-    // Runs table (limit to 5)
     if (job.runs && job.runs.length) {
       const maxRuns = 5;
       const displayRuns = job.runs.slice(0, maxRuns);
@@ -253,27 +267,76 @@ function renderCronJobs(jobs) {
       html += '<div style="color:var(--text-3);font-size:12px;padding:8px 0">' + _t('schedule.no_runs') + '</div>';
     }
 
-    html += '</div>'; // detail
-    html += '</div>'; // cron-card
+    html += '</div>';
+    html += '</div>';
   }
   el.innerHTML = html;
 }
 
-async function loadSchedule() {
-  try {
-    const data = await fetchJSON('/api/schedule');
-    renderSummary(data.summary, data.cron_jobs);
-    renderHeartbeats(data.heartbeats);
-    renderCronJobs(data.cron_jobs);
-  } catch (e) {
-    console.error('Schedule load error:', e);
-    document.getElementById('cron-jobs').innerHTML =
-      '<div style="color:var(--error);padding:20px">' + _t('schedule.load_failed') + ' ' + escHtml(e.message) + '</div>';
-  }
-}
+document.addEventListener('alpine:init', () => {
+  // Countdown component for next-run times
+  Alpine.data('schedCountdown', (targetMs) => ({
+    display: '',
+    _interval: null,
+    init() {
+      this.tick();
+      this._interval = setInterval(() => this.tick(), 1000);
+    },
+    destroy() {
+      if (this._interval) clearInterval(this._interval);
+    },
+    tick() {
+      this.display = fmtRelMs(targetMs);
+    }
+  }));
 
-loadSchedule();
+  // Main schedule page component
+  Alpine.data('schedulePage', () => ({
+    loading: false,
+    loaded: false,
+    autoRefreshOn: true,
+    countdown: 30,
+    _refreshInterval: null,
+    _countdownInterval: null,
 
-document.addEventListener('langchange', function() { loadSchedule(); });
+    async load() {
+      this.loading = true;
+      try {
+        const data = await fetchJSON('/api/schedule');
+        renderSummary(data.summary, data.cron_jobs);
+        renderHeartbeats(data.heartbeats);
+        renderCronJobs(data.cron_jobs);
+        this.loaded = true;
+      } catch (e) {
+        console.error('Schedule load error:', e);
+        document.getElementById('cron-jobs').innerHTML =
+          '<div style="color:var(--error);padding:20px">' + _t('schedule.load_failed') + ' ' + escHtml(e.message) + '</div>';
+      } finally {
+        this.loading = false;
+        this.countdown = 30;
+      }
+    },
+
+    startAutoRefresh() {
+      this._refreshInterval = setInterval(() => {
+        if (this.autoRefreshOn) this.load();
+      }, 30000);
+      this._countdownInterval = setInterval(() => {
+        if (this.autoRefreshOn && this.countdown > 0) this.countdown--;
+      }, 1000);
+    },
+
+    toggleAutoRefresh() {
+      if (!this.autoRefreshOn) {
+        this.countdown = 30;
+      }
+    },
+
+    destroy() {
+      if (this._refreshInterval) clearInterval(this._refreshInterval);
+      if (this._countdownInterval) clearInterval(this._countdownInterval);
+    }
+  }));
+});
 </script>
 {% endblock %}

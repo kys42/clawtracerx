@@ -17,8 +17,6 @@ function renderChannelMsg(cm) {
     <pre class="channel-msg-body">${escHtml(cm.actual_text || '')}</pre>
   </div>`;
 }
-const DELIVERY_MIRROR_SOURCE = 'delivery_mirror';
-
 function fmtChars(n) {
   if (!n) return '0';
   if (n < 1000) return n + _t('turns.ch');
@@ -168,22 +166,16 @@ function renderTurn(t, animIdx) {
   const isHighCost = (t.cost?.total || 0) > 0.10;
   const isSubagentSpawn = t.subagent_spawns && t.subagent_spawns.length > 0;
 
-  const isDeliveryMirror = t.user_source === DELIVERY_MIRROR_SOURCE;
-
   let classes = 'turn-card';
   if (hasErrors)          classes += ' has-errors';
   if (isCompacted)        classes += ' compacted';
   if (isHighCost && !hasErrors) classes += ' high-cost';
   if (isSubagentSpawn && !hasErrors && !isHighCost) classes += ' spawns-subagent';
-  if (isDeliveryMirror)   classes += ' delivery-mirror';
 
   const delay = (animIdx || 0) * 40;
 
-  // preview: delivery_mirror has no user_text — show assistant text instead
   let previewText;
-  if (isDeliveryMirror) {
-    previewText = (t.assistant_texts[0] || '').replace(/\n/g, ' ');
-  } else if (t.channel_meta) {
+  if (t.channel_meta) {
     const cm = t.channel_meta;
     previewText = (cm.sender ? cm.sender + ': ' : '') +
                   (cm.actual_text || '').replace(/\n/g, ' ');
@@ -192,29 +184,28 @@ function renderTurn(t, animIdx) {
   }
 
   return `
-  <div class="${classes}" id="turn-${t.index}" style="animation-delay:${delay}ms">
+  <div class="${classes}" id="turn-${t.index}" data-source="${t.user_source}" style="animation-delay:${delay}ms">
     <div class="turn-header" onclick="toggleTurn(${t.index})">
       <div class="turn-left">
         <span class="turn-index">${_t('turns.turn')} ${t.index}</span>
         ${t.timestamp ? `<span class="turn-timestamp">${fmtTurnTime(t.timestamp)}</span>` : ''}
         ${isCompacted ? `<span class="badge badge-compacted">${_t('turns.compacted_label')}</span>` : ''}
-        <span class="badge badge-${t.user_source} badge-type">${isDeliveryMirror ? '📨 ' + _t('turns.delivered') : t.user_source}</span>
+        <span class="badge badge-${t.user_source} badge-type">${t.user_source}</span>
         <span class="turn-preview">${escHtml(truncate(previewText, 80))}</span>
       </div>
       <div class="turn-stats">
         ${t.tool_calls.length ? `<span class="stat-chip tools">${t.tool_calls.length} ${_t('turns.tools')}</span>` : ''}
         ${t.subagent_spawns.length ? `<span class="stat-chip subagents">${t.subagent_spawns.length} ${_t('turns.subagents')}</span>` : ''}
-        ${!isDeliveryMirror ? `<span class="stat-chip duration">${fmtDuration(t.duration_ms)}</span>` : ''}
-        ${!isDeliveryMirror ? `<span class="stat-chip cost">${fmtCost(t.cost.total || 0)}</span>` : ''}
-        ${!isDeliveryMirror ? `<span class="stat-chip tokens">${fmtTokens(t.usage.totalTokens || 0)}</span>` : ''}
+        <span class="stat-chip duration">${fmtDuration(t.duration_ms)}</span>
+        <span class="stat-chip cost">${fmtCost(t.cost.total || 0)}</span>
+        <span class="stat-chip tokens">${fmtTokens(t.usage.totalTokens || 0)}</span>
         ${(t.cache_hit_rate > 0) ? `<span class="stat-chip cache">${Math.round(t.cache_hit_rate * 100)}% ${_t('turns.cache')}</span>` : ''}
         ${t.thinking_level ? `<span class="stat-chip thinking">💭 ${t.thinking_level}</span>` : ''}
         ${typeof showRaw === 'function' ? `<button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" data-i18n-title="turns.view_raw" title="${_t('turns.view_raw')}">{ }</button>` : ''}
       </div>
     </div>
-    <div class="turn-body" id="turn-body-${t.index}" style="display:none">
+    <div class="turn-body collapsed" id="turn-body-${t.index}">
       <div class="turn-detail">
-        ${isDeliveryMirror ? '' : `
         <!-- User message -->
         <div class="msg-block user-msg">
           <div class="msg-role">${_t('turns.user')} <span class="badge badge-${t.user_source} badge-type" style="font-size:10px">${t.user_source}</span></div>
@@ -225,14 +216,14 @@ function renderTurn(t, animIdx) {
                  ? `<button class="tc-full-btn" onclick="openFullUserText(${t.index})">${_t('turns.show_full')} (${fmtSize(t.user_text.length)})</button>`
                  : ''}`
           }
-        </div>`}
+        </div>
 
         <!-- Token breakdown -->
         <div class="token-bar">
           ${renderTokenBar(t.usage)}
         </div>
 
-        <!-- Thinking + Tool calls (interleaved by round) -->
+        <!-- Thinking + Tool calls (interleaved by round, merged headers) -->
         ${(() => {
           const roundTcs = {};
           for (const tc of t.tool_calls) {
@@ -246,18 +237,35 @@ function renderTurn(t, animIdx) {
               ...Object.keys(roundTcs).map(Number),
               0
             );
+            // Accumulate tool calls across rounds; flush when thinking appears or at end
+            let pendingTcs = [];
             for (let r = 0; r <= maxR; r++) {
               const th = t.thinking_blocks[r];
               const tcs = roundTcs[r] || [];
-              if (th) html += `
-              <div class="thinking-block">
-                <div class="thinking-label">${_t('turns.thinking')}</div>
-                <pre class="thinking-content">${escHtml(th)}</pre>
-              </div>`;
-              if (tcs.length) html += `
+              if (th) {
+                // Flush accumulated tool calls before this thinking block
+                if (pendingTcs.length) {
+                  html += `
+                  <div class="tool-calls">
+                    <div class="tc-header">${_t('turns.tool_calls')}</div>
+                    ${pendingTcs.map(tc => renderToolCall(tc)).join('')}
+                  </div>`;
+                  pendingTcs = [];
+                }
+                html += `
+                <div class="thinking-block">
+                  <div class="thinking-label">${_t('turns.thinking')}</div>
+                  <pre class="thinking-content">${escHtml(th)}</pre>
+                </div>`;
+              }
+              if (tcs.length) pendingTcs.push(...tcs);
+            }
+            // Flush remaining tool calls
+            if (pendingTcs.length) {
+              html += `
               <div class="tool-calls">
                 <div class="tc-header">${_t('turns.tool_calls')}</div>
-                ${tcs.map(tc => renderToolCall(tc)).join('')}
+                ${pendingTcs.map(tc => renderToolCall(tc)).join('')}
               </div>`;
             }
           } else {
@@ -275,6 +283,12 @@ function renderTurn(t, animIdx) {
           if (t.thinking_encrypted) html += `<div class="thinking-block encrypted"><span class="thinking-label">${_t('turns.thinking_encrypted')}</span></div>`;
           return html;
         })()}
+
+        <!-- Delivery mirror tags (merged from delivery-mirror events) -->
+        ${(t.delivery_texts && t.delivery_texts.length) ? `
+        <div class="delivery-tags">
+          ${t.delivery_texts.map(dt => `<span class="delivery-tag">📨 ${escHtml(dt)}</span>`).join('')}
+        </div>` : ''}
 
         <!-- Subagent spawns -->
         ${t.subagent_spawns.map(s => renderSubagent(s, 0)).join('')}
@@ -334,7 +348,7 @@ function renderToolCall(tc) {
     ${durStr}${sizeStr}
     ${tc.is_error ? '<span class="tc-err-badge">ERROR</span>' : ''}
     ${argFullBtns ? `<div onclick="event.stopPropagation()">${argFullBtns}</div>` : ''}
-    <div class="tc-result" style="display:none">
+    <div class="tc-result collapsed">
       <pre>${escHtml(tc.result_text)}</pre>
       ${resultFullBtn}
     </div>
@@ -393,7 +407,7 @@ function renderSubagent(s, depth) {
       <span class="subagent-stats">${durStr} &middot; ${costStr} &middot; ${tokensStr} ${_t('turns.tokens')}</span>
       ${s.child_session_id ? `<a href="/session/${s.child_session_id}" class="btn btn-sm" onclick="event.stopPropagation()">${_t('turns.open_session')}</a>` : ''}
     </div>
-    <div class="subagent-body" style="display:none">
+    <div class="subagent-body collapsed">
       <div class="subagent-task">
         ${escHtml(truncate(s.task, 300))}
         ${makeShowFullBtn(_t('turns.show_full'), _t('turns.subagent_task'), s.task, 300)}
@@ -458,24 +472,24 @@ function renderTokenBar(usage) {
 
 function toggleTurn(idx) {
   const body = qs(`#turn-body-${idx}`);
-  body.style.display = body.style.display === 'none' ? 'block' : 'none';
+  body.classList.toggle('collapsed');
 }
 
 function toggleSubagent(headerEl) {
   const body = headerEl.nextElementSibling;
-  if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+  if (body) body.classList.toggle('collapsed');
 }
 
 function toggleTcResult(el) {
   const result = el.querySelector('.tc-result');
-  if (result) result.style.display = result.style.display === 'none' ? 'block' : 'none';
+  if (result) result.classList.toggle('collapsed');
 }
 
 function toggleEl(el) {
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el) el.classList.toggle('collapsed');
 }
 
 function toggleWorkflow(gid) {
   const body = qs(`#workflow-body-${gid}`);
-  if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+  if (body) body.classList.toggle('collapsed');
 }

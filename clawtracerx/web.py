@@ -1075,6 +1075,7 @@ def _serialize_turn(turn):
             **turn.channel_meta,
             "actual_text": _truncate(turn.channel_meta.get("actual_text", ""), 500),
         } if turn.channel_meta else None,
+        "delivery_texts": turn.delivery_texts if turn.delivery_texts else [],
     }
 
 

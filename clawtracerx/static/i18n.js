@@ -299,6 +299,7 @@
       'schedule.turns': '턴',
       'schedule.no_sessions': '최근 세션 없음.',
       'schedule.load_failed': '로딩 실패:',
+      'schedule.auto_refresh': '자동 갱신',
 
       // === turns.js 공유 ===
       'turns.ch': '자',
@@ -638,6 +639,7 @@
       'schedule.turns': 'turns',
       'schedule.no_sessions': 'No recent sessions.',
       'schedule.load_failed': 'Load failed:',
+      'schedule.auto_refresh': 'Auto-refresh',
 
       // === turns.js ===
       'turns.ch': 'ch',

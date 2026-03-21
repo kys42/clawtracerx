@@ -640,7 +640,7 @@ async function loadContextFiles() {
         '</div>' +
         '<span style="color:var(--text-3);font-size:11px;flex-shrink:0">\u25BE</span>' +
       '</div>' +
-      '<div class="lab-ctx-file-body" style="display:' + (openCards.has(f.name) ? 'block' : 'none') + '">' +
+      '<div class="lab-ctx-file-body' + (openCards.has(f.name) ? '' : ' collapsed') + '">' +
         '<textarea class="input-textarea" id="ctx-' + f.name + '" rows="12" oninput="markContextUnsaved(\'' + f.name + '\')">' + escHtml(f.content) + '</textarea>' +
         '<div class="lab-ctx-actions">' +
           '<div style="display:flex;gap:6px">' +

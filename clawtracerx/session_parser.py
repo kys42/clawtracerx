@@ -113,6 +113,7 @@ class Turn:
     workflow_group_id: Optional[int] = None  # set if this turn is part of a multi-turn workflow chain
     channel_meta: Optional[dict] = None
     # {platform, sender, sender_id, channel, ts_str, message_id, actual_text, reply_context}
+    delivery_texts: list = field(default_factory=list)  # merged from delivery-mirror events
 
 
 @dataclass
@@ -845,17 +846,27 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 and parent_stop != "error"
             )
 
-            if is_delivery_mirror or is_proactive:
+            if is_delivery_mirror:
+                # Merge delivery-mirror into current turn as metadata (not a new turn)
+                if current_turn is not None:
+                    dm_text = ""
+                    for block in msg.get("content", []):
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            dm_text += block.get("text", "")
+                    if dm_text.strip():
+                        current_turn.delivery_texts.append(dm_text.strip())
+                    turn_raw_lines.append(entry)
+                continue
+            elif is_proactive:
                 # Close current turn and start a new one
                 if current_turn is not None:
                     current_turn.raw_lines = turn_raw_lines
                     _finalize_turn(current_turn, pending_tool_calls)
                     turns.append(current_turn)
-                new_source = "delivery_mirror" if is_delivery_mirror else "proactive"
                 current_turn = Turn(
                     index=len(turns),
                     user_text="",
-                    user_source=new_source,
+                    user_source="proactive",
                     timestamp=ts,
                     model=current_model,
                     provider=current_provider,
@@ -1082,10 +1093,10 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     break
             analysis.total_duration_ms = int((last_ts - first_ts).total_seconds() * 1000)
 
-    # Detect session type from first user message (skip proactive/delivery_mirror turns)
+    # Detect session type from first user message (skip proactive turns)
     if turns:
         first_real_turn = next(
-            (t for t in turns if t.user_source not in ("proactive", "delivery_mirror")),
+            (t for t in turns if t.user_source != "proactive"),
             turns[0] if turns else None,
         )
         first_source = first_real_turn.user_source if first_real_turn else "chat"

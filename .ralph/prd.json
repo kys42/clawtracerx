@@ -1,0 +1,168 @@
+{
+  "branchName": "feat/quality-and-ux",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "테스트 커버리지 대폭 확대",
+      "category": "testing",
+      "priority": 1,
+      "description": "현재 69개 테스트, API 14% 커버리지를 대폭 끌어올린다. 파서 I/O 함수(load_cron_runs, load_session_metadata, get_raw_turn_lines), parse_session 엣지 케이스(빈 세션, malformed JSONL, compaction, thinking), 웹 API 엔드포인트(/api/crons, /api/health, /api/schedule, 페이지 렌더링, raw turn), CLI 커맨드(cmd_sessions, cmd_cost, cmd_crons capsys 캡처), gateway 순수 함수까지 한번에 보강한다.",
+      "steps": [
+        "conftest.py에 cron JSONL fixture, sessions.json fixture, empty_session.jsonl, session_with_compaction.jsonl, session_with_thinking.jsonl 등 필요한 합성 데이터 모두 추가",
+        "test_session_parser.py: load_cron_runs(3), load_session_metadata(2), get_raw_turn_lines(2), parse_session 엣지케이스(빈 세션, malformed skip, compaction 파싱, thinking 추출 — 5+)",
+        "test_web.py: /api/crons, /api/health, /api/schedule, /cost, /schedule, /settings 페이지 렌더링, /api/session/:id/raw/:turn 정상+범위초과 (8+)",
+        "test_cli.py: cmd_sessions, cmd_cost, cmd_crons를 capsys + mock_openclaw_dir로 stdout 출력 검증 (6+)",
+        "ruff check + pytest -v 모두 통과"
+      ],
+      "acceptanceCriteria": [
+        "새 테스트 25개 이상 추가",
+        "파서 I/O 함수, CLI 커맨드, 웹 API 모두 커버",
+        "전체 pytest 통과 + ruff 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-002",
+      "title": "디자인/UX 일괄 개선",
+      "category": "design",
+      "priority": 2,
+      "description": "색상 대비 WCAG AA 수정, 호버 상태 강화, 에러 배너 시스템, 로딩/빈 상태 개선, 접근성(aria-label), 모바일 반응형(사이드바 햄버거, 카드 wrap, 차트 높이 조정)을 한 묶음으로 처리. 기존 Dark Pro 디자인 시스템의 CSS 변수 체계 유지하며 개선.",
+      "steps": [
+        "style.css: --text-3 대비 수정, .data-table hover 강화, @media(hover:hover) ghost hover 방지",
+        "app.js: showErrorBanner(message, retryFn) 함수 추가 — fetchJSONSafe 실패 시 화면에 배너 표시 + Retry",
+        "detail.html: 로딩 실패 시 에러 메시지 + 뒤로가기 표시 (무한 로딩 제거)",
+        "base.html: 모바일 햄버거 메뉴 + @media(max-width:768px) 사이드바 토글",
+        "sessions.html: 카드 칩 모바일 wrap, cost.html: 차트 높이 모바일 조정",
+        "아이콘 전용 버튼에 aria-label 추가 (복사, raw 보기 등)",
+        "detail.html: Expand All / Collapse All 턴 토글 버튼 + 워크플로우 그룹 일괄 토글",
+        "브라우저에서 모바일 뷰포트 + 데스크톱 양쪽 확인"
+      ],
+      "acceptanceCriteria": [
+        "WCAG AA 대비 충족",
+        "API 에러 시 유저에게 배너 표시 + Retry 동작",
+        "768px 이하에서 사이드바 햄버거 전환",
+        "Expand All/Collapse All 동작",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-003",
+      "title": "리뷰 & 개선점 탐색 (1차)",
+      "category": "meta",
+      "priority": 3,
+      "description": "US-001, US-002 완료 후 중간 점검. 코드베이스를 전체 탐색하여 깨진 부분, 누락된 테스트, TODO/FIXME, 미번역 문자열, 미사용 코드, 새로운 기능 아이디어를 찾는다. 발견한 개선점은 prd.json에 US-007~ 스토리로 추가한다. 코드 수정은 하지 않고 PRD만 업데이트.",
+      "steps": [
+        "clawtracerx/ 전체 Python 읽기 — TODO/FIXME/HACK 수집, 에러 핸들링 갭, 미사용 import",
+        "templates/ 전체 HTML — 하드코딩 문자열, 깨진 레이아웃, 미번역 텍스트, 접근성",
+        "static/ JS/CSS — 미사용 코드, 성능 병목, 일관성",
+        "pytest --co -q로 테스트 갭 확인, ruff check로 린트 이슈",
+        "발견한 항목을 US-007~ 스토리로 prd.json에 추가 (최소 3개, steps + acceptanceCriteria 포함)",
+        "이 스토리 자체를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리가 prd.json에 추가됨",
+        "각 스토리가 구체적이고 실행 가능",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-004",
+      "title": "검색 + 내보내기 + 차트 드릴다운",
+      "category": "feature",
+      "priority": 4,
+      "description": "세션 목록 검색(session_id, agent_id, 메시지 텍스트 클라이언트사이드 필터), 디테일 페이지 턴 검색/도구 필터, 세션 내보내기(CSV/JSON), 비용 차트 바 클릭→세션 필터 이동, Agent×Type 테이블 정렬, 고비용 세션 뱃지를 한번에 구현.",
+      "steps": [
+        "sessions.html: 검색 입력란 + input 이벤트 리스너, 실시간 필터, 'No matching sessions' 상태",
+        "detail.html: 턴 검색 입력 + 도구 이름 드롭다운 필터, 매칭 수 표시, 초기화 버튼",
+        "web.py: GET /api/sessions/export?format=csv, GET /api/session/:id/export?format=json 엔드포인트",
+        "sessions.html: 'Export CSV' 버튼, detail.html: 'Export JSON' 버튼",
+        "cost.html: ApexCharts bar click → location.href='/?agent=xxx', sessions.html에서 URL 쿼리 파라미터 자동 적용",
+        "cost.html: Agent×Type 테이블 헤더 클릭 정렬",
+        "sessions.html: 고비용 세션(상위 10%) 'High Cost' 뱃지",
+        "style.css에 필요한 스타일 추가"
+      ],
+      "acceptanceCriteria": [
+        "세션 검색 실시간 필터링 동작",
+        "턴 검색 + 도구 필터 동작",
+        "CSV/JSON 다운로드 동작",
+        "차트 클릭 → 필터된 세션 페이지 이동",
+        "테이블 정렬 동작",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-005",
+      "title": "세션 디테일 라이브 스트리밍 (SSE)",
+      "category": "feature",
+      "priority": 5,
+      "description": "세션 상세 페이지에서 JSONL이 실시간으로 갱신되면 새 턴/도구호출이 새로고침 없이 이어붙여짐. 기존 렌더된 턴 유지, 새 턴만 아래 추가, 진행 중 턴은 patch로 교체. Lab의 /api/lab/stream SSE 인프라 재활용. 스크롤 위치 보존(위를 보고 있으면 자동스크롤 안 함, 바닥이면 자동스크롤).",
+      "steps": [
+        "web.py: GET /api/session/:id/stream SSE 엔드포인트 (api_lab_stream과 동일 패턴 — init/update/patch/done 이벤트, 0.5초 폴링, mtime 감지)",
+        "detail.html: 'Live' 토글 버튼 추가 (기본 off), 활성화 시 초록 점 애니메이션",
+        "Live ON → EventSource 연결, init 이벤트는 무시 (이미 로드됨), update 이벤트의 new_turns를 turns 컨테이너에 append",
+        "patch 이벤트: 마지막 턴 카드 innerHTML 교체 (도구 호출 결과 도착 시)",
+        "스크롤 위치 보존: scrollHeight - scrollTop - clientHeight < 100이면 자동스크롤, 아니면 유지",
+        "done 이벤트: Live 버튼 'Complete' 표시 + SSE 종료",
+        "error/timeout: 3초 후 재연결 (최대 5회)",
+        "turns.js의 renderTurn을 단일 턴 append에도 사용 가능하도록 확인/수정",
+        "Live OFF → EventSource 닫기",
+        "style.css: .live-indicator 초록 점 pulse 애니메이션"
+      ],
+      "acceptanceCriteria": [
+        "Live ON → 새 턴이 새로고침 없이 실시간 추가",
+        "기존 턴 유지, 리렌더 없음",
+        "진행 중 턴 patch 업데이트 동작",
+        "스크롤 위치 보존 동작",
+        "세션 완료 시 자동 Live 종료",
+        "네트워크 끊김 시 자동 재연결",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-006",
+      "title": "캐싱 + 로그 뷰어 + Lab 초안 저장",
+      "category": "feature",
+      "priority": 6,
+      "description": "parse_session 결과 mtime 기반 LRU 캐시(50 세션), settings 페이지 로그 뷰어(web.log/lab.log 최근 50줄 + 탭 전환 + health Retry 버튼), Lab 메시지 초안 localStorage 자동저장/복원을 한 묶음으로.",
+      "steps": [
+        "session_parser.py: _parse_cache dict + mtime 검사 + LRU 50개 제한, parse_session 진입 시 캐시 확인",
+        "테스트: 같은 파일 2회 호출 시 캐시 히트, mtime 변경 시 캐시 무효화",
+        "web.py: GET /api/logs?file=web&lines=50 (화이트리스트: web.log, lab.log만)",
+        "settings.html: 로그 뷰어 섹션 (monospace, 자동스크롤, 새로고침, web/lab 탭 전환)",
+        "settings.html: health 카드 Retry 버튼 → /api/health 재호출",
+        "lab.html: 메시지 textarea input 이벤트 → localStorage 저장 (debounce 500ms), 로드 시 복원, 전송 시 삭제, 세션 키별 분리"
+      ],
+      "acceptanceCriteria": [
+        "같은 세션 2회 요청 시 파싱 1회 (캐시 동작)",
+        "로그 뷰어에서 최근 로그 표시 + 탭 전환",
+        "Lab 메시지 새로고침 후 복원",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-FINAL",
+      "title": "최종 리뷰 & 추가 개선 탐색",
+      "category": "meta",
+      "priority": 99,
+      "description": "모든 스토리 완료 후 최종 점검. 전체 코드베이스를 탐색하여 남은 버그, 개선 기회, 새 기능 아이디어를 찾아 prd.json에 추가. 직접 코드 수정 없이 스토리만 추가.",
+      "steps": [
+        "전체 Python/HTML/JS/CSS 탐색 — TODO/FIXME, 에러 핸들링 갭, 일관성 깨진 부분",
+        "pytest + ruff 실행하여 남은 이슈 확인",
+        "실제 ctrace web --debug로 모든 페이지 접속하여 UX 확인",
+        "발견한 항목을 새 스토리로 prd.json에 추가 (최소 5개)",
+        "이 스토리를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 5개 이상 새 스토리 추가",
+        "각 스토리 구체적 steps + acceptanceCriteria 포함",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": false
+    }
+  ]
+}
