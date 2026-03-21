@@ -65,7 +65,7 @@
         "각 스토리가 구체적이고 실행 가능",
         "코드 수정 없이 PRD만 업데이트"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-004",
@@ -141,6 +141,121 @@
         "로그 뷰어에서 최근 로그 표시 + 탭 전환",
         "Lab 메시지 새로고침 후 복원",
         "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-007",
+      "title": "Python 3.9 호환성 수정 + 에러 핸들링 강화",
+      "category": "bugfix",
+      "priority": 7,
+      "description": "web.py에 `from __future__ import annotations` 누락으로 Python 3.9에서 `Path | None` 등 PEP 604 문법 런타임 에러 발생 가능. 또한 config.py, session_parser.py, web.py 전반에 `except Exception: pass` 패턴이 6곳 이상 존재하여 디버깅 불가능한 사일런트 실패를 유발. 브로드 except를 구체적 예외로 변경하고 최소한 logging.warning 추가.",
+      "steps": [
+        "web.py 상단에 `from __future__ import annotations` 추가 (line 1~)",
+        "config.py line 21: `except Exception: pass` → `except (json.JSONDecodeError, OSError) as e: logging.warning(...)` 로 변경",
+        "session_parser.py line 1270, 1321: `except Exception: continue/pass` → 구체적 예외 + warning 로그",
+        "web.py line 58, 453, 895: 브로드 except → 구체적 예외 타입으로 변경 + 컨텍스트 로깅",
+        "gateway.py line 242: `agent_id: str = None` → `agent_id: Optional[str] = None` 수정",
+        "ruff check + pytest -v 통과 확인"
+      ],
+      "acceptanceCriteria": [
+        "web.py가 Python 3.9에서 import 에러 없이 로드됨",
+        "except Exception: pass 패턴 0개",
+        "모든 예외 핸들러에 최소 logging.warning 포함",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-008",
+      "title": "프론트엔드 접근성 + i18n 누락 문자열 보완",
+      "category": "accessibility",
+      "priority": 8,
+      "description": "base.html의 네비게이션 SVG 아이콘에 aria-label 없음, Lab 비활성 링크가 pointer-events:none으로 키보드 접근 차단, lab.html form input에 label 연결 안 됨, style.css .workflow-label이 미정의 var(--fg) 사용. detail.html의 'Expand All/Collapse All', home.html의 chat/cron/hb 뱃지 등 하드코딩 문자열 i18n 미적용.",
+      "steps": [
+        "base.html: 모든 nav SVG에 aria-label 또는 role='img' + aria-label 추가",
+        "base.html: Lab 비활성 링크를 aria-disabled='true' + tabindex='-1'로 변경 (pointer-events:none 제거)",
+        "lab.html: orphaned input에 <label for='...'> 연결",
+        "style.css: .workflow-label의 var(--fg) → var(--text-0), var(--fg-muted) → var(--text-3)으로 수정",
+        "detail.html: 'Expand All'/'Collapse All' 버튼 텍스트에 data-i18n 적용",
+        "home.html: 미니 뱃지 'chat','cron','hb' 텍스트 i18n 키 추가",
+        "graph.html: 'No graph data available.' i18n 적용",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 아이콘 버튼/링크에 aria-label 존재",
+        "키보드 전용 네비게이션으로 모든 인터랙티브 요소 접근 가능",
+        "CSS에 미정의 변수 0개",
+        "하드코딩 영문 문자열 i18n 적용",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-009",
+      "title": "테스트 커버리지 2차 확대 — config, web helpers, CLI 커맨드",
+      "category": "testing",
+      "priority": 9,
+      "description": "1차 테스트 확대(US-001) 이후에도 config.py 0%, web.py _serialize_*() 0%, CLI cmd_raw/cmd_subagents/cmd_context 0%, gateway RPC 모킹 0% 상태. 특히 _serialize_analysis/turn/tc/spawn은 API 응답 구조를 결정하므로 반드시 테스트 필요. config.py load/save도 설정 파일 손상 시 사일런트 실패하므로 커버 필수.",
+      "steps": [
+        "test_config.py 신규: load() 기본값, load() 커스텀 값, load() 파일 손상 시 기본값 폴백, save() 라운드트립",
+        "test_web.py 추가: _serialize_analysis, _serialize_turn, _serialize_tc, _serialize_spawn 단위 테스트 (mock SessionAnalysis/Turn/ToolCall/SubagentSpawn 사용)",
+        "test_web.py 추가: /api/session/<id>/graph, /api/skill-content, /api/file-content 엔드포인트",
+        "test_cli.py 추가: cmd_raw, cmd_subagents, cmd_context (capsys + mock 세션)",
+        "test_gateway.py 추가: rpc_call mock (websocket-client mock으로 connect/auth/rpc 시퀀스 검증)",
+        "pytest -v 전체 통과 + 새 테스트 20개 이상"
+      ],
+      "acceptanceCriteria": [
+        "config.py 테스트 커버리지 > 80%",
+        "_serialize_* 함수 모두 테스트됨",
+        "새 테스트 20개 이상 추가",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-010",
+      "title": "Lab 페이지 모바일 반응형 + JS 에러 핸들링 일관화",
+      "category": "design",
+      "priority": 10,
+      "description": "lab.html의 .lab-columns에 모바일 미디어쿼리 없어 좁은 화면에서 레이아웃 깨짐. cost.html 차트 컨테이너 overflow 미처리. JS에서 fetchJSON과 fetchJSONSafe 사용이 혼재되어 일부 호출은 에러 시 사용자에게 피드백 없이 console.error만 출력. clipboard API 에러 핸들링 누락.",
+      "steps": [
+        "style.css: .lab-columns @media(max-width:768px) 1열 스택으로 변경",
+        "style.css: cost 차트 컨테이너에 overflow-x: auto 추가",
+        "detail.html: navigator.clipboard.writeText 호출에 .catch() 추가 → 실패 시 fallback 또는 토스트",
+        "detail.html: fetchJSON() 호출을 fetchJSONSafe()로 통일 (modal 내 raw 텍스트 로딩 등)",
+        "home.html: Promise.all catch에서 console.error 대신 showErrorBanner() 사용",
+        "lab.html: textarea max-height 200px → CSS 변수 또는 vh 단위로 반응형 변경",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "Lab 페이지 768px 이하에서 1열 레이아웃",
+        "cost 차트 모바일에서 가로 스크롤 가능",
+        "clipboard 실패 시 사용자 피드백",
+        "fetchJSON 미사용 (fetchJSONSafe로 통일)",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-011",
+      "title": "parse_session 리팩토링 — 440줄 함수 분해",
+      "category": "refactoring",
+      "priority": 11,
+      "description": "session_parser.py의 parse_session()이 440+줄로 cyclomatic complexity 극히 높음. 메타데이터 추출, 턴 경계 감지, 도구 호출 매칭, 서브에이전트 enrichment, 컨텍스트 계산이 한 함수에 혼재. 내부 로직을 _extract_metadata(), _build_turns(), _match_tool_results() 등 서브함수로 분리하되, 외부 인터페이스(parse_session 시그니처, 반환값)는 변경하지 않음.",
+      "steps": [
+        "parse_session 내부의 1차 패스(메타데이터 추출) → _extract_metadata(lines, analysis) 분리",
+        "2차 패스(턴 생성 루프) → _build_turns_from_lines(lines, analysis) 분리",
+        "도구 호출 결과 매칭 로직 → _match_tool_results(turns, pending_calls) 분리",
+        "parse_session은 서브함수 호출 + 최종 조립만 담당 (100줄 이내)",
+        "기존 테스트 전부 통과 확인 (동작 변경 없음)",
+        "ruff check 통과"
+      ],
+      "acceptanceCriteria": [
+        "parse_session 본체 100줄 이내",
+        "새 서브함수 최소 3개",
+        "기존 108개 테스트 전부 통과 (동작 변경 없음)",
+        "ruff 통과"
       ],
       "passes": false
     },
