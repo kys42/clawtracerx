@@ -507,6 +507,24 @@
         "ruff 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-023",
+      "title": "SSE except Exception 블록에 logging.warning 추가",
+      "category": "bugfix",
+      "priority": 23,
+      "description": "web.py의 SSE 스트리밍 엔드포인트 4곳(api_session_stream 2곳, api_lab_stream 2곳)에서 except Exception as e로 에러를 잡지만 logging 없이 SSE 이벤트로만 전달. 서버 로그에 에러가 기록되지 않아 프로덕션에서 SSE 장애 디버깅 불가. logging.warning 추가로 서버사이드 에러 추적 가능하게 함.",
+      "steps": [
+        "web.py: api_session_stream의 except Exception as e (line 374, 423)에 logging.warning 추가",
+        "web.py: api_lab_stream의 except Exception as e (line 715, 776)에 logging.warning 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "SSE except 블록 4곳 모두 logging.warning 포함",
+        "기존 테스트 통과",
+        "ruff 통과"
+      ],
+      "passes": true
     }
   ]
 }

@@ -372,6 +372,7 @@ def create_app():
                 event_id += 1
                 yield f"id: {event_id}\nevent: init\ndata: {json.dumps({'turn_count': last_turn_count})}\n\n"
             except Exception as e:  # broad catch: SSE must yield error, not crash
+                logging.warning("SSE init error: %s", e, exc_info=True)
                 yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
                 return
 
@@ -421,6 +422,7 @@ def create_app():
                             yield "event: done\ndata: {}\n\n"
                             return
                 except Exception as e:  # broad catch: SSE must yield error, not crash
+                    logging.warning("SSE poll error: %s", e, exc_info=True)
                     yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
 
         return Response(
@@ -713,6 +715,7 @@ def create_app():
                 event_id += 1
                 yield f"id: {event_id}\nevent: init\ndata: {json.dumps(data)}\n\n"
             except Exception as e:  # broad catch: SSE must yield error, not crash
+                logging.warning("SSE init error: %s", e, exc_info=True)
                 yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
                 return
 
@@ -774,6 +777,7 @@ def create_app():
                             return
 
                 except Exception as e:  # broad catch: SSE must yield error, not crash
+                    logging.warning("SSE poll error: %s", e, exc_info=True)
                     yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
 
         return Response(
