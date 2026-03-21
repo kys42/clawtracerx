@@ -59,3 +59,19 @@
 - iOS Safari는 input font-size < 16px일 때 자동 줌하므로 반드시 16px 적용 필요
 - `min-height: 44px`이 `height`보다 안전 — 내용이 길어질 때 깨지지 않음
 - Lab input bar의 `left: var(--sidebar-w)` → 모바일에서는 sidebar가 숨겨지므로 반드시 `left: 0`으로 덮어씌워야 함
+
+## Loop 8 — US-025: 모바일 기능 동작 분석 + 추가 개선 태스크 생성
+
+**작업 내용:**
+- 전체 코드베이스를 375px 뷰포트 관점에서 분석
+- 4개의 새 스토리 생성 (US-026~US-029):
+  - US-026: Lab session-select min-width 300px 오버플로 + detail 검색 min-width 수정
+  - US-027: D3 SVG 터치 pan/zoom 미지원 + 노드 패널 모바일 스크롤
+  - US-028: Schedule 24h 바 hover-only 툴팁 + ApexCharts responsive 미설정
+  - US-029: 터치 피드백 없음 (:hover만 사용, :active 없음)
+
+**배운 점:**
+- EventSource(SSE)는 iOS Safari 15+에서 잘 동작함, 호환성 문제 없음
+- D3 zoom은 SVG에서 touch-action CSS가 없으면 iOS Safari에서 기본 스크롤로 처리됨
+- Alpine.js의 @mouseenter/@mouseleave는 터치 이벤트를 발생시키지 않음 — @touchstart 별도 처리 필요
+- ApexCharts는 `responsive` 배열로 breakpoint별 config 덮어쓰기 가능

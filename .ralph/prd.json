@@ -576,6 +576,84 @@
         "각 스토리가 구체적 문제 설명 + steps + acceptanceCriteria 포함",
         "코드 수정 없이 PRD만 업데이트"
       ],
+      "passes": true
+    },
+    {
+      "id": "US-026",
+      "title": "Lab 세션 셀렉트 + 인풋 min-width 모바일 대응",
+      "category": "bugfix",
+      "priority": 26,
+      "description": "Lab 페이지의 session-select 드롭다운이 min-width:300px 인라인 스타일로 고정되어 375px 뷰포트에서 넘친다. detail.html의 턴 검색 인풋도 min-width:200px로 고정. 이 고정 min-width들을 모바일에서 제거하거나 100%로 변경해야 한다.",
+      "steps": [
+        "lab.html의 session-select 인라인 style='min-width:300px'을 CSS class로 대체 — 768px 이하에서 min-width:0, width:100%",
+        "detail.html의 턴 검색 인풋 min-width:200px → 모바일에서 min-width:0",
+        "style.css에 모바일 미디어쿼리 추가",
+        "ruff + pytest 통과 확인"
+      ],
+      "acceptanceCriteria": [
+        "375px 뷰포트에서 Lab session-select가 넘치지 않음",
+        "375px 뷰포트에서 detail 검색바가 넘치지 않음",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-027",
+      "title": "D3 그래프 SVG 터치 지원 + 노드 패널 모바일 스크롤",
+      "category": "bugfix",
+      "priority": 27,
+      "description": "graph.html의 D3 force graph가 SVG 위에서 터치 pan/zoom이 iOS Safari에서 동작하지 않는다. CSS의 touch-action:none이 canvas에만 적용되고 SVG에는 적용되지 않음. 또한 노드 상세 패널이 375px에서 뷰포트를 넘을 수 있어 스크롤 처리가 필요하다.",
+      "steps": [
+        "graph.html 또는 style.css에서 SVG 요소에 touch-action: manipulation 적용",
+        "기존 canvas 대상 touch-action:none을 svg 대상으로 변경 또는 추가",
+        "노드 패널(.node-panel)에 max-height + overflow-y:auto 추가 (모바일 미디어쿼리)",
+        "D3 zoom behavior에 touchstart/touchmove 이벤트 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모바일에서 그래프 터치 드래그/핀치줌 동작",
+        "노드 패널이 375px에서 스크롤 가능",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-028",
+      "title": "Schedule 24시간 바 터치 툴팁 + ApexCharts 모바일 responsive",
+      "category": "enhancement",
+      "priority": 28,
+      "description": "schedule.html의 24시간 활동 바가 mouseenter/mouseleave만 사용하여 모바일에서 툴팁이 표시되지 않는다. cost.html의 ApexCharts에 responsive 설정이 없어 375px에서 라벨이 겹치고 가독성이 나쁘다.",
+      "steps": [
+        "schedule.html의 hb-hour-seg에 @touchstart 이벤트 추가 — 터치 시 hoveredHour 설정",
+        "document 레벨에서 touchstart 시 hoveredHour null 처리 (외부 터치로 닫기)",
+        "cost.html의 APEX_BASE config에 responsive 배열 추가 — breakpoint 480px에서 라벨 폰트 축소, bar 높이 계산 조정",
+        "차트 legend 위치를 모바일에서 bottom으로 변경",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모바일에서 24시간 바 터치 시 툴팁 표시",
+        "375px에서 ApexCharts 라벨이 겹치지 않음",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-029",
+      "title": "모바일 터치 피드백 — :active 스타일 + hover 안전장치",
+      "category": "enhancement",
+      "priority": 29,
+      "description": "현재 인터랙티브 요소(세션 카드, 칩, 버튼 등)의 시각적 피드백이 :hover에만 의존하여 터치 디바이스에서 피드백이 없다. :active 의사 클래스와 @media(hover:none) 조건으로 터치 기기에서도 탭 피드백을 제공해야 한다.",
+      "steps": [
+        "style.css에서 주요 :hover 규칙에 대응하는 :active 규칙 추가 (session-card, type-chip, agent-chip, btn, feature-card 등)",
+        "@media(hover:none) 블록에서 hover 효과 비활성화, active 효과만 유지",
+        "테스트를 위해 -webkit-tap-highlight-color 투명 처리 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "터치 기기에서 버튼/카드 탭 시 시각적 피드백 표시",
+        ":hover 상태가 터치 후 잔류하지 않음",
+        "ruff + pytest 통과"
+      ],
       "passes": false
     }
   ]
