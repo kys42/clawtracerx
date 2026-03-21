@@ -19,7 +19,7 @@
         "파서 I/O 함수, CLI 커맨드, 웹 API 모두 커버",
         "전체 pytest 통과 + ruff 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-002",

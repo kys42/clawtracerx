@@ -194,6 +194,33 @@ class TestParseSession:
         analysis = sp.parse_session(f, recursive_subagents=False)
         assert analysis.session_type == "cron"
 
+    def test_empty_session(self, empty_session_path):
+        analysis = sp.parse_session(empty_session_path, recursive_subagents=False)
+        assert analysis.turns == []
+        assert analysis.total_cost == 0.0
+        assert analysis.total_tokens == 0
+
+    def test_malformed_lines_skipped(self, session_with_malformed):
+        analysis = sp.parse_session(session_with_malformed, recursive_subagents=False)
+        assert len(analysis.turns) == 1
+        assert "Hi" in analysis.turns[0].user_text
+
+    def test_compaction_parsed(self, session_with_compaction):
+        analysis = sp.parse_session(session_with_compaction, recursive_subagents=False)
+        assert analysis.compactions == 1
+        assert len(analysis.compaction_events) == 1
+        evt = analysis.compaction_events[0]
+        assert evt.tokens_before == 10000
+        assert evt.tokens_after == 2000
+        assert "Summarized" in evt.summary
+
+    def test_thinking_extracted(self, session_with_thinking):
+        analysis = sp.parse_session(session_with_thinking, recursive_subagents=False)
+        assert len(analysis.turns) == 1
+        turn = analysis.turns[0]
+        assert turn.thinking_text is not None
+        assert "quantum physics" in turn.thinking_text
+
 
 class TestListSessions:
     def test_returns_sessions(self, mock_openclaw_dir, minimal_session_path):
@@ -213,3 +240,67 @@ class TestListSessions:
         monkeypatch.setattr(sp2, "AGENTS_DIR", tmp_path / "nonexistent")
         sessions = sp2.list_sessions(last_n=10)
         assert sessions == []
+
+
+# ---------------------------------------------------------------------------
+# Tier 3: I/O functions — cron, metadata, raw turn lines
+# ---------------------------------------------------------------------------
+
+class TestLoadCronRuns:
+    def test_returns_runs(self, cron_dir, mock_openclaw_dir):
+        runs = sp.load_cron_runs()
+        assert len(runs) == 2
+        # sorted by ts desc — error (ts=20000) first
+        assert runs[0].status == "error"
+        assert runs[1].status == "ok"
+
+    def test_filter_by_job_id(self, cron_dir, mock_openclaw_dir):
+        runs = sp.load_cron_runs(job_id="job-abc")
+        assert len(runs) == 2
+        runs_none = sp.load_cron_runs(job_id="nonexistent-job")
+        assert runs_none == []
+
+    def test_last_n_limit(self, cron_dir, mock_openclaw_dir):
+        runs = sp.load_cron_runs(last_n=1)
+        assert len(runs) == 1
+
+    def test_empty_cron_dir(self, mock_openclaw_dir):
+        runs = sp.load_cron_runs()
+        assert runs == []
+
+    def test_run_fields(self, cron_dir, mock_openclaw_dir):
+        runs = sp.load_cron_runs()
+        ok_run = [r for r in runs if r.status == "ok"][0]
+        assert ok_run.job_id == "job-abc"
+        assert ok_run.job_name == "Daily Cleanup"
+        assert ok_run.summary == "Cleaned 5 items"
+        assert ok_run.session_id == "cron-sess-001"
+        assert ok_run.agent_id == "test-agent"
+        assert ok_run.duration_ms == 10000
+
+
+class TestLoadSessionMetadata:
+    def test_returns_metadata(self, sessions_json, mock_openclaw_dir):
+        meta = sp.load_session_metadata("test-agent", "aabbccdd")
+        assert meta is not None
+        assert meta["sessionId"] == "aabbccdd-0000-0000-0000-000000000001"
+        assert meta["contextTokens"] == 5000
+
+    def test_returns_none_for_missing_agent(self, sessions_json, mock_openclaw_dir):
+        meta = sp.load_session_metadata("nonexistent-agent", "aabbccdd")
+        assert meta is None
+
+    def test_returns_none_for_missing_session(self, sessions_json, mock_openclaw_dir):
+        meta = sp.load_session_metadata("test-agent", "zzzzzzzz")
+        assert meta is None
+
+
+class TestGetRawTurnLines:
+    def test_returns_raw_lines(self, minimal_session_path):
+        lines = sp.get_raw_turn_lines(minimal_session_path, 0)
+        assert len(lines) > 0
+        assert any(isinstance(item, dict) for item in lines)
+
+    def test_invalid_index_returns_empty(self, minimal_session_path):
+        assert sp.get_raw_turn_lines(minimal_session_path, 999) == []
+        assert sp.get_raw_turn_lines(minimal_session_path, -1) == []
