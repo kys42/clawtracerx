@@ -103,7 +103,7 @@ class TestApiSchedule:
 class TestApiHealth:
     def test_health_returns_checks(self, flask_client):
         with patch("clawtracerx.gateway.load_gateway_config", side_effect=FileNotFoundError), \
-             patch("clawtracerx.gateway.list_agents", side_effect=Exception("no gw")):
+             patch("clawtracerx.gateway.list_agents", side_effect=ConnectionError("no gw")):
             resp = flask_client.get("/api/health")
         assert resp.status_code == 200
         data = json.loads(resp.data)

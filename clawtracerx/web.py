@@ -3,7 +3,7 @@ ClawTracerX web — Flask web dashboard for OpenClaw agent monitoring.
 """
 from __future__ import annotations
 
-import csv as _csv
+import csv
 import glob as _glob
 import io
 import json
@@ -298,7 +298,7 @@ def create_app():
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
             return jsonify({"content": content, "size": path.stat().st_size, "name": path.name})
-        except Exception as e:
+        except OSError as e:
             abort(500, str(e))
 
     @app.route("/api/session/<session_id>/raw/<int:turn_index>")
@@ -319,7 +319,7 @@ def create_app():
             last_n=last_n,
         )
         buf = io.StringIO()
-        writer = _csv.writer(buf)
+        writer = csv.writer(buf)
         writer.writerow(["session_id", "agent_id", "type", "model", "turns",
                          "tokens", "cost", "started_at", "file_size"])
         for s in sessions:
@@ -371,7 +371,7 @@ def create_app():
                 last_turn_count = len(data.get("turns", []))
                 event_id += 1
                 yield f"id: {event_id}\nevent: init\ndata: {json.dumps({'turn_count': last_turn_count})}\n\n"
-            except Exception as e:
+            except Exception as e:  # broad catch: SSE must yield error, not crash
                 yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
                 return
 
@@ -420,7 +420,7 @@ def create_app():
                         if turns[-1].get("stop_reason") == "stop":
                             yield "event: done\ndata: {}\n\n"
                             return
-                except Exception as e:
+                except Exception as e:  # broad catch: SSE must yield error, not crash
                     yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
 
         return Response(
@@ -639,7 +639,7 @@ def create_app():
             _log_lab("send_ok", sessionKey=session_key,
                      runId=result.get("runId", ""))
             return jsonify({"ok": True, "result": result}), 202
-        except Exception as e:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
             _log_lab("send_error", sessionKey=session_key, error=str(e))
             return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -708,7 +708,7 @@ def create_app():
                 last_turn_count = len(data.get("turns", []))
                 event_id += 1
                 yield f"id: {event_id}\nevent: init\ndata: {json.dumps(data)}\n\n"
-            except Exception as e:
+            except Exception as e:  # broad catch: SSE must yield error, not crash
                 yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
                 return
 
@@ -769,7 +769,7 @@ def create_app():
                             yield "event: done\ndata: {}\n\n"
                             return
 
-                except Exception as e:
+                except Exception as e:  # broad catch: SSE must yield error, not crash
                     yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
 
         return Response(
@@ -856,7 +856,7 @@ def create_app():
         try:
             result = gateway.patch_session(session_key, **data)
             return jsonify({"ok": True, "result": result})
-        except Exception as e:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
     @app.route("/api/lab/activity")
@@ -902,7 +902,7 @@ def create_app():
             return jsonify({"ok": True, "path": str(config_path), "config": masked})
         except FileNotFoundError:
             return jsonify({"ok": False, "error": "not found", "path": str(config_path)})
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             return jsonify({"ok": False, "error": str(e), "path": str(config_path)})
 
     @app.route("/api/session/<session_id>/tc/<tc_id>/full")
@@ -950,7 +950,7 @@ def create_app():
         try:
             all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
             return jsonify({"lines": all_lines[-lines_count:], "file": file_name})
-        except Exception as e:
+        except OSError as e:
             return jsonify({"lines": [], "file": file_name, "error": str(e)})
 
     # --- Health ---
@@ -971,7 +971,7 @@ def create_app():
             checks["config"] = {"ok": True, "path": str(gateway.OPENCLAW_CONFIG)}
         except FileNotFoundError:
             checks["config"] = {"ok": False, "error": "not found", "path": str(gateway.OPENCLAW_CONFIG)}
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             checks["config"] = {"ok": False, "error": str(e)}
 
         # 2. Device identity
@@ -981,7 +981,7 @@ def create_app():
                 with open(identity_path) as f:
                     did = json.load(f).get("deviceId", "?")
                 checks["device"] = {"ok": True, "device_id": did[:12]}
-            except Exception as e:
+            except (OSError, json.JSONDecodeError, KeyError) as e:
                 checks["device"] = {"ok": False, "error": str(e)}
         else:
             checks["device"] = {"ok": False, "error": "not found"}
@@ -1003,7 +1003,7 @@ def create_app():
         try:
             result = gateway.list_agents()
             checks["gateway"] = {"ok": True, "agents": len(result) if isinstance(result, list) else 0}
-        except Exception as e:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
             checks["gateway"] = {"ok": False, "error": str(e)[:100]}
 
         # 5. Workspace

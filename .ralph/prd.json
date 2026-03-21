@@ -406,7 +406,7 @@
         "모듈 수준 변수 타입 힌트 존재",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }
