@@ -184,10 +184,12 @@ async function loadSessions() {
   const data = await fetchJSONSafe(url, {sessions:[]});
   _sessionsData = data || [];
   const list = qs('#sessions-list');
+  if (!list) return;
 
   if (!data || !data.length) {
     list.innerHTML = '<div class="empty">' + _t('sessions.empty') + '</div>';
-    qs('#load-more-wrap').style.display = 'none';
+    const loadMoreWrap = qs('#load-more-wrap');
+    if (loadMoreWrap) loadMoreWrap.style.display = 'none';
     return;
   }
 
@@ -260,7 +262,8 @@ async function loadSessions() {
     </div>`;
   }).join('');
 
-  qs('#load-more-wrap').style.display = data.length >= currentLoadCount ? '' : 'none';
+  const loadMoreEl = qs('#load-more-wrap');
+  if (loadMoreEl) loadMoreEl.style.display = data.length >= currentLoadCount ? '' : 'none';
 }
 
 // ── Alpine sessionsPage ──────────────────────────────────────────────────────
@@ -291,7 +294,8 @@ document.addEventListener('alpine:init', () => {
       document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'f') {
           e.preventDefault();
-          qs('#session-search').focus();
+          const searchEl = qs('#session-search');
+          if (searchEl) searchEl.focus();
         }
       });
     },
@@ -337,7 +341,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     filterCards() {
-      const q = (qs('#session-search').value || '').toLowerCase().trim();
+      const searchInput = qs('#session-search');
+      const q = (searchInput ? searchInput.value : '').toLowerCase().trim();
       const cards = qsa('.session-card');
       const total = cards.length;
       let visible = 0;
@@ -358,7 +363,8 @@ document.addEventListener('alpine:init', () => {
           noMatch = document.createElement('div');
           noMatch.id = 'no-match-msg';
           noMatch.className = 'empty';
-          qs('#sessions-list').appendChild(noMatch);
+          const sessList = qs('#sessions-list');
+          if (sessList) sessList.appendChild(noMatch);
         }
         noMatch.textContent = _t('sessions.no_match');
         noMatch.style.display = '';
@@ -388,7 +394,8 @@ document.addEventListener('alpine:init', () => {
       const agents = await fetchJSONSafe('/api/agents');
       agents.forEach(a => agentColor(a.id));
       this.agents = agents;
-      qs('#agent-list').innerHTML = agents.map(a =>
+      const agentListEl = qs('#agent-list');
+      if (agentListEl) agentListEl.innerHTML = agents.map(a =>
         `<div class="agent-badge">${a.id} <span class="dim">${a.sessions}</span></div>`
       ).join('');
     },

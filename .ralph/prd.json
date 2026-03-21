@@ -1207,6 +1207,25 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-058",
+      "title": "sessions.html DOM null safety — qs() 반환값 방어",
+      "category": "bugfix",
+      "priority": 58,
+      "description": "sessions.html의 loadSessions(), filterCards(), loadAgents(), keyboard shortcut에서 qs() 반환값에 null 체크 없이 접근. DOM 요소 누락 시 런타임 크래시.",
+      "steps": [
+        "loadSessions(): list, load-more-wrap null 체크",
+        "filterCards(): session-search, sessions-list null 체크",
+        "loadAgents(): agent-list null 체크",
+        "keyboard shortcut: session-search null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없이 graceful 처리",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }
