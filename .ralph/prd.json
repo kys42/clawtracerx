@@ -387,7 +387,7 @@
         "새 테스트 10개 이상 추가",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-017",

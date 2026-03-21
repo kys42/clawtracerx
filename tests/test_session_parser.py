@@ -343,3 +343,57 @@ class TestParseCache:
 
         # Only 2 should remain in cache (LRU max = 2)
         assert len(sp._parse_cache) == 2
+
+
+class TestReadJsonl:
+    def test_reads_valid_lines(self, tmp_path):
+        f = tmp_path / "test.jsonl"
+        f.write_text('{"a": 1}\n{"b": 2}\n')
+        lines = sp._read_jsonl(f)
+        assert len(lines) == 2
+        assert lines[0] == {"a": 1}
+
+    def test_skips_empty_and_invalid(self, tmp_path):
+        f = tmp_path / "test.jsonl"
+        f.write_text('{"ok": true}\n\nNOT_JSON\n{"ok2": true}\n')
+        lines = sp._read_jsonl(f)
+        assert len(lines) == 2
+
+
+class TestExtractMetadata:
+    def test_extracts_session_info(self):
+        lines = [
+            {"type": "session", "timestamp": 1740000000000, "cwd": "/tmp"},
+            {"type": "model_change", "modelId": "claude-test", "provider": "anthropic"},
+        ]
+        analysis = sp.SessionAnalysis(session_id="test", agent_id="test")
+        model, provider, api, thinking = sp._extract_metadata(lines, analysis)
+        assert model == "claude-test"
+        assert provider == "anthropic"
+        assert analysis.cwd == "/tmp"
+        assert analysis.started_at is not None
+
+    def test_counts_compactions(self):
+        lines = [
+            {"type": "compaction", "timestamp": 1740000000000,
+             "firstKeptEntryId": "u1", "tokensBefore": 10000,
+             "tokensAfter": 2000, "summary": "Summarized"},
+        ]
+        analysis = sp.SessionAnalysis(session_id="test", agent_id="test")
+        sp._extract_metadata(lines, analysis)
+        assert analysis.compactions == 1
+        assert len(analysis.compaction_events) == 1
+
+
+class TestBuildIdMap:
+    def test_builds_map(self):
+        lines = [
+            {"type": "message", "id": "u1", "message": {"role": "user", "stopReason": ""}},
+            {"type": "message", "id": "a1", "message": {"role": "assistant", "stopReason": "stop", "model": "claude"}},
+            {"type": "model_change", "modelId": "claude"},  # non-message, should be ignored
+        ]
+        result = sp._build_id_map(lines)
+        assert "u1" in result
+        assert "a1" in result
+        assert len(result) == 2
+        assert result["a1"]["role"] == "assistant"

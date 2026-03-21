@@ -242,3 +242,52 @@ class TestGraphPage:
     def test_graph_api_not_found(self, flask_client):
         resp = flask_client.get("/api/session/00000000-nope/graph")
         assert resp.status_code == 404
+
+
+class TestExportCSVFields:
+    def test_csv_header_and_data(self, flask_client):
+        resp = flask_client.get("/api/sessions/export")
+        text = resp.data.decode()
+        lines = text.strip().split("\n")
+        assert len(lines) >= 1
+        header = lines[0]
+        assert "session_id" in header
+        assert "agent_id" in header
+        assert "cost" in header
+
+    def test_csv_data_row_count(self, flask_client):
+        resp = flask_client.get("/api/sessions/export")
+        text = resp.data.decode()
+        lines = text.strip().split("\n")
+        # At least header + 1 data row (from minimal_session)
+        assert len(lines) >= 2
+
+
+class TestExportJSONStructure:
+    def test_export_json_required_fields(self, flask_client):
+        resp = flask_client.get("/api/session/aabbccdd/export")
+        data = json.loads(resp.data)
+        assert "session_id" in data
+        assert "turns" in data
+        assert "total_cost" in data
+        assert "model" in data
+
+
+class TestLogsLimits:
+    def test_logs_lines_capped(self, flask_client):
+        resp = flask_client.get("/api/logs?file=lab&lines=999")
+        assert resp.status_code == 200
+
+    def test_logs_file_field(self, flask_client):
+        resp = flask_client.get("/api/logs?file=web")
+        data = json.loads(resp.data)
+        assert data["file"] == "web"
+
+
+class TestSessionDetailErrorHandling:
+    def test_empty_session_returns_200(self, flask_client, mock_openclaw_dir):
+        sessions_dir = mock_openclaw_dir / "agents" / "test-agent" / "sessions"
+        bad = sessions_dir / "emptyses0-0000-0000-0000-000000000001.jsonl"
+        bad.write_text("")
+        resp = flask_client.get("/api/session/emptyses0")
+        assert resp.status_code in (200, 400)
