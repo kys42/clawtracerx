@@ -111,6 +111,15 @@ class TestParseTokenStr:
     def test_lowercase_k(self):
         assert sp._parse_token_str("3k") == 3_000
 
+    def test_invalid_string_returns_zero(self):
+        assert sp._parse_token_str("not_a_number") == 0
+
+    def test_empty_suffix_returns_zero(self):
+        assert sp._parse_token_str("k") == 0
+
+    def test_empty_string_returns_zero(self):
+        assert sp._parse_token_str("") == 0
+
 
 class TestParseRuntimeStr:
     def test_minutes_and_seconds(self):

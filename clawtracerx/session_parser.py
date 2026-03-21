@@ -8,6 +8,7 @@ with tool calls, subagent spawns, token usage, and cost tracking.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -283,12 +284,12 @@ def load_subagent_runs() -> dict:
     with _subagent_lock:
         if _subagent_cache is not None:
             return _subagent_cache
-        if not SUBAGENTS_FILE.exists():
+        try:
+            with open(SUBAGENTS_FILE) as f:
+                data = json.load(f)
+            _subagent_cache = data.get("runs", {})
+        except (FileNotFoundError, json.JSONDecodeError):
             _subagent_cache = {}
-            return _subagent_cache
-        with open(SUBAGENTS_FILE) as f:
-            data = json.load(f)
-        _subagent_cache = data.get("runs", {})
         return _subagent_cache
 
 
@@ -347,11 +348,14 @@ _ANNOUNCE_LABEL_RE = re.compile(r'A subagent task "([^"]+)"')
 
 def _parse_token_str(s: str) -> int:
     s = s.strip().lower()
-    if s.endswith("m"):
-        return int(float(s[:-1]) * 1_000_000)
-    if s.endswith("k"):
-        return int(float(s[:-1]) * 1_000)
-    return int(float(s))
+    try:
+        if s.endswith("m"):
+            return int(float(s[:-1]) * 1_000_000)
+        if s.endswith("k"):
+            return int(float(s[:-1]) * 1_000)
+        return int(float(s))
+    except (ValueError, IndexError):
+        return 0
 
 
 def _parse_runtime_str(s: str) -> int:
@@ -1343,8 +1347,6 @@ def _try_load_missing_children(turns: list, agent_id: str) -> None:
                 )
             if not child_file:
                 continue
-            if not child_file:
-                continue
             try:
                 child_analysis = parse_session(child_file, recursive_subagents=False)
                 spawn.child_turns = child_analysis.turns
@@ -1356,8 +1358,8 @@ def _try_load_missing_children(turns: list, agent_id: str) -> None:
                 real_sid = child_file.name.split(".jsonl")[0]
                 if real_sid and real_sid != spawn.child_session_id:
                     spawn.child_session_id = real_sid
-            except (OSError, json.JSONDecodeError, KeyError):
-                pass
+            except (OSError, json.JSONDecodeError, KeyError) as e:
+                logging.debug("Failed to parse child session %s: %s", child_file, e)
 
 
 def _assign_workflow_groups(turns: list) -> None:

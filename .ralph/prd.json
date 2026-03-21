@@ -423,6 +423,27 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-019",
+      "title": "session_parser 버그 수정 — 중복 null 체크 + TOCTOU + ValueError 미처리",
+      "category": "bugfix",
+      "priority": 19,
+      "description": "session_parser.py에 3가지 버그: (1) _enrich_subagent_spawns()의 중복 `if not child_file: continue` (1346-1347 데드코드), (2) load_subagent_runs()의 exists()+open() TOCTOU 레이스 (파일 삭제 시 FileNotFoundError 미처리), (3) _parse_token_str()에서 잘못된 문자열 입력 시 ValueError 미처리. 또한 _enrich_subagent_spawns의 except pass에 최소 logging.debug 추가.",
+      "steps": [
+        "session_parser.py 1346-1347: 두 번째 중복 `if not child_file: continue` 제거",
+        "session_parser.py load_subagent_runs(): exists() 체크 제거, try/except FileNotFoundError로 TOCTOU 방지",
+        "session_parser.py _parse_token_str(): try/except ValueError → return 0",
+        "session_parser.py _enrich_subagent_spawns except 블록에 logging.debug 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "중복 null 체크 제거됨",
+        "load_subagent_runs가 TOCTOU 안전",
+        "_parse_token_str이 잘못된 입력에도 크래시 안 함",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }
