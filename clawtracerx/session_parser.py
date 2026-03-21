@@ -1291,7 +1291,7 @@ def _find_child_session_by_label(label: str, spawn_label: str, agent_id: str,
                         if hits >= max(2, len(keywords) * 0.5):
                             return f
                         break
-        except Exception:
+        except (OSError, json.JSONDecodeError, KeyError):
             continue
     return None
 
@@ -1342,7 +1342,7 @@ def _try_load_missing_children(turns: list, agent_id: str) -> None:
                 real_sid = child_file.name.split(".jsonl")[0]
                 if real_sid and real_sid != spawn.child_session_id:
                     spawn.child_session_id = real_sid
-            except Exception:
+            except (OSError, json.JSONDecodeError, KeyError):
                 pass
 
 

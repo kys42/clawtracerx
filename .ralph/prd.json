@@ -164,7 +164,7 @@
         "모든 예외 핸들러에 최소 logging.warning 포함",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-008",

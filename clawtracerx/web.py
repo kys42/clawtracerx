@@ -57,7 +57,7 @@ def _get_openclaw_src() -> Path | None:
         rel = m.group(1)  # e.g. ../../sources/openclaw/openclaw.mjs
         src = (wrapper.parent / rel).resolve().parent
         return src if src.is_dir() else None
-    except Exception:
+    except (OSError, ValueError):
         return None
 
 
@@ -576,7 +576,7 @@ def create_app():
                 agent_id=agent if agent and agent != "all" else None,
                 limit=limit,
             )
-        except Exception:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError):
             # Fallback to local file listing if gateway unavailable
             gw_sessions = []
 
@@ -782,7 +782,7 @@ def create_app():
                         "content": content,
                         "has_backup": backup.exists(),
                     })
-                except Exception:
+                except OSError:
                     files.append({"name": name, "size": 0, "content": "", "error": "read failed"})
         return jsonify(files)
 
@@ -1037,7 +1037,7 @@ def create_app():
                 "release_url": release["html_url"],
                 "release_name": release.get("name", release["tag_name"]),
             }
-        except Exception:
+        except (urllib.error.URLError, json.JSONDecodeError, KeyError, OSError):
             result = {"current": __version__, "latest": None, "update_available": False}
 
         _update_cache["data"] = result
@@ -1065,7 +1065,7 @@ def _get_workspace_dir() -> Path:
         workspace = full_cfg.get("agents", {}).get("defaults", {}).get("workspace", "")
         if workspace:
             return Path(workspace)
-    except Exception:
+    except (OSError, json.JSONDecodeError, KeyError):
         pass
     return _sp.OPENCLAW_DIR / "workspace"
 
