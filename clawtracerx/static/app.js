@@ -239,6 +239,10 @@ function copyModalText() {
 function closeTextModal() {
   var modal = document.getElementById('text-modal');
   if (modal) modal.style.display = 'none';
+  _modalRawText = '';
+  // Clear text buffer to prevent memory buildup
+  window._textBuf = {};
+  _textBufIdx = 0;
 }
 
 document.addEventListener('keydown', function(e) {

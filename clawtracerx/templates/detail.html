@@ -136,9 +136,17 @@ document.addEventListener('alpine:init', () => {
 
     _startLive() {
       const self = this;
+      // Close existing connection first to prevent duplicates
+      if (self._evtSource) {
+        self._evtSource.close();
+        self._evtSource = null;
+      }
       self.liveActive = true;
       self.liveLabel = 'Live';
       self._reconnectCount = 0;
+
+      // Cleanup on page unload
+      window.addEventListener('beforeunload', function() { self._closeLive(); });
 
       const es = new EventSource(`/api/session/${SESSION_ID}/stream`);
       self._evtSource = es;

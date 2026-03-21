@@ -631,8 +631,9 @@ def create_app():
             _log_lab("send_error", sessionKey=session_key, error=str(e))
             return jsonify({"ok": False, "error": str(e)}), 500
 
-    # Track file sizes for change detection
-    _poll_file_cache = {}  # session_id -> (file_path, file_size)
+    # Track file sizes for change detection (bounded to prevent memory leak)
+    _POLL_CACHE_MAX = 100
+    _poll_file_cache = {}  # cache_key -> file_size
 
     @app.route("/api/lab/poll/<session_id>")
     def api_lab_poll(session_id):
@@ -650,6 +651,9 @@ def create_app():
         cache_key = str(file_path)
         prev_size = _poll_file_cache.get(cache_key, 0)
         _poll_file_cache[cache_key] = current_size
+        if len(_poll_file_cache) > _POLL_CACHE_MAX:
+            oldest = next(iter(_poll_file_cache))
+            del _poll_file_cache[oldest]
 
         if current_size == prev_size and since_turns > 0:
             return jsonify({"changed": False})

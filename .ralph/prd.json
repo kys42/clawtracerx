@@ -299,7 +299,7 @@
         "Live 빠르게 토글해도 중복 생성 없음",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-013",
