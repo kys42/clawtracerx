@@ -1187,6 +1187,26 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-057",
+      "title": "detail.html DOM null safety — qs() 반환값 방어",
+      "category": "bugfix",
+      "priority": 57,
+      "description": "detail.html의 populateToolFilter(), filterTurns(), clearFilters(), renderHeader(), SSE update 핸들러에서 qs() 반환값에 null 체크 없이 접근. DOM 요소 누락 시 런타임 크래시.",
+      "steps": [
+        "populateToolFilter(): sel null 체크",
+        "filterTurns(): countEl null 체크",
+        "clearFilters(): 각 qs() null 체크",
+        "renderHeader(): session-header null 체크",
+        "SSE update: container null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없이 graceful 처리",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }

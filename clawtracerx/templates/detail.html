@@ -87,7 +87,8 @@ document.addEventListener('alpine:init', () => {
       document.addEventListener('keydown', function(e) {
         if (e.ctrlKey && e.key === 'f' && self.loaded) {
           e.preventDefault();
-          qs('#turn-search').focus();
+          const searchEl = qs('#turn-search');
+          if (searchEl) searchEl.focus();
         }
         if (e.key === 'Escape') {
           self.clearFilters();
@@ -100,6 +101,7 @@ document.addEventListener('alpine:init', () => {
       const tools = new Set();
       sessionData.turns.forEach(t => (t.tool_calls || []).forEach(tc => tools.add(tc.name)));
       const sel = qs('#tool-filter');
+      if (!sel) return;
       const sorted = [...tools].sort();
       sorted.forEach(name => {
         const opt = document.createElement('option');
@@ -123,17 +125,22 @@ document.addEventListener('alpine:init', () => {
         if (show) visible++;
       });
       const countEl = qs('#filter-match-count');
-      if (q || toolName) {
-        countEl.textContent = visible + _t('detail.matches');
-      } else {
-        countEl.textContent = '';
+      if (countEl) {
+        if (q || toolName) {
+          countEl.textContent = visible + _t('detail.matches');
+        } else {
+          countEl.textContent = '';
+        }
       }
     },
 
     clearFilters() {
-      qs('#turn-search').value = '';
-      qs('#tool-filter').value = '';
-      qs('#filter-match-count').textContent = '';
+      const searchEl = qs('#turn-search');
+      const filterEl = qs('#tool-filter');
+      const countEl = qs('#filter-match-count');
+      if (searchEl) searchEl.value = '';
+      if (filterEl) filterEl.value = '';
+      if (countEl) countEl.textContent = '';
       qsa('#turns-container > .turn-card, #turns-container > .workflow-group').forEach(c => c.style.display = '');
     },
 
@@ -184,11 +191,13 @@ document.addEventListener('alpine:init', () => {
           sessionData.turns.push(...data.new_turns);
           // Append new turn cards
           const container = qs('#turns-container');
-          data.new_turns.forEach(function(t) {
-            const div = document.createElement('div');
-            div.innerHTML = renderSingleTurn(t);
-            while (div.firstChild) container.appendChild(div.firstChild);
-          });
+          if (container) {
+            data.new_turns.forEach(function(t) {
+              const div = document.createElement('div');
+              div.innerHTML = renderSingleTurn(t);
+              while (div.firstChild) container.appendChild(div.firstChild);
+            });
+          }
           _autoScroll();
         }
       });
@@ -274,7 +283,9 @@ document.addEventListener('alpine:init', () => {
 function renderHeader(s) {
   const contextPanel = s.context ? renderContextPanel(s) : '';
 
-  qs('#session-header').innerHTML = `
+  const headerEl = qs('#session-header');
+  if (!headerEl) return;
+  headerEl.innerHTML = `
     <div class="session-meta">
       <h2>
         <code class="session-id">${s.session_id.slice(0,12)}</code>
