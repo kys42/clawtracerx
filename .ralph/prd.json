@@ -1041,7 +1041,7 @@
         "그래프 뷰에서 노드/엣지가 정확히 연결됨",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-049",

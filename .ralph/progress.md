@@ -315,6 +315,13 @@
 - Flask의 `get_json(force=True)`는 Content-Type 무시하고 파싱하지만 잘못된 JSON에서 예외 발생 — `silent=True`가 안전
 - 쿼리 파라미터는 항상 문자열 — int() 직접 변환은 위험
 
+## Loop 25 — US-048: Graph 뷰 도구 노드 ID 충돌 방지
+
+**작업 내용:**
+- `tool:{tc.id[:16]}` → `tool:{tc.id}` 전체 ID 사용 (2곳: _build_graph, _add_subagent_graph)
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
 ## Loop 24 — US-047: API 요청 파라미터 유효성 검증
 
 **작업 내용:**

@@ -1392,7 +1392,7 @@ def _build_graph(analysis):
         for tc in turn.tool_calls:
             if tc.name == "sessions_spawn":
                 continue  # handled by subagent nodes
-            tc_id = f"tool:{tc.id[:16]}"
+            tc_id = f"tool:{tc.id}"
             nodes.append({
                 "id": tc_id,
                 "type": "tool",
@@ -1435,7 +1435,7 @@ def _add_subagent_graph(nodes, edges, parent_id, spawn):
         for tc in child_turn.tool_calls:
             if tc.name == "sessions_spawn":
                 continue
-            tc_id = f"tool:{tc.id[:16]}"
+            tc_id = f"tool:{tc.id}"
             nodes.append({
                 "id": tc_id,
                 "type": "tool",
