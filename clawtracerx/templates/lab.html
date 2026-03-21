@@ -108,7 +108,7 @@
 <!-- Fixed bottom message input -->
 <div class="lab-input-sticky" id="lab-input-sticky">
   <div class="lab-input-row">
-    <textarea class="input-textarea" id="message-input" rows="1" data-i18n-placeholder="lab.input_placeholder" placeholder="Type a message to send to the agent..." onkeydown="handleInputKeydown(event)" oninput="autoResizeTextarea(this)"></textarea>
+    <textarea class="input-textarea" id="message-input" rows="1" data-i18n-placeholder="lab.input_placeholder" placeholder="Type a message to send to the agent..." onkeydown="handleInputKeydown(event)" oninput="autoResizeTextarea(this);_saveDraft()"></textarea>
     <button class="btn btn-primary" onclick="sendMessage()" id="send-btn" data-i18n="lab.send">Send</button>
   </div>
   <div class="lab-input-meta">
@@ -228,6 +228,31 @@ function autoResizeTextarea(el) {
   el.style.height = Math.min(el.scrollHeight, 200) + 'px';
 }
 
+// --- Lab message draft (localStorage) ---
+var _draftTimer = null;
+function _draftKey() {
+  return 'clawtracerx-draft:' + (currentSessionKey || '_new');
+}
+function _saveDraft() {
+  clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(function() {
+    var val = qs('#message-input').value;
+    if (val) localStorage.setItem(_draftKey(), val);
+    else localStorage.removeItem(_draftKey());
+  }, 500);
+}
+function _restoreDraft() {
+  var saved = localStorage.getItem(_draftKey());
+  if (saved) {
+    var el = qs('#message-input');
+    el.value = saved;
+    autoResizeTextarea(el);
+  }
+}
+function _clearDraft() {
+  localStorage.removeItem(_draftKey());
+}
+
 function handleInputKeydown(e) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault();
@@ -309,6 +334,7 @@ async function init() {
   await loadGatewaySessions();
   loadContextFiles();
   loadActivityLog();
+  _restoreDraft();
 }
 
 async function loadAgents() {
@@ -433,6 +459,7 @@ async function sendMessage() {
   qs('#send-btn').disabled = true;
   qs('#message-input').value = '';
   autoResizeTextarea(qs('#message-input'));
+  _clearDraft();
 
   // Insert pending message card immediately
   insertPendingMessage(message);

@@ -680,9 +680,25 @@ def _parse_session_context(report: dict) -> SessionContext:
 
 # --- Session parsing ---
 
+_parse_cache: dict = {}  # {path_str: (mtime, SessionAnalysis)}
+_PARSE_CACHE_MAX = 50
+
+
 def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> SessionAnalysis:
     """Parse a session JSONL file into a SessionAnalysis."""
     file_path = Path(file_path)
+
+    # mtime-based cache check
+    path_key = str(file_path)
+    try:
+        current_mtime = file_path.stat().st_mtime
+    except OSError:
+        current_mtime = None
+
+    if current_mtime is not None and path_key in _parse_cache:
+        cached_mtime, cached_result = _parse_cache[path_key]
+        if cached_mtime == current_mtime:
+            return cached_result
     lines = []
     with open(file_path) as f:
         for raw_line in f:
@@ -1121,6 +1137,14 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         analysis.session_total_tokens = meta.get("totalTokens", 0)
         analysis.session_compaction_count = meta.get("compactionCount", 0)
         analysis.memory_flush_at = _ts_to_dt(meta.get("memoryFlushAt"))
+
+    # Store in cache (LRU eviction)
+    if current_mtime is not None:
+        _parse_cache[path_key] = (current_mtime, analysis)
+        if len(_parse_cache) > _PARSE_CACHE_MAX:
+            # Evict oldest entry
+            oldest_key = next(iter(_parse_cache))
+            del _parse_cache[oldest_key]
 
     return analysis
 

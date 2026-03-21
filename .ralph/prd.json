@@ -142,7 +142,7 @@
         "Lab 메시지 새로고침 후 복원",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-007",

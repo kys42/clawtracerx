@@ -918,6 +918,25 @@ def create_app():
                 return jsonify({"content": turn.user_text})
         abort(404, "Turn not found")
 
+    # --- Logs ---
+
+    @app.route("/api/logs")
+    def api_logs():
+        """Return last N lines of a log file (whitelist: web.log, lab.log)."""
+        file_name = request.args.get("file", "lab")
+        lines_count = min(int(request.args.get("lines", 50)), 200)
+        allowed = {"web": "web.log", "lab": "lab.log"}
+        if file_name not in allowed:
+            abort(400, "Invalid log file")
+        log_path = Path(_get_base_path()).parent / allowed[file_name]
+        if not log_path.exists():
+            return jsonify({"lines": [], "file": file_name})
+        try:
+            all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            return jsonify({"lines": all_lines[-lines_count:], "file": file_name})
+        except Exception as e:
+            return jsonify({"lines": [], "file": file_name, "error": str(e)})
+
     # --- Health ---
 
     _health_cache = {"data": None, "ts": 0}

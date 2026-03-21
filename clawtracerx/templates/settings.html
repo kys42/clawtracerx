@@ -47,6 +47,21 @@
   </div>
 </section>
 
+<!-- Section: Log Viewer -->
+<section class="settings-section">
+  <div class="settings-section-header">
+    <h2 class="settings-section-title" data-i18n="settings.log_viewer">Log Viewer</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select class="input-select" id="log-tab" x-model="logTab" @change="loadLogs()">
+        <option value="lab">lab.log</option>
+        <option value="web">web.log</option>
+      </select>
+      <button class="btn btn-outline btn-sm" @click="loadLogs()" data-i18n="settings.refresh">Refresh</button>
+    </div>
+  </div>
+  <pre class="log-viewer" id="log-viewer" x-text="logContent"></pre>
+</section>
+
 <!-- Section: Config File -->
 <section class="settings-section">
   <div class="settings-section-header">
@@ -122,6 +137,8 @@ document.addEventListener('alpine:init', () => {
     saving: false,
     showConfig: false,
     configLoaded: false,
+    logTab: 'lab',
+    logContent: '',
     toasts: [],
     _toastId: 0,
 
@@ -137,6 +154,21 @@ document.addEventListener('alpine:init', () => {
         console.error('Failed to load settings', e);
       }
       this.refreshHealth(false);
+      this.loadLogs();
+    },
+
+    async loadLogs() {
+      try {
+        const data = await fetchJSON('/api/logs?file=' + this.logTab + '&lines=50');
+        this.logContent = (data.lines || []).join('\n') || 'No log entries.';
+        // Auto-scroll log viewer
+        this.$nextTick(() => {
+          const el = document.getElementById('log-viewer');
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      } catch(e) {
+        this.logContent = 'Failed to load logs: ' + e.message;
+      }
     },
 
     async save() {

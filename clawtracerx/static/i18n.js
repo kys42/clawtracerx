@@ -285,6 +285,7 @@
       'settings.show_config': '설정 파일 보기',
       'settings.hide_config': '설정 파일 숨기기',
       'settings.config_masked': '민감 정보는 마스킹됩니다.',
+      'settings.log_viewer': '로그 뷰어',
 
       // === Schedule 페이지 ===
       'schedule.title': '스케줄',
@@ -636,6 +637,7 @@
       'settings.show_config': 'Show Config',
       'settings.hide_config': 'Hide Config',
       'settings.config_masked': 'Sensitive values are masked.',
+      'settings.log_viewer': 'Log Viewer',
 
       // === Schedule ===
       'schedule.title': 'Schedule',
