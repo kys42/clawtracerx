@@ -676,6 +676,24 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-031",
+      "title": "JSONL 파일 인코딩 에러 처리 강화",
+      "category": "bugfix",
+      "priority": 31,
+      "description": "session_parser.py의 open() 호출에 encoding='utf-8', errors='replace' 추가하여 non-UTF-8 바이트가 포함된 JSONL 파일에서 UnicodeDecodeError 방지",
+      "steps": [
+        "_read_jsonl()에 encoding/errors 파라미터 추가",
+        "_quick_scan_session()에 encoding/errors 파라미터 추가",
+        "load_cron_runs()의 JSONL 읽기에 encoding/errors 파라미터 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "non-UTF-8 바이트 포함 JSONL 파싱 시 크래시 대신 대체 문자로 처리",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
     }
   ]
 }

@@ -581,7 +581,7 @@ def load_cron_runs(job_id: Optional[str] = None, last_n: int = 50) -> list:
         if job_id and fid != job_id:
             continue
         job_name = jobs.get(fid, {}).get("label", jobs.get(fid, {}).get("name", fid[:8]))
-        with open(f) as fh:
+        with open(f, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
@@ -701,7 +701,7 @@ _PARSE_CACHE_MAX = 50
 def _read_jsonl(file_path: Path) -> list:
     """Read a JSONL file and return list of parsed JSON objects."""
     lines = []
-    with open(file_path) as f:
+    with open(file_path, encoding="utf-8", errors="replace") as f:
         for raw_line in f:
             raw_line = raw_line.strip()
             if not raw_line:
@@ -1580,7 +1580,7 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
     }
 
     try:
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8", errors="replace") as f:
             user_count = 0
             total_cost = 0.0
             total_tokens = 0

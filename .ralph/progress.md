@@ -118,3 +118,15 @@
 **배운 점:**
 - ANALYSIS_REPORT.md에 이미 5개 버그가 문서화되어 있었음 — 새 탐색 전 기존 분석 문서를 먼저 확인해야 함
 - 게이트웨이 RPC는 `additionalProperties: false`이므로 잘못된 키를 보내면 서버에서 즉시 거부됨 — 에러 메시지에서 키 이름 힌트가 있었을 것
+
+## Loop 12 — US-031: JSONL 파일 인코딩 에러 처리 강화
+
+**작업 내용:**
+- `_read_jsonl()`, `_quick_scan_session()`, `load_cron_runs()` JSONL 읽기 3곳에 `encoding="utf-8", errors="replace"` 추가
+- non-UTF-8 바이트 포함 시 `UnicodeDecodeError` 대신 대체 문자(`\ufffd`)로 처리
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- Python 3.9의 `open()` 기본 인코딩은 시스템 로케일에 따라 다름 — macOS는 UTF-8이지만 명시적으로 지정하는 것이 안전
+- `errors="replace"`는 데이터 무결성을 약간 희생하지만 파서 안정성을 크게 높임
