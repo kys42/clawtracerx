@@ -1203,6 +1203,7 @@ body {
   width: 100%; height: 100%;
   cursor: grab;
   display: block;
+  touch-action: none;
 }
 #graph-svg:active { cursor: grabbing; }
 .graph-controls {
@@ -3919,9 +3920,24 @@ body {
   }
 }
 
-/* --- Graph page mobile: touch-friendly --- */
+/* --- Graph page mobile --- */
 @media (max-width: 768px) {
-  canvas {
-    touch-action: none;
+  .graph-container {
+    height: 60vh;
+  }
+  .graph-controls {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .node-panel {
+    position: fixed;
+    right: 0;
+    left: 0;
+    bottom: 0;
+    top: auto;
+    width: 100%;
+    max-height: 50vh;
+    overflow-y: auto;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
 }

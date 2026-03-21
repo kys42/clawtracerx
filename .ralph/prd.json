@@ -615,7 +615,7 @@
         "노드 패널이 375px에서 스크롤 가능",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-028",
