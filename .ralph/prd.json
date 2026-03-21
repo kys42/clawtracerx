@@ -731,6 +731,73 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-034",
+      "title": "브라우저 테스트 버그 수정 일괄 처리",
+      "category": "bugfix",
+      "priority": 34,
+      "description": "agent-browser로 실제 UI 테스트 시 발견된 버그들을 일괄 수정한다. (1) 404 에러 배너에 raw HTML 노출 — fetchJSONSafe가 404 HTML body를 그대로 에러 메시지로 사용, 'Session not found'만 표시해야 함. (2) 404 후 'Loading session...' 영구 표시 — 에러 시 로딩 텍스트 제거 + '← Sessions' 돌아가기 유도. (3) Home 페이지 Total Cost $0 — Cost 페이지에서는 $20.94이지만 Home에서 $0, API 계산 기간 불일치 의심. (4) Lab 네비게이션 'soon' 표시 제거 — Lab은 이미 구현 완료, opacity/pointer-events 제거하여 접근 가능하게. (5) toast-container가 base.html에 없음 — showToast가 동작하려면 컨테이너 필요.",
+      "steps": [
+        "app.js의 fetchJSONSafe: 404 등 HTTP 에러 시 응답 body에서 HTML 태그 제거(strip tags), JSON 파싱 실패 시 status code + 간단 메시지만 표시",
+        "detail.html: API 로드 실패 시 'Loading session...' 텍스트를 에러 메시지로 교체 + '← Sessions' 링크 표시",
+        "home.html 또는 web.py /api/home: Total Cost 계산이 전체 기간을 커버하는지 확인, Cost 페이지와 동일한 기간 사용하도록 수정",
+        "base.html: Lab 네비 링크에서 opacity/pointer-events/soon 뱃지 제거",
+        "base.html: <div id='toast-container' class='toast-container'></div> 추가 (body 하단)",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "존재하지 않는 세션 접속 시 깔끔한 에러 메시지 표시 (HTML 태그 없음)",
+        "에러 시 Loading 텍스트 사라지고 돌아가기 링크 표시",
+        "Home과 Cost의 비용 수치가 일관됨",
+        "Lab 네비 링크 클릭 가능",
+        "toast가 정상 표시됨",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-035",
+      "title": "검색/필터/드릴다운 기능 보완",
+      "category": "feature",
+      "priority": 35,
+      "description": "브라우저 테스트에서 미동작 또는 미완성으로 확인된 기능들을 보완한다. (1) 세션 검색 필터링 — 'heartbeat' 입력 시 즉시 필터링 되어야 하는데 안 됨, 클라이언트 사이드 필터링 로직 확인/수정, 검색 결과 카운트('3 of 50 sessions') 표시. (2) Live 토글 버튼 — SSE 엔드포인트(/api/session/:id/stream)는 동작하지만 detail 페이지에 Live UI 버튼이 없음, 버튼 + EventSource 연결 + 새 턴 append + 스크롤 보존 구현. (3) 비용 차트 드릴다운 — ApexCharts 바 클릭 이벤트 핸들러가 없음, 클릭 시 해당 에이전트/모델 세션 목록으로 이동.",
+      "steps": [
+        "sessions.html: 검색 input의 이벤트 핸들러 확인 — 세션 카드의 display:none 토글이 실제로 동작하는지, 디바운스 타이밍, 매칭 로직 디버그",
+        "sessions.html: 검색 결과 카운트 표시 ('N of M sessions') 추가",
+        "detail.html: 'Live' 토글 버튼 추가 (header-actions 영역), 클릭 시 EventSource 연결, update 이벤트로 턴 append, patch로 마지막 턴 교체, done시 자동 종료, 초록 점 pulse 애니메이션",
+        "detail.html: 스크롤 위치 보존 — scrollHeight - scrollTop - clientHeight < 100이면 자동스크롤",
+        "cost.html: ApexCharts 바 차트에 events.dataPointSelection 핸들러 추가 → location.href='/?agent=xxx'",
+        "sessions.html: URL 쿼리 파라미터(?agent=xxx)에서 필터 자동 적용",
+        "style.css: .live-indicator 초록 점 pulse 애니메이션",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "세션 검색이 실시간 필터링 동작 + 결과 카운트 표시",
+        "Live 토글 ON → 새 턴이 실시간 추가, 기존 턴 유지",
+        "비용 차트 바 클릭 → 세션 페이지 필터 이동",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-036",
+      "title": "심화 기능 테스트 + 엣지케이스 탐색 → 추가 태스크 생성",
+      "category": "meta",
+      "priority": 36,
+      "description": "US-034, US-035 완료 후 아직 테스트하지 못한 영역을 코드 레벨에서 점검하고 이슈를 찾아 PRD에 추가한다. 점검 항목: (1) Export CSV/JSON 다운로드 실제 파일 내용 검증 — 한글이 깨지지 않는지, 필드 누락 없는지 (2) SSE 스트리밍 재연결 로직 — 네트워크 끊김 시 자동 재연결이 실제로 동작하는지 코드 확인 (3) 캐시(parse_session mtime 캐시) 무효화가 정상 동작하는지 확인 (4) 로그 뷰어(settings 페이지)가 실제로 동작하는지, web.log/lab.log 내용 표시 확인 (5) Lab 컨텍스트 편집 — save/diff/reset 플로우 확인 (6) Lab 메시지 초안 localStorage 저장/복원 확인 (7) 세션 카드 접근성 — keyboard navigation(Tab, Enter), screen reader aria-label (8) 모달 포커스 트랩 — Escape 닫기, Tab 순환. 발견한 이슈를 US-037~ 스토리로 추가. 코드 수정 없이 PRD만 업데이트.",
+      "steps": [
+        "각 점검 항목에 대해 해당 코드(HTML/JS/Python)를 읽고 동작 여부 판단",
+        "브라우저에서 테스트 불가능한 항목은 코드 리뷰로 대체",
+        "발견한 이슈를 US-037~ 스토리로 prd.json에 추가 (최소 3개)",
+        "이 스토리를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리가 prd.json에 추가됨",
+        "각 스토리가 구체적 문제 + steps + acceptanceCriteria 포함",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": false
     }
   ]
 }

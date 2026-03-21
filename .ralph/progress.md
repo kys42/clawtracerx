@@ -159,3 +159,18 @@
 **배운 점:**
 - `logging.handlers`는 `import logging`만으로는 사용 불가 — 별도 `import logging.handlers` 필요
 - RotatingFileHandler는 스레드 안전함 — 기존 _lab_log_lock과 별도의 잠금 불필요
+
+## Loop 14 — US-034: 브라우저 테스트 버그 수정 일괄 처리
+
+**작업 내용:**
+- `app.js` fetchJSON: 404 등 HTTP 에러 시 HTML 태그 strip 처리 → 깔끔한 에러 메시지만 표시
+- `detail.html`: API 로드 실패 시 "Loading session..." 텍스트를 에러 메시지 + 돌아가기 링크로 교체
+- `home.html`: Total Cost $0 버그 수정 — `costData.total.cost` → `costData.total_cost` 필드명 수정 + `period=all`로 전체 기간 집계
+- `base.html`: Lab 네비게이션 disabled/soon 제거 → href="/lab" 활성 링크로 전환
+- `base.html`: `<div id="toast-container">` 추가 — showToast 함수가 동작하도록
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- Home 페이지의 /api/cost 호출은 period 파라미터 없으면 기본 "week"로 필터링됨 — Total Cost엔 period=all 필수
+- fetchJSON의 에러 텍스트가 HTML 페이지 전체를 포함할 수 있음 — 항상 태그 strip 필요

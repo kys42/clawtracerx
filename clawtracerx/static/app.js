@@ -16,7 +16,10 @@ async function fetchJSON(url, opts) {
   const res = await fetch(url, opts);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+    // Strip HTML tags to avoid raw HTML in error banners
+    const clean = text.replace(/<[^>]*>/g, '').trim().slice(0, 200);
+    const msg = clean || ('HTTP ' + res.status);
+    throw new Error(msg);
   }
   return await res.json();
 }

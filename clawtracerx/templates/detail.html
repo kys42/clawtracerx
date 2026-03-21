@@ -72,6 +72,12 @@ document.addEventListener('alpine:init', () => {
 
     async init() {
       await loadSession();
+      if (!sessionData || !sessionData.turns) {
+        // Load failed — replace loading text with error + back link
+        const hdr = qs('#session-header');
+        if (hdr) hdr.innerHTML = '<div class="error-state"><p style="color:var(--error)">Session not found or failed to load.</p><a href="/" class="back-link">&larr; Sessions</a></div>';
+        return;
+      }
       this.loaded = true;
       this.populateToolFilter();
       this.debouncedFilterTurns = debounce(() => this.filterTurns(), 300);

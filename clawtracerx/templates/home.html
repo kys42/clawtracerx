@@ -280,10 +280,10 @@ document.addEventListener('alpine:init', () => {
       this.loading = true;
       try {
         const [costData, sessions] = await Promise.all([
-          fetchJSONSafe('/api/cost', {}),
+          fetchJSONSafe('/api/cost?period=all', {}),
           fetchJSONSafe('/api/sessions?last=9999', [])
         ]);
-        const totalCost = (costData.total && costData.total.cost) || 0;
+        const totalCost = costData.total_cost || 0;
         const totalSessions = sessions.length || 0;
         const totalTurns = sessions.reduce((s, x) => s + (x.turns || 0), 0);
         const totalTools = sessions.reduce((s, x) => s + (x.tool_calls || 0), 0);
