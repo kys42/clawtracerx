@@ -341,7 +341,7 @@
         "기존 동작 변경 없음 (init/update/patch/done 이벤트)",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-015",

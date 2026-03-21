@@ -140,6 +140,12 @@ def _log_lab(action: str, **kwargs):
         _lab_activity_log.append(entry)
 
 
+# --- SSE streaming constants ---
+SSE_POLL_INTERVAL = 0.5       # seconds between file checks
+SSE_TIMEOUT_CYCLES = 600      # idle cycles before timeout (= 5 min at 0.5s)
+SSE_HEARTBEAT_INTERVAL = 30   # idle cycles between heartbeat comments
+
+
 def create_app():
     _base = _get_base_path()
     app = Flask(__name__,
@@ -370,21 +376,21 @@ def create_app():
                 return
 
             while True:
-                time.sleep(0.5)
+                time.sleep(SSE_POLL_INTERVAL)
                 try:
                     current_size = file_path.stat().st_size
                 except OSError:
                     idle_count += 1
-                    if idle_count >= 600:
+                    if idle_count >= SSE_TIMEOUT_CYCLES:
                         yield "event: timeout\ndata: {}\n\n"
                         return
-                    if idle_count % 30 == 0:
+                    if idle_count % SSE_HEARTBEAT_INTERVAL == 0:
                         yield ": heartbeat\n\n"
                     continue
 
                 if current_size == last_size:
                     idle_count += 1
-                    if idle_count % 30 == 0:
+                    if idle_count % SSE_HEARTBEAT_INTERVAL == 0:
                         yield ": heartbeat\n\n"
                     continue
 
@@ -708,22 +714,22 @@ def create_app():
 
             # Change detection loop
             while True:
-                time.sleep(0.5)
+                time.sleep(SSE_POLL_INTERVAL)
 
                 try:
                     current_size = file_path.stat().st_size
                 except OSError:
                     idle_count += 1
-                    if idle_count >= 600:  # 5 min timeout
+                    if idle_count >= SSE_TIMEOUT_CYCLES:
                         yield "event: timeout\ndata: {}\n\n"
                         return
-                    if idle_count % 30 == 0:
+                    if idle_count % SSE_HEARTBEAT_INTERVAL == 0:
                         yield ": heartbeat\n\n"
                     continue
 
                 if current_size == last_size:
                     idle_count += 1
-                    if idle_count % 30 == 0:
+                    if idle_count % SSE_HEARTBEAT_INTERVAL == 0:
                         yield ": heartbeat\n\n"
                     continue
 
