@@ -203,3 +203,16 @@
 - web.log는 아무 곳에서도 생성하지 않아 Settings 로그 뷰어가 항상 빈 결과 표시
 - CSV export에서 BOM 없으면 Excel이 UTF-8을 인식 못함 — Windows 사용자 고려 필수
 - EventSource의 error 이벤트는 transient/permanent 구분이 어려움 — readyState 체크 필수
+
+## Loop 17 — US-037: CSV Export UTF-8 BOM + 개행 이스케이프 + 필드 보강
+
+**작업 내용:**
+- 클라이언트/서버 양쪽 CSV export에 UTF-8 BOM(`\uFEFF`) 추가
+- 클라이언트 exportCSV()에서 개행 문자를 공백으로 치환
+- header에 file_size, tool_calls, errors, subagents, channel 필드 추가 (클라이언트+서버)
+- fields 배열 기반 루프로 리팩터링하여 유지보수 용이하게
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- CSV의 python csv.writer는 개행을 자동 처리하지만, JS 클라이언트 측은 수동으로 치환 필요

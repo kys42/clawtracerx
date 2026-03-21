@@ -817,7 +817,7 @@
         "export 필드가 UI 표시 데이터와 일치",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-038",

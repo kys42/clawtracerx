@@ -322,16 +322,21 @@ def create_app():
             last_n=last_n,
         )
         buf = io.StringIO()
+        buf.write("\ufeff")  # UTF-8 BOM for Excel
         writer = csv.writer(buf)
         writer.writerow(["session_id", "agent_id", "type", "model", "turns",
-                         "tokens", "cost", "started_at", "file_size"])
+                         "tokens", "cost", "started_at", "file_size",
+                         "tool_calls", "errors", "subagents", "channel"])
         for s in sessions:
+            started = s.get("started_at", "")
             writer.writerow([
                 s["session_id"], s["agent_id"], s.get("type", "chat"),
                 s.get("model", ""), s.get("turns", 0), s.get("tokens", 0),
                 round(s.get("cost", 0), 6),
-                s.get("started_at", "").isoformat() if hasattr(s.get("started_at", ""), "isoformat") else "",
+                started.isoformat() if hasattr(started, "isoformat") else "",
                 s.get("file_size", 0),
+                s.get("tool_calls", 0), s.get("errors", 0),
+                s.get("subagents", 0), s.get("channel", ""),
             ])
         return Response(
             buf.getvalue(),

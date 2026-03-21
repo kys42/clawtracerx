@@ -362,11 +362,14 @@ document.addEventListener('alpine:init', () => {
 
     exportCSV() {
       if (!_sessionsData.length) return;
-      const header = 'session_id,agent_id,type,model,turns,tokens,cost,started_at\n';
+      const fields = ['session_id','agent_id','type','model','turns','tokens','cost','started_at','file_size','tool_calls','errors','subagents','channel'];
+      const header = fields.join(',') + '\n';
+      const esc = v => '"' + String(v || '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ') + '"';
       const rows = _sessionsData.map(s =>
-        [s.session_id, s.agent_id, s.type, s.model, s.turns, s.tokens, s.cost, s.started_at].map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')
+        fields.map(f => esc(s[f])).join(',')
       ).join('\n');
-      const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+      // UTF-8 BOM for Excel compatibility
+      const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'sessions.csv';
