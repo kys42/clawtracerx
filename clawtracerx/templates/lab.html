@@ -783,7 +783,7 @@ async function loadActivityLog() {
   container.innerHTML = entries.map(function(e) {
     var ts = e.ts ? e.ts.split('T')[1]?.split('+')[0]?.slice(0,8) : '';
     var action = e.action || '';
-    var key = e.sessionKey ? ' key=' + e.sessionKey : '';
+    var key = e.sessionKey ? ' key=' + escHtml(e.sessionKey) : '';
     var msg = '';
     if (e.message) {
       msg = ' msg="' + escHtml(truncate(e.message, 60))
@@ -796,10 +796,10 @@ async function loadActivityLog() {
         + makeShowFullBtn('···', 'ERR', e.error, 80)
         + '</span>';
     }
-    var file = e.file ? ' file=' + e.file : '';
-    var rid = e.runId ? ' run=' + e.runId.slice(0,8) : '';
+    var file = e.file ? ' file=' + escHtml(e.file) : '';
+    var rid = e.runId ? ' run=' + escHtml(e.runId.slice(0,8)) : '';
     return '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle)">' +
-      '<span style="color:var(--text-3)">' + ts + '</span> ' +
+      '<span style="color:var(--text-3)">' + escHtml(ts) + '</span> ' +
       '<span style="color:var(--accent);font-weight:600">' + escHtml(action) + '</span>' + key + msg + rid + file + err +
     '</div>';
   }).join('');

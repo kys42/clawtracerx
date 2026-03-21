@@ -392,3 +392,18 @@
 - cmd_context(): 동일 패턴 적용
 
 **결과:** ruff 통과, pytest 160 tests 전부 통과
+
+## Loop 32 — US-055: Lab 활동 로그 XSS — sessionKey/file/runId 이스케이프
+
+**작업 내용:**
+- lab.html `renderActivity()`: `e.sessionKey`를 `escHtml(e.sessionKey)`로 래핑
+- `e.file`을 `escHtml(e.file)`로 래핑
+- `e.runId.slice(0,8)`을 `escHtml(e.runId.slice(0,8))`로 래핑
+- `ts` (타임스탬프)도 방어적으로 `escHtml(ts)` 추가
+- US-056 (settings.html DOM null safety), US-057 (JSONL skip logging) 스토리 추가
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- US-041에서 turns.js XSS를 수정했지만 lab.html의 activity log는 별도 렌더링 함수라 누락됨
+- escHtml()이 이미 전역으로 존재하므로 적용 비용이 거의 없음 — 방어적으로 모든 동적 필드에 적용하는 것이 안전
