@@ -4,6 +4,7 @@ Tests for clawtracerx.session_parser — pure functions and I/O.
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from datetime import datetime
 
 import clawtracerx.session_parser as sp
@@ -317,7 +318,7 @@ class TestGetRawTurnLines:
 
 class TestParseCache:
     def test_cache_hit(self, minimal_session_path, monkeypatch):
-        monkeypatch.setattr(sp, "_parse_cache", {})
+        monkeypatch.setattr(sp, "_parse_cache", OrderedDict())
         monkeypatch.setattr(sp, "_subagent_cache", None)
         a1 = sp.parse_session(minimal_session_path)
         a2 = sp.parse_session(minimal_session_path)
@@ -327,7 +328,7 @@ class TestParseCache:
 
     def test_cache_invalidation_on_mtime_change(self, minimal_session_path, monkeypatch):
         import os
-        monkeypatch.setattr(sp, "_parse_cache", {})
+        monkeypatch.setattr(sp, "_parse_cache", OrderedDict())
         monkeypatch.setattr(sp, "_subagent_cache", None)
         a1 = sp.parse_session(minimal_session_path)
         # Touch file to change mtime
@@ -336,7 +337,7 @@ class TestParseCache:
         assert a1 is not a2  # Re-parsed
 
     def test_cache_lru_eviction(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(sp, "_parse_cache", {})
+        monkeypatch.setattr(sp, "_parse_cache", OrderedDict())
         monkeypatch.setattr(sp, "_PARSE_CACHE_MAX", 2)
         monkeypatch.setattr(sp, "_subagent_cache", None)
 

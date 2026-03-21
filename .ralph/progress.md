@@ -270,3 +270,18 @@
 **배운 점:**
 - JSONL 파서 출력이 HTML 렌더링에 쓰일 때는 모든 필드를 escHtml()로 이스케이프해야 함
 - CSS 클래스명에도 사용자 입력이 들어가면 attribute injection 가능
+
+## Loop 22 — US-042: parse_session LRU 캐시 + 재귀 깊이 제한
+
+**작업 내용:**
+- `_parse_cache`를 `OrderedDict`로 변경, 캐시 히트 시 `move_to_end()` 호출 → 진정한 LRU
+- eviction을 `popitem(last=False)` 사용으로 개선
+- `parse_session()`에 `_depth` 파라미터 추가, `_PARSE_MAX_DEPTH=10` 초과 시 `recursive_subagents=False`
+- `_build_turns`, `_enrich_spawns_from_announces`, `_try_load_missing_children`, `_resolve_child_from_transcript` 모두 depth 전파
+- 테스트의 `_parse_cache` mock을 `OrderedDict()`로 업데이트
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- `OrderedDict.move_to_end()` + `popitem(last=False)` 조합으로 간단한 LRU 캐시 구현 가능
+- 재귀 깊이 제한은 모든 중간 함수에 depth를 전파해야 함 — 6개 함수 시그니처 수정 필요

@@ -915,7 +915,7 @@
         "깊이 10 이상 재귀 시 자동 중단, 에러 없이 부분 결과 반환",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-043",

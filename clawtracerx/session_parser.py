@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -417,14 +418,14 @@ def _parse_announce_match(m, full_text: str = "") -> Optional[dict]:
         return None
 
 
-def _resolve_child_from_transcript(spawn, transcript: str):
+def _resolve_child_from_transcript(spawn, transcript: str, _depth: int = 0):
     """Try to resolve child session turns from transcript path."""
     if not transcript:
         return
     tp = Path(transcript)
     # Check if the exact path exists
     if tp.exists():
-        child_analysis = parse_session(tp, recursive_subagents=True)
+        child_analysis = parse_session(tp, recursive_subagents=True, _depth=_depth + 1)
         spawn.child_turns = child_analysis.turns
         if not spawn.cost_usd and child_analysis.total_cost:
             spawn.cost_usd = child_analysis.total_cost
@@ -439,7 +440,7 @@ def _resolve_child_from_transcript(spawn, transcript: str):
             deleted_candidates = []
         for f in deleted_candidates:
             if f.name.startswith(stem) and ".deleted." in f.name:
-                child_analysis = parse_session(f, recursive_subagents=True)
+                child_analysis = parse_session(f, recursive_subagents=True, _depth=_depth + 1)
                 spawn.child_turns = child_analysis.turns
                 if not spawn.cost_usd and child_analysis.total_cost:
                     spawn.cost_usd = child_analysis.total_cost
@@ -694,8 +695,9 @@ def _parse_session_context(report: dict) -> SessionContext:
 
 # --- Session parsing ---
 
-_parse_cache: dict = {}  # {path_str: (mtime, SessionAnalysis)}
+_parse_cache: OrderedDict = OrderedDict()  # {path_str: (mtime, SessionAnalysis)} — LRU order
 _PARSE_CACHE_MAX = 50
+_PARSE_MAX_DEPTH = 10
 
 
 def _read_jsonl(file_path: Path) -> list:
@@ -773,6 +775,7 @@ def _build_turns(
     initial_api: str,
     initial_thinking_level: str,
     recursive_subagents: bool,
+    _depth: int = 0,
 ) -> list:
     """Second pass: build Turn objects from message entries."""
     turns = []
@@ -1042,7 +1045,7 @@ def _build_turns(
                     if recursive_subagents and child_key:
                         child_file = find_subagent_child_session(child_key)
                         if child_file:
-                            child_analysis = parse_session(child_file, recursive_subagents=True)
+                            child_analysis = parse_session(child_file, recursive_subagents=True, _depth=_depth + 1)
                             spawn.child_turns = child_analysis.turns
                             spawn.cost_usd = child_analysis.total_cost
                             spawn.total_tokens = child_analysis.total_tokens
@@ -1112,11 +1115,19 @@ def _is_subagent_session(file_path: Path, agent_id: str, session_id: str) -> boo
     return False
 
 
-def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> SessionAnalysis:
+def parse_session(
+    file_path: str | Path,
+    recursive_subagents: bool = True,
+    _depth: int = 0,
+) -> SessionAnalysis:
     """Parse a session JSONL file into a SessionAnalysis."""
     file_path = Path(file_path)
 
-    # mtime-based cache check
+    # Depth limit: prevent infinite recursion on circular subagent refs
+    if _depth >= _PARSE_MAX_DEPTH:
+        recursive_subagents = False
+
+    # mtime-based cache check (LRU: move to end on hit)
     path_key = str(file_path)
     try:
         current_mtime = file_path.stat().st_mtime
@@ -1126,6 +1137,7 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     if current_mtime is not None and path_key in _parse_cache:
         cached_mtime, cached_result = _parse_cache[path_key]
         if cached_mtime == current_mtime:
+            _parse_cache.move_to_end(path_key)
             return cached_result
 
     # Read and parse JSONL
@@ -1158,12 +1170,13 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         lines, analysis, id_to_msg_info,
         model, provider, api, thinking_level,
         recursive_subagents,
+        _depth=_depth,
     )
 
     # Post-processing: enrich spawns, assign workflow groups, compute context
-    _enrich_spawns_from_announces(turns, agent_id=agent_id)
+    _enrich_spawns_from_announces(turns, agent_id=agent_id, _depth=_depth)
     if recursive_subagents:
-        _try_load_missing_children(turns, agent_id=agent_id)
+        _try_load_missing_children(turns, agent_id=agent_id, _depth=_depth)
     _assign_workflow_groups(turns)
     if analysis.compaction_events:
         _compute_context_status(turns, lines, analysis.compaction_events)
@@ -1186,12 +1199,12 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         analysis.session_compaction_count = meta.get("compactionCount", 0)
         analysis.memory_flush_at = _ts_to_dt(meta.get("memoryFlushAt"))
 
-    # Store in cache (LRU eviction)
+    # Store in cache (LRU eviction — oldest=least recently used first)
     if current_mtime is not None:
         _parse_cache[path_key] = (current_mtime, analysis)
-        if len(_parse_cache) > _PARSE_CACHE_MAX:
-            oldest_key = next(iter(_parse_cache))
-            del _parse_cache[oldest_key]
+        _parse_cache.move_to_end(path_key)
+        while len(_parse_cache) > _PARSE_CACHE_MAX:
+            _parse_cache.popitem(last=False)
 
     return analysis
 
@@ -1353,7 +1366,7 @@ def _find_child_session_by_label(label: str, spawn_label: str, agent_id: str,
     return None
 
 
-def _try_load_missing_children(turns: list, agent_id: str) -> None:
+def _try_load_missing_children(turns: list, agent_id: str, _depth: int = 0) -> None:
     """Last-resort: load child sessions for spawns that have no child_turns yet.
 
     This handles the delivery_mirror case where the subagent result bypasses the
@@ -1387,7 +1400,7 @@ def _try_load_missing_children(turns: list, agent_id: str) -> None:
             if not child_file:
                 continue
             try:
-                child_analysis = parse_session(child_file, recursive_subagents=False)
+                child_analysis = parse_session(child_file, recursive_subagents=False, _depth=_depth + 1)
                 spawn.child_turns = child_analysis.turns
                 if not spawn.cost_usd:
                     spawn.cost_usd = child_analysis.total_cost
@@ -1451,7 +1464,7 @@ def _assign_workflow_groups(turns: list) -> None:
             turn.workflow_group_id = None
 
 
-def _enrich_spawns_from_announces(turns: list, agent_id: str = ""):
+def _enrich_spawns_from_announces(turns: list, agent_id: str = "", _depth: int = 0):
     """Match subagent announce messages to their spawns and load child turns.
 
     Current announce format:
@@ -1508,7 +1521,7 @@ def _enrich_spawns_from_announces(turns: list, agent_id: str = ""):
                 real_sid = stats.get("session_id", "")
                 child_file = _find_child_session_by_id(real_sid, agent_id)
                 if child_file:
-                    child_analysis = parse_session(child_file, recursive_subagents=True)
+                    child_analysis = parse_session(child_file, recursive_subagents=True, _depth=_depth + 1)
                     spawn.child_turns = child_analysis.turns
                     if not spawn.cost_usd and child_analysis.total_cost:
                         spawn.cost_usd = child_analysis.total_cost
@@ -1537,7 +1550,7 @@ def _enrich_spawns_from_announces(turns: list, agent_id: str = ""):
                                 label, spawn.label, agent_id, turn.timestamp
                             )
                         if child_file:
-                            child_analysis = parse_session(child_file, recursive_subagents=True)
+                            child_analysis = parse_session(child_file, recursive_subagents=True, _depth=_depth + 1)
                             spawn.child_turns = child_analysis.turns
                             # Store real session ID for Open Session link
                             if not spawn.announce_stats.get("session_id"):
