@@ -879,6 +879,63 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-041",
+      "title": "XSS 취약점 수정: turns.js 클래스명 이스케이프",
+      "category": "security",
+      "priority": 41,
+      "description": "turns.js에서 사용자 제어 데이터(t.user_source, cm.platform)가 CSS 클래스명에 이스케이프 없이 삽입됨. badge-${t.user_source} 패턴이 attribute injection 벡터가 될 수 있음. escHtml()로 래핑 필요.",
+      "steps": [
+        "turns.js: badge-${t.user_source} 패턴을 badge-${escHtml(t.user_source)}로 수정 (모든 위치)",
+        "turns.js: 기타 사용자 입력이 클래스명/속성에 직접 삽입되는 곳 점검",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "t.user_source에 특수문자가 포함되어도 HTML injection 불가",
+        "기존 UI 렌더링 변경 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-042",
+      "title": "parse_session 캐시 LRU 교체 + 서브에이전트 재귀 깊이 제한",
+      "category": "bugfix",
+      "priority": 42,
+      "description": "session_parser.py의 _parse_cache가 FIFO 방식으로 eviction하여 LRU 의도와 불일치. 또한 서브에이전트 재귀 파싱에 깊이 제한이 없어 순환 참조 시 스택 오버플로우 가능. (1) OrderedDict로 진정한 LRU 캐시 구현, (2) parse_session에 max_depth 파라미터 추가 (기본 10).",
+      "steps": [
+        "session_parser.py: _parse_cache를 OrderedDict로 변경, 캐시 히트 시 move_to_end()",
+        "parse_session()에 _depth 내부 파라미터 추가, max_depth(10) 초과 시 재귀 중단",
+        "기존 테스트 + 새 테스트(캐시 LRU 동작, 깊이 제한) 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "캐시가 LRU 순서로 eviction됨",
+        "깊이 10 이상 재귀 시 자동 중단, 에러 없이 부분 결과 반환",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-043",
+      "title": "대형 세션 성능: 턴 페이지네이션 + markdown 에러 핸들링",
+      "category": "performance",
+      "priority": 43,
+      "description": "1000+ 턴 세션에서 모든 턴을 한번에 DOM에 삽입하여 브라우저 프리즈 발생. 텍스트 모달의 marked.parse()가 예외 발생 시 무시됨. (1) turns.js에 턴 페이지네이션 (초기 50개 + Load More), (2) app.js marked.parse() try/catch + 폴백.",
+      "steps": [
+        "turns.js renderTurns(): 초기 50개만 렌더링, 나머지는 'Load more turns' 버튼으로 50개씩 추가",
+        "app.js _refreshModalBody(): marked.parse() 호출을 try/catch로 감싸고 실패 시 raw 텍스트 폴백",
+        "style.css: .load-more-turns 버튼 스타일",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "1000+ 턴 세션에서 초기 로딩이 빠름 (50개만 렌더링)",
+        "Load More 클릭 시 다음 50개 추가",
+        "마크다운 파싱 실패 시 raw 텍스트로 자동 폴백",
+        "ruff + pytest 통과"
+      ],
+      "passes": false
     }
   ]
 }

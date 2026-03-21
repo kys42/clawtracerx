@@ -257,3 +257,16 @@
 
 **배운 점:**
 - Flask after_request는 모든 응답에 대해 호출됨 — static 파일과 SSE 스트림은 제외해야 로그가 과도해지지 않음
+
+## Loop 21 — 자율 확장: 코드 리뷰 → US-041~043 추가 + US-041 구현
+
+**작업 내용:**
+- 코드베이스 전체 탐색으로 16개 이슈 발견 (HIGH 3, MEDIUM 5, LOW 8)
+- US-041 (XSS 수정), US-042 (LRU 캐시+재귀 깊이), US-043 (턴 페이지네이션) 스토리 추가
+- US-041 즉시 구현: turns.js의 t.user_source 3곳 + data-source 1곳 escHtml() 래핑
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- JSONL 파서 출력이 HTML 렌더링에 쓰일 때는 모든 필드를 escHtml()로 이스케이프해야 함
+- CSS 클래스명에도 사용자 입력이 들어가면 attribute injection 가능

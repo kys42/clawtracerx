@@ -184,13 +184,13 @@ function renderTurn(t, animIdx) {
   }
 
   return `
-  <div class="${classes}" id="turn-${t.index}" data-source="${t.user_source}" style="animation-delay:${delay}ms">
+  <div class="${classes}" id="turn-${t.index}" data-source="${escHtml(t.user_source)}" style="animation-delay:${delay}ms">
     <div class="turn-header" onclick="toggleTurn(${t.index})">
       <div class="turn-left">
         <span class="turn-index">${_t('turns.turn')} ${t.index}</span>
         ${t.timestamp ? `<span class="turn-timestamp">${fmtTurnTime(t.timestamp)}</span>` : ''}
         ${isCompacted ? `<span class="badge badge-compacted">${_t('turns.compacted_label')}</span>` : ''}
-        <span class="badge badge-${t.user_source} badge-type">${t.user_source}</span>
+        <span class="badge badge-${escHtml(t.user_source)} badge-type">${escHtml(t.user_source)}</span>
         <span class="turn-preview">${escHtml(truncate(previewText, 80))}</span>
       </div>
       <div class="turn-stats">
@@ -208,7 +208,7 @@ function renderTurn(t, animIdx) {
       <div class="turn-detail">
         <!-- User message -->
         <div class="msg-block user-msg">
-          <div class="msg-role">${_t('turns.user')} <span class="badge badge-${t.user_source} badge-type" style="font-size:10px">${t.user_source}</span></div>
+          <div class="msg-role">${_t('turns.user')} <span class="badge badge-${escHtml(t.user_source)} badge-type" style="font-size:10px">${escHtml(t.user_source)}</span></div>
           ${t.channel_meta
             ? renderChannelMsg(t.channel_meta)
             : `<pre class="msg-content">${escHtml(t.user_text.slice(0, 2000))}</pre>
