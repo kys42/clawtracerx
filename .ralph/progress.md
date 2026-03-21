@@ -90,3 +90,18 @@
 - Alpine.js의 `@touchstart.outside` 디렉티브로 외부 터치 감지를 간결하게 처리할 수 있음 — document 레벨 리스너 직접 등록 불필요
 - `@touchstart.prevent`를 사용하면 터치 시 mouseenter 이벤트 발생을 막아 hover/touch 충돌 방지
 - ApexCharts의 `responsive`는 차트 인스턴스별로 설정해야 함 — APEX_BASE에 넣으면 모든 차트에 같은 breakpoint 적용되어 bar/area 차트가 다른 최적값 불가
+
+## Loop 10 — US-029: 모바일 터치 피드백 — :active 스타일 + hover 안전장치
+
+**작업 내용:**
+- **-webkit-tap-highlight-color: transparent**: 모든 인터랙티브 요소에 적용하여 iOS/Android 기본 파란색 하이라이트 제거
+- **:active 규칙 추가**: 버튼(btn-primary, btn-outline, btn-icon, btn-close, hamburger, lang-btn), 카드(session-card, feature-card, summary-card, hb-card, cron-card), 칩(type-chip, agent-chip, stat-chip), 네비게이션(nav-link), 테이블 행(turn-header, workflow-header, tc-row, data-table clickable, modal-tool-btn)
+- **터치 피드백 패턴**: 카드는 `scale(0.98)`, 칩은 `scale(0.95)`, 버튼은 `scale(0.97)` — 요소 크기에 비례한 미묘한 축소
+- **@media(hover:none) 블록**: 터치 전용 기기에서 sticky hover 효과 비활성화 — session-card, feature-card, summary-card, hb-card, cron-card, type-chip, agent-chip, stat-chip, btn-primary, card, turn-card의 :hover에서 transform/box-shadow/border-color를 초기화
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- `@media(hover:none)`에서 hover 초기화 시 `initial`이 아닌 구체적 기본값을 써야 함 — `initial`은 CSS 속성의 명세 기본값이라 `var(--border)` 같은 테마값과 다를 수 있음
+- transform 기반 피드백(`scale()`)이 background 변경보다 GPU 가속을 타서 60fps 유지에 유리
+- `-webkit-tap-highlight-color: transparent`는 별도로 선언해야 함 — `all: unset` 같은 리셋에 포함되지 않음

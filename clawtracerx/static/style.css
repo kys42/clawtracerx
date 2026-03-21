@@ -3941,3 +3941,74 @@ body {
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
 }
+
+/* ===== US-029: Touch feedback — :active styles + hover safety ===== */
+
+/* Suppress tap highlight on all interactive elements */
+.btn, .btn-icon, .btn-close, .btn-primary, .btn-outline,
+.session-card, .feature-card, .summary-card, .hb-card, .cron-card,
+.type-chip, .agent-chip, .stat-chip,
+.nav-link, .hamburger, .turn-header, .workflow-header,
+.tc-row, .data-table tr.clickable,
+.modal-tool-btn, .lang-btn {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* :active feedback for buttons */
+.btn-primary:active {
+  background: var(--accent-hover);
+  transform: scale(0.97);
+  box-shadow: 0 2px 6px rgba(99,102,241,0.3);
+}
+.btn-outline:active, .btn-icon:active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-muted);
+  transform: scale(0.97);
+}
+.btn-close:active { color: var(--text-0); }
+.hamburger:active { background: var(--bg-3); }
+.lang-btn:active { color: var(--text-0); border-color: var(--text-2); }
+
+/* :active feedback for cards */
+.session-card:active {
+  background: var(--bg-3);
+  transform: scale(0.98);
+}
+.feature-card:active {
+  border-color: var(--border-emphasis);
+  transform: scale(0.98);
+}
+.summary-card:active { transform: scale(0.98); }
+.hb-card:active { transform: scale(0.98); }
+.cron-card:active { transform: scale(0.98); }
+
+/* :active feedback for chips */
+.type-chip:active, .agent-chip:active {
+  border-color: var(--border-emphasis);
+  color: var(--text-0);
+  transform: scale(0.95);
+}
+.stat-chip:active { transform: scale(0.95); }
+
+/* :active feedback for nav & interactive rows */
+.nav-link:active { background: rgba(255,255,255,0.07); color: var(--text-0); }
+.turn-header:active { background: rgba(255,255,255,0.04); }
+.workflow-header:active { background: var(--bg-1); }
+.tc-row:active { background: var(--bg-2); }
+.data-table tr.clickable:active { background: rgba(255,255,255,0.06) !important; }
+.modal-tool-btn:active { color: var(--text-0); background: var(--bg-4); }
+
+/* Touch-only devices: disable sticky :hover, keep :active only */
+@media (hover: none) {
+  .session-card:hover { background: initial; transform: none; box-shadow: none; border-color: var(--border); }
+  .feature-card:hover { border-color: var(--border); box-shadow: none; transform: none; }
+  .summary-card:hover { transform: none; box-shadow: none; }
+  .hb-card:hover { transform: none; box-shadow: none; }
+  .cron-card:hover { transform: none; box-shadow: none; }
+  .type-chip:hover, .agent-chip:hover { border-color: var(--border); color: inherit; transform: none; }
+  .stat-chip:hover { transform: none; }
+  .btn-primary:hover { transform: none; box-shadow: none; }
+  .card:hover { box-shadow: none; }
+  .turn-card:hover { box-shadow: none; }
+}

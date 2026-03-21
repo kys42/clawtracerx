@@ -654,7 +654,7 @@
         ":hover 상태가 터치 후 잔류하지 않음",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }
