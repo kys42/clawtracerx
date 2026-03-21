@@ -216,3 +216,15 @@
 
 **배운 점:**
 - CSV의 python csv.writer는 개행을 자동 처리하지만, JS 클라이언트 측은 수동으로 치환 필요
+
+## Loop 18 — US-038: 접근성 개선
+
+**작업 내용:**
+- 세션 카드에 tabindex="0", role="link", aria-label, Enter/Space keydown 핸들러 추가
+- 텍스트 모달: 열 때 첫 번째 버튼에 focus(), Tab 키 트랩 (first↔last 순환), 닫을 때 이전 요소로 포커스 복원
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- div onclick 패턴은 키보드/스크린리더에서 완전히 무시됨 — tabindex+role+keydown 필수
+- 모달 포커스 트랩은 querySelectorAll('button, [href], ...')로 focusable 요소 목록 수집 필요

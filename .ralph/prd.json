@@ -839,7 +839,7 @@
         "모달 닫으면 이전 요소에 포커스 복원",
         "ruff + pytest 통과"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-039",

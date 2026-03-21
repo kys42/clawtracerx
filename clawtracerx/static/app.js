@@ -168,6 +168,7 @@ window._textBuf = {};
 var _textBufIdx = 0;
 var _modalRawText = '';
 var _modalIsMarkdown = true;
+var _modalPreviousFocus = null;
 
 function _storeText(text) {
   var k = _textBufIdx++;
@@ -212,6 +213,10 @@ async function showTextModal(title, keyOrText, opts) {
   document.getElementById('text-modal-title').textContent = title;
   _refreshModalBody();
   modal.style.display = 'flex';
+  // Focus management: save trigger, focus first button
+  _modalPreviousFocus = document.activeElement;
+  var firstBtn = modal.querySelector('button');
+  if (firstBtn) firstBtn.focus();
 }
 
 function _refreshModalBody(loading) {
@@ -256,10 +261,30 @@ function closeTextModal() {
   // Clear text buffer to prevent memory buildup
   window._textBuf = {};
   _textBufIdx = 0;
+  // Restore focus to trigger element
+  if (_modalPreviousFocus && _modalPreviousFocus.focus) {
+    _modalPreviousFocus.focus();
+    _modalPreviousFocus = null;
+  }
 }
 
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeTextModal();
+  if (e.key === 'Escape') { closeTextModal(); return; }
+  // Focus trap for text modal
+  if (e.key === 'Tab') {
+    var modal = document.getElementById('text-modal');
+    if (modal && modal.style.display === 'flex') {
+      var focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (focusable.length) {
+        var first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+    }
+  }
 });
 
 // === Update check ===

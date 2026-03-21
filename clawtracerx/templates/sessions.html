@@ -227,7 +227,7 @@ async function loadSessions() {
       ? `<span class="stat-chip high-cost">${_t('sessions.high_cost')}</span>` : '';
 
     return `
-    <div class="session-card" data-type="${s.type}" data-search="${escHtml((s.session_id + ' ' + s.agent_id + ' ' + s.type + ' ' + (s.last_message || '') + ' ' + (s.model || '') + ' ' + (s.channel || '')).toLowerCase())}" onclick="location.href='/session/${s.session_id}'">
+    <div class="session-card" data-type="${s.type}" data-search="${escHtml((s.session_id + ' ' + s.agent_id + ' ' + s.type + ' ' + (s.last_message || '') + ' ' + (s.model || '') + ' ' + (s.channel || '')).toLowerCase())}" tabindex="0" role="link" aria-label="${escHtml(s.agent_id + ' ' + s.type + ' session ' + s.session_id.slice(0,10))}" onclick="location.href='/session/${s.session_id}'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.href='/session/${s.session_id}';}">
       <div class="sc-agent-panel" style="background:${hexAlpha(aColor,0.15)};color:${aColor}">
         <span>${s.agent_id}</span>
         <span class="sc-agent-time">${relTime}</span>
