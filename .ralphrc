@@ -1,0 +1,11 @@
+# Ralph configuration for ClawTracerX
+MAX_CALLS_PER_HOUR=200
+CLAUDE_TIMEOUT_MINUTES=30
+CLAUDE_ALLOWED_TOOLS="Write,Read,Edit,Glob,Grep,Bash(git *),Bash(pip *),Bash(pytest *),Bash(ruff *),Bash(python *),Bash(python3 *),Bash(ctrace *),Bash(npm *),Bash(npx *),Bash(node *),Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find *),Bash(grep *),Bash(mkdir *),Bash(rm *),Bash(mv *),Bash(cp *),Bash(chmod *),Bash(jq *),Bash(sed *),Bash(awk *),Bash(curl *),Bash(which *),Bash(echo *),Bash(touch *),Bash(diff *),Bash(sort *),Bash(uniq *),Bash(tr *),Bash(cut *),Bash(xargs *)"
+
+# Circuit breaker 완화 — 서킷 잘 안 걸리게
+CB_NO_PROGRESS_THRESHOLD=10
+CB_SAME_ERROR_THRESHOLD=10
+CB_PERMISSION_DENIAL_THRESHOLD=5
+CB_AUTO_RESET=true
+CB_COOLDOWN_MINUTES=1

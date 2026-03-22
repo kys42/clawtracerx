@@ -70,18 +70,21 @@
 <script>
 const charts = {};
 
-const APEX_BASE = {
-  theme: { mode: 'dark' },
-  chart: {
-    background: 'transparent',
-    foreColor: '#b0b4c0',
-    fontFamily: "'JetBrains Mono', 'Inter', monospace",
-    toolbar: { show: false },
-    animations: { enabled: true, speed: 450, animateGradually: { enabled: true, delay: 80 } },
-  },
-  grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
-  tooltip: { theme: 'dark' },
-};
+function getApexBase() {
+  var isDark = getTheme() === 'dark';
+  return {
+    theme: { mode: isDark ? 'dark' : 'light' },
+    chart: {
+      background: 'transparent',
+      foreColor: isDark ? '#b0b4c0' : '#374151',
+      fontFamily: "'JetBrains Mono', 'Inter', monospace",
+      toolbar: { show: false },
+      animations: { enabled: true, speed: 450, animateGradually: { enabled: true, delay: 80 } },
+    },
+    grid: { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)', strokeDashArray: 4 },
+    tooltip: { theme: isDark ? 'dark' : 'light' },
+  };
+}
 
 function destroyChart(id) {
   if (charts[id]) {
@@ -104,10 +107,10 @@ function renderApexBar(containerId, dataMap) {
   const values = entries.map(([, v]) => parseFloat(v.toFixed(6)));
 
   charts[containerId] = new ApexCharts(el, {
-    ...APEX_BASE,
+    ...getApexBase(),
     series: [{ name: _t('cost.cost_usd'), data: values }],
     chart: {
-      ...APEX_BASE.chart,
+      ...getApexBase().chart,
       type: 'bar',
       height: Math.max(160, categories.length * 38 + 48),
       events: {
@@ -132,31 +135,31 @@ function renderApexBar(containerId, dataMap) {
     dataLabels: {
       enabled: true,
       formatter: v => fmtCost(v),
-      style: { fontSize: '11px', colors: ['#b0b4c0'], fontFamily: "'JetBrains Mono', monospace" },
+      style: { fontSize: '11px', colors: [getTheme() === 'dark' ? '#b0b4c0' : '#374151'], fontFamily: "'JetBrains Mono', monospace" },
       offsetX: 6,
     },
     xaxis: {
       categories,
       labels: {
         formatter: v => fmtCost(v),
-        style: { colors: '#6b7280', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
+        style: { colors: getTheme() === 'dark' ? '#6b7280' : '#4b5563', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
       },
-      axisBorder: { color: 'rgba(255,255,255,0.06)' },
-      axisTicks: { color: 'rgba(255,255,255,0.06)' },
+      axisBorder: { color: getTheme() === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' },
+      axisTicks: { color: getTheme() === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' },
     },
     yaxis: {
-      labels: { style: { colors: '#b0b4c0', fontSize: '12px' } },
+      labels: { style: { colors: getTheme() === 'dark' ? '#b0b4c0' : '#374151', fontSize: '12px' } },
     },
     fill: {
       type: 'gradient',
       gradient: {
-        shade: 'dark', type: 'horizontal',
+        shade: getTheme() === 'dark' ? 'dark' : 'light', type: 'horizontal',
         gradientToColors: ['#06b6d4'], stops: [0, 100],
         shadeIntensity: 0.4,
       },
     },
     colors: ['#6366f1'],
-    tooltip: { ...APEX_BASE.tooltip, y: { formatter: v => fmtCost(v) } },
+    tooltip: { ...getApexBase().tooltip, y: { formatter: v => fmtCost(v) } },
     responsive: [{
       breakpoint: 480,
       options: {
@@ -185,10 +188,10 @@ function renderApexArea(containerId, dataMap) {
   const values = entries.map(([, v]) => parseFloat(v.toFixed(6)));
 
   charts[containerId] = new ApexCharts(el, {
-    ...APEX_BASE,
+    ...getApexBase(),
     series: [{ name: _t('cost.cost_usd'), data: values }],
     chart: {
-      ...APEX_BASE.chart,
+      ...getApexBase().chart,
       type: 'area',
       height: 280,
       toolbar: {
@@ -201,9 +204,9 @@ function renderApexArea(containerId, dataMap) {
     fill: {
       type: 'gradient',
       gradient: {
-        shade: 'dark', type: 'vertical',
+        shade: getTheme() === 'dark' ? 'dark' : 'light', type: 'vertical',
         shadeIntensity: 0.5,
-        gradientToColors: ['#09090b'],
+        gradientToColors: [getTheme() === 'dark' ? '#09090b' : '#f8f9fb'],
         opacityFrom: 0.45, opacityTo: 0.02,
         stops: [0, 100],
       },
@@ -212,21 +215,21 @@ function renderApexArea(containerId, dataMap) {
     xaxis: {
       categories,
       labels: {
-        style: { colors: '#6b7280', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
+        style: { colors: getTheme() === 'dark' ? '#6b7280' : '#4b5563', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
         rotate: -45,
       },
-      axisBorder: { color: 'rgba(255,255,255,0.06)' },
-      axisTicks: { color: 'rgba(255,255,255,0.06)' },
+      axisBorder: { color: getTheme() === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' },
+      axisTicks: { color: getTheme() === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' },
     },
     yaxis: {
       labels: {
         formatter: v => fmtCost(v),
-        style: { colors: '#6b7280', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
+        style: { colors: getTheme() === 'dark' ? '#6b7280' : '#4b5563', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
       },
     },
     markers: { size: 4, colors: ['#6366f1'], strokeColors: '#818cf8', strokeWidth: 2, hover: { size: 6 } },
     tooltip: {
-      ...APEX_BASE.tooltip,
+      ...getApexBase().tooltip,
       x: { show: true },
       y: { formatter: v => fmtCost(v) },
       crosshairs: { stroke: { color: '#6366f1', width: 1, dashArray: 3 } },
@@ -368,6 +371,15 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
   const initTh = el.querySelector('[data-sort-key="_total"] .sort-arrow');
   if (initTh) initTh.textContent = ' ▼';
 }
+
+// Re-render charts on theme change
+window.addEventListener('themechange', function() {
+  var periodEl = qs('#filter-period');
+  var agentEl = qs('#filter-agent');
+  if (periodEl && agentEl) {
+    loadCost(periodEl.value, agentEl.value);
+  }
+});
 
 document.addEventListener('alpine:init', () => {
   Alpine.data('costPage', () => ({
