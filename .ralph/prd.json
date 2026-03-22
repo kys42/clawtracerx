@@ -1313,6 +1313,21 @@
         "ruff + pytest pass"
       ],
       "passes": true
+    },
+    {
+      "id": "US-063",
+      "title": "Lab page shows coming_soon instead of actual lab.html",
+      "category": "bugfix",
+      "priority": 63,
+      "description": "The /lab route renders coming_soon.html placeholder despite lab.html being fully implemented with all API endpoints. Fix route to render lab.html.",
+      "steps": [
+        "Change lab_page route to render lab.html"
+      ],
+      "acceptanceCriteria": [
+        "/lab shows full Lab interface",
+        "ruff + pytest pass"
+      ],
+      "passes": true
     }
   ]
 }

@@ -450,3 +450,15 @@
 **배운 점:**
 - D3 SVG 요소는 CSS 변수를 직접 사용하기 어려워 JS에서 `getTheme()` 체크 필요
 - 라이트 모드에서는 반투명 색상의 불투명도를 높여야 배경 대비 가독성 확보됨
+
+## Loop 36 — US-063: Lab 페이지 coming_soon → lab.html 라우팅 수정
+
+**작업 내용:**
+- `web.py` lab_page() 라우트가 `coming_soon.html` 대신 실제 `lab.html` 렌더링하도록 수정
+- Lab은 이미 완전 구현됨 (gateway RPC, SSE, context 편집, 세션 관리) — 라우트만 placeholder에 묶여 있었음
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- 기능 구현 완료 후 placeholder 라우트를 실제 템플릿으로 전환하는 것을 놓치기 쉬움
+- coming_soon.html이 존재한다면 어떤 라우트에서 참조하는지 grep으로 확인해야 함

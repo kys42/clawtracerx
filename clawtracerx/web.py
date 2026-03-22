@@ -621,7 +621,7 @@ def create_app():
 
     @app.route("/lab")
     def lab_page():
-        return render_template("coming_soon.html", feature="Lab", active="lab")
+        return render_template("lab.html")
 
     @app.route("/api/lab/sessions")
     def api_lab_sessions():
