@@ -30,6 +30,10 @@ var _TURNS_PAGE_SIZE = 50;
 function renderTurns(turns, compactionEvents) {
   const container = qs('#turns-container');
 
+  // Clear text buffer from previous render to prevent memory buildup
+  window._textBuf = {};
+  _textBufIdx = 0;
+
   // Build compaction boundary: find the first in-context turn index
   var contextBoundaryIdx = -1;
   for (var i = 0; i < turns.length; i++) {

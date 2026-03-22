@@ -3,6 +3,29 @@
 function qs(sel) { return document.querySelector(sel); }
 function qsa(sel) { return document.querySelectorAll(sel); }
 
+// === Theme toggle ===
+function getTheme() {
+  return document.documentElement.getAttribute('data-theme') || 'dark';
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('clawtracerx-theme', theme);
+  // Dispatch event so charts and other components can react
+  window.dispatchEvent(new CustomEvent('themechange', { detail: { theme: theme } }));
+}
+
+function toggleTheme() {
+  setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+}
+
+// Listen for OS preference changes (only if user hasn't manually chosen)
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function(e) {
+  if (!localStorage.getItem('clawtracerx-theme')) {
+    setTheme(e.matches ? 'light' : 'dark');
+  }
+});
+
 function debounce(fn, ms) {
   var timer;
   return function() {
@@ -230,7 +253,12 @@ function _refreshModalBody(loading) {
       pre.style.display   = 'none';
       mdDiv.style.display = 'block';
       var html = marked.parse(text);
-      mdDiv.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
+      if (typeof DOMPurify !== 'undefined') {
+        mdDiv.innerHTML = DOMPurify.sanitize(html);
+      } else {
+        // DOMPurify unavailable — fall back to plain text to avoid XSS
+        mdDiv.textContent = text;
+      }
       if (toggle) toggle.textContent = 'Raw';
     } catch (e) {
       // Markdown parse failed — fallback to raw text
@@ -268,9 +296,6 @@ function closeTextModal() {
   var modal = document.getElementById('text-modal');
   if (modal) modal.style.display = 'none';
   _modalRawText = '';
-  // Clear text buffer to prevent memory buildup
-  window._textBuf = {};
-  _textBufIdx = 0;
   // Restore focus to trigger element
   if (_modalPreviousFocus && _modalPreviousFocus.focus) {
     _modalPreviousFocus.focus();

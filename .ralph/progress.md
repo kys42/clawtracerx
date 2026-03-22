@@ -407,3 +407,32 @@
 **배운 점:**
 - US-041에서 turns.js XSS를 수정했지만 lab.html의 activity log는 별도 렌더링 함수라 누락됨
 - escHtml()이 이미 전역으로 존재하므로 적용 비용이 거의 없음 — 방어적으로 모든 동적 필드에 적용하는 것이 안전
+
+## Loop 33 — US-055~058: 전 페이지 DOM null safety 일괄 수정
+
+**작업 내용:**
+- **US-055**: cost.html — renderApexBar/renderApexArea/renderAgentTypeTable/loadCost의 qs() null 가드 추가. settings.html — renderHealth/refreshHealth/init의 getElementById null 가드
+- **US-056**: lab.html — loadContextFiles/loadActivityLog/showPendingMessage의 qs() null 가드
+- **US-057**: detail.html — populateToolFilter/filterTurns/clearFilters/renderHeader/SSE update의 qs() null 가드
+- **US-058**: sessions.html — loadSessions/filterCards/loadAgents/keyboard shortcut의 qs() null 가드
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- US-050~053에서 일부 페이지만 수정했기 때문에 나머지 페이지에 동일 패턴의 취약점이 잔존
+- 코드베이스 전체를 `qs(` 패턴으로 grep하여 누락 없이 한번에 수정하는 것이 효율적
+
+## Loop 34 — US-059~060 검증 + US-061: JS 보안/메모리 버그 수정
+
+**작업 내용:**
+- **US-059** (라이트 모드 테마): 전수 검증 — CSS 변수 세트, 토글 버튼, localStorage, prefers-color-scheme, ApexCharts 동적 전환, flash 방지 모두 구현됨. passes 마킹
+- **US-060** (모바일 UX): 전수 검증 — 햄버거 메뉴, 20+ @media(max-width:768px) 규칙, 터치 타겟 강화, hover:none 대응 모두 구현됨. passes 마킹
+- **US-061**: 두 JS 버그 수정:
+  1. `closeTextModal()`이 `_textBuf`를 전부 클리어 → 같은 페이지의 다른 "Full text" 버튼이 빈 내용 표시. 해결: `renderTurns()` 진입 시 클리어로 이동
+  2. DOMPurify CDN 로드 실패 시 `marked.parse()` 결과가 `innerHTML`에 직접 주입 (XSS). 해결: DOMPurify 없으면 `textContent` 폴백
+
+**결과:** ruff 통과, pytest 160 tests 전부 통과
+
+**배운 점:**
+- `_textBuf` 클리어 타이밍이 중요 — 모달 닫기(사용자 액션)가 아닌 새 데이터 렌더링(시스템 액션) 시점이 올바름
+- CDN 의존 라이브러리의 폴백은 반드시 안전한 대안을 제공해야 함 (innerHTML → textContent)

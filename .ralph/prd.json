@@ -1226,6 +1226,75 @@
         "ruff + pytest 통과"
       ],
       "passes": true
+    },
+    {
+      "id": "US-059",
+      "title": "라이트 모드 테마 시스템 구현",
+      "category": "design",
+      "priority": 59,
+      "description": "다크 모드 온리 → 라이트/다크 테마 토글 시스템 구현. style.css의 CSS 변수 체계(--bg-*, --text-*, --accent-* 등)를 전수 분석하고, 라이트 모드용 변수 세트 설계. 사이드바에 테마 토글 버튼, localStorage 저장, prefers-color-scheme OS 기본값 존중. 전 페이지 + 모든 컴포넌트(카드, 테이블, 차트, 모달, 토스트, 에러 배너, 코드 블록) + ApexCharts 테마 동적 전환. 구현 후 WCAG AA 대비 확인.",
+      "steps": [
+        "style.css 전수 분석 — 모든 CSS 변수 목록화",
+        "[data-theme='light'] 셀렉터로 라이트 모드 변수 세트 정의",
+        "base.html 사이드바에 테마 토글 버튼 추가",
+        "app.js 테마 전환 로직 — html data-theme 토글, localStorage, prefers-color-scheme",
+        "ApexCharts 테마 동적 전환",
+        "하드코딩 색상 → CSS 변수 교체",
+        "전 페이지 라이트 모드 WCAG AA 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "토글로 다크↔라이트 즉시 전환",
+        "재방문 시 선택 테마 유지",
+        "전 페이지 + ApexCharts 라이트 모드 정상",
+        "WCAG AA 대비 충족",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-060",
+      "title": "모바일 UX 전면 점검 및 개선",
+      "category": "design",
+      "priority": 60,
+      "description": "전 페이지 모바일 대응 현상 분석 → 수정 → 확인을 한 묶음으로. (1) 분석: 모든 템플릿+CSS의 @media 규칙, 인라인 고정 width, overflow, 터치 타겟, 터치 이벤트 전수 점검. (2) 수정: 고정 width→max-width/100%, 터치 타겟 44px 미만 확대, 테이블 overflow-x, 모달 전체화면, 차트 높이, 2컬럼→1컬럼 스택, Graph 터치 드래그/핀치줌. (3) 확인: 375px 뷰포트에서 전 페이지 주요 인터랙션(검색, 필터, 턴 펼침, 차트, 햄버거, 모달) 동작 코드 검증. 라이트/다크 양쪽.",
+      "steps": [
+        "전 템플릿 인라인 style + CSS 읽고 모바일 문제점 수집",
+        "@media(max-width:768px) 누락 페이지/컴포넌트에 추가",
+        "인라인 min-width/고정 width → CSS class + 미디어쿼리 교체",
+        "터치 타겟 44px 미만 → padding 확대",
+        "테이블 overflow-x:auto, 모달 모바일 전체화면",
+        "Lab 모바일 1컬럼 + 컨텍스트 접이식",
+        "Graph 터치 드래그/핀치줌 확인",
+        "라이트+다크 양쪽 모바일 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "375px에서 전 페이지 깨지지 않고 사용 가능",
+        "터치 타겟 44px 이상",
+        "모든 인터랙션 모바일에서 동작",
+        "라이트/다크 양쪽 정상",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-061",
+      "title": "JS bugfix: textBuf early clear + DOMPurify XSS fallback",
+      "category": "bugfix",
+      "priority": 61,
+      "description": "Fix two JS bugs: (1) closeTextModal clears textBuf making other Full text buttons empty. (2) DOMPurify CDN fail causes XSS via innerHTML.",
+      "steps": [
+        "Remove textBuf clear from closeTextModal",
+        "Add textBuf clear to renderTurns",
+        "Fix DOMPurify fallback to textContent"
+      ],
+      "acceptanceCriteria": [
+        "Modal close does not break other Full text buttons",
+        "No XSS without DOMPurify",
+        "ruff + pytest pass"
+      ],
+      "passes": true
     }
   ]
 }
