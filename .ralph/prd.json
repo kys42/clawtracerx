@@ -1328,6 +1328,183 @@
         "ruff + pytest pass"
       ],
       "passes": true
+    },
+    {
+      "id": "US-100",
+      "title": "Next.js 프로젝트 셋업 + 공용 인프라",
+      "category": "feature",
+      "priority": 100,
+      "description": "frontend/ 디렉토리에 Next.js 15 App Router + TypeScript 프로젝트를 새로 만든다. 기존 Flask 코드는 일절 수정하지 않는다. Flask API(:8901)를 프록시로 연결하여 /api/* 요청을 백엔드로 전달. Tailwind CSS + shadcn/ui 설치. next-themes(다크/라이트), next-intl(EN/KO) 설정. 공용 타입 정의(types/ — 현재 Python dataclass 기반으로 Session, Turn, ToolCall, SubagentSpawn, CostData 등), 공용 유틸(lib/api.ts SWR fetcher, lib/format.ts fmtTokens/fmtCost/fmtDuration/fmtSize — 현재 app.js 참조). 레이아웃(app/layout.tsx): 사이드바(Home/Sessions/Cost/Schedule/Lab/Settings), 하단 에이전트 목록+Health 점(GET /api/agents, /api/health), 테마 토글, 언어 토글, 모바일 햄버거. 검증: cd frontend && npm run dev → localhost:3000에서 사이드바 렌더링.",
+      "steps": [
+        "npx create-next-app@latest frontend --typescript --tailwind --app --src-dir",
+        "cd frontend && npx shadcn@latest init",
+        "npm install next-themes next-intl swr apexcharts react-apexcharts d3 @types/d3",
+        "next.config.ts에 rewrites: /api/:path* → http://localhost:8901/api/:path*",
+        "types/ 디렉토리에 Session, Turn, ToolCall 등 타입 정의 (clawtracerx/session_parser.py dataclass 참조)",
+        "lib/api.ts: SWR fetcher + fetchJSON/postJSON/putJSON",
+        "lib/format.ts: fmtTokens, fmtCost, fmtDuration, fmtSize (clawtracerx/static/app.js 참조)",
+        "app/layout.tsx: 사이드바 + 테마 + 언어 + 모바일 햄버거",
+        "검증: npm run dev → 사이드바 + 빈 페이지"
+      ],
+      "acceptanceCriteria": [
+        "frontend/ 디렉토리에서 npm run dev 정상 실행",
+        "localhost:3000에서 사이드바 렌더링",
+        "/api/agents 프록시 호출 정상",
+        "다크/라이트 테마 토글 동작",
+        "기존 clawtracerx/ 코드 미수정"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-101",
+      "title": "Sessions 페이지 — 세부 기능 전수 이관",
+      "category": "feature",
+      "priority": 101,
+      "description": "현재 sessions.html의 모든 기능을 Next.js로 구현. 기존 템플릿 코드를 꼼꼼히 읽고 빠짐없이 옮긴다. GET /api/sessions SWR 호출, 타입 필터(All/Chat/Cron/HB/Sub), 에이전트 필터(세션 수 표시), 세션 카드(ID/에이전트뱃지/타입뱃지/모델/턴수/토큰/비용/날짜/파일크기), 카드 클릭→/session/[id], 마지막 메시지 프리뷰(user+assistant), 📋ID복사, 검색(session_id/agent_id/메시지 클라이언트 필터), 검색 결과 카운트, Export CSV 다운로드, Load More 페이지네이션, 고비용 뱃지, URL ?agent=X 파라미터 자동 필터. 구현 후 놓친 기능이 있으면 후속 스토리로 PRD에 추가.",
+      "steps": [
+        "clawtracerx/templates/sessions.html을 전체 읽고 기능 목록 추출",
+        "app/sessions/page.tsx 구현",
+        "SessionCard 컴포넌트, FilterBar 컴포넌트 분리",
+        "검색 + 필터 + 페이지네이션 + Export 모두 구현",
+        "검증: 세션 목록 로드 + 필터 + 검색 동작",
+        "놓친 기능 있으면 PRD에 후속 스토리 추가"
+      ],
+      "acceptanceCriteria": [
+        "sessions.html의 모든 기능이 Next.js에서 동작",
+        "필터, 검색, Export, 페이지네이션 전부 동작",
+        "기존 디자인 수준 이상의 UI"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-102",
+      "title": "Home + Cost 페이지",
+      "category": "feature",
+      "priority": 102,
+      "description": "Home: 브랜드 헤더, 통계 카드 5개(Sessions/Turns/Cost/Agents/ToolCalls), Feature 카드 3개(미니 프리뷰+링크). Cost: GET /api/cost, 기간/에이전트 필터, 요약 카드 3개, ApexCharts 4개(by agent/type/model bar + daily area), Agent×Type 정렬 테이블, 차트 바 클릭→/sessions?agent=X 드릴다운. 각 Flask 템플릿(home.html, cost.html)을 꼼꼼히 읽고 빠짐없이 구현. 놓친 기능 있으면 후속 스토리 추가.",
+      "steps": [
+        "clawtracerx/templates/home.html, cost.html 전체 읽고 기능 추출",
+        "app/home/page.tsx, app/cost/page.tsx 구현",
+        "ApexCharts React 래퍼 사용, 다크/라이트 테마 연동",
+        "차트 드릴다운 이벤트 핸들러",
+        "검증: Home 통계 + Cost 차트/테이블 동작"
+      ],
+      "acceptanceCriteria": [
+        "Home 통계 카드 데이터 정상",
+        "Cost 차트 4개 + 필터 + 드릴다운 동작",
+        "라이트/다크 양쪽 차트 정상"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-103",
+      "title": "중간 점검 1차 — 기능/디자인 자율 탐색",
+      "category": "meta",
+      "priority": 103,
+      "description": "US-100~102 완료 후 실행. 현재 Flask 템플릿(home, sessions, cost)의 JS 로직을 코드 레벨에서 읽고 Next.js 구현과 비교. 누락 기능, UX 차이, 디자인 불일치, 엣지 케이스를 찾아 PRD에 새 스토리로 추가. 코드 수정 없이 PRD만 업데이트.",
+      "steps": [
+        "Flask 원본 JS 코드와 Next.js 구현을 기능별로 1:1 대조",
+        "누락된 인터랙션, 상태 관리, 에러 핸들링 탐색",
+        "발견 사항을 새 스토리로 PRD에 추가 (최소 3개)",
+        "이 스토리를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리 추가",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-104",
+      "title": "Session Detail 페이지 — 세부 기능 전수 이관 + SSE 라이브",
+      "category": "feature",
+      "priority": 104,
+      "description": "현재 detail.html의 모든 기능을 Next.js로 구현. 세션 헤더(메타데이터 그리드), Context Injection 패널(접이식), 턴 타임라인(TurnCard/ToolCallItem/SubagentSpawn 재귀 컴포넌트), 턴 검색/도구 필터, Expand All/Collapse All, 턴 페이지네이션(50개씩), Raw JSONL 모달, Export JSON, 정렬 토글, Live SSE 스트리밍(EventSource → append/patch/스크롤 보존/초록점 pulse), 워크플로우 그룹, compaction divider, thinking 블록, delivery mirror. 놓친 기능 있으면 후속 스토리 추가.",
+      "steps": [
+        "clawtracerx/templates/detail.html + static/turns.js 전체 읽고 기능 추출",
+        "app/session/[id]/page.tsx + 컴포넌트 분리 (TurnCard, ToolCall, SubagentSpawn 등)",
+        "SSE 라이브: useEffect + EventSource, update/patch/done 핸들러",
+        "검증: 세션 로드 + 턴 + Live + 검색 + Export"
+      ],
+      "acceptanceCriteria": [
+        "detail.html의 모든 기능이 Next.js에서 동작",
+        "SSE 라이브 스트리밍 동작 (새 턴 실시간 추가)",
+        "턴 검색/필터, Expand All, 페이지네이션 동작"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-105",
+      "title": "Schedule + Settings + Graph 페이지",
+      "category": "feature",
+      "priority": 105,
+      "description": "Schedule: 요약 카드 4개, 하트비트 24시간 바, 크론 잡 카드(페이로드 미리보기/모달), 최근 실행 테이블, Auto-refresh. Settings: OpenClaw 디렉토리 설정, System Status Health 카드, Retry 버튼, 로그 뷰어(web/lab 탭). Graph: D3.js Force(useEffect), 노드 패널, 줌/패닝, Reset/Toggle Layout. 각 Flask 템플릿 꼼꼼히 읽고 구현. 놓친 기능 있으면 후속 스토리 추가.",
+      "steps": [
+        "schedule.html, settings.html, graph.html 전체 읽고 기능 추출",
+        "app/schedule/page.tsx, app/settings/page.tsx, app/session/[id]/graph/page.tsx",
+        "D3.js는 useEffect 내에서 직접 사용",
+        "검증: 3페이지 데이터 + 인터랙션"
+      ],
+      "acceptanceCriteria": [
+        "3개 페이지 모든 기능 동작",
+        "D3 그래프 줌/드래그/노드 클릭 동작"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-106",
+      "title": "중간 점검 2차 — Detail/Schedule/Graph 자율 탐색",
+      "category": "meta",
+      "priority": 106,
+      "description": "US-104~105 완료 후. Flask 원본과 1:1 비교. SSE 동작, 그래프 인터랙션, 모바일, 접근성 놓친 부분 탐색. 발견 사항 PRD에 추가 (최소 3개).",
+      "steps": [
+        "Flask 원본과 Next.js 구현 기능별 대조",
+        "발견 사항을 새 스토리로 추가",
+        "이 스토리를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리 추가",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-107",
+      "title": "i18n + 접근성 + 모바일 + 라이트/다크 최종 점검",
+      "category": "design",
+      "priority": 107,
+      "description": "next-intl EN/KO 300+ 키 마이그레이션(현재 i18n.js 참조). 접근성: aria-label, 키보드 nav, 포커스 트랩, WCAG AA 대비. 모바일: 375px~768px 전 페이지 반응형. 라이트/다크 양쪽 전 페이지 확인.",
+      "steps": [
+        "clawtracerx/static/i18n.js 번역 키 전부 추출 → next-intl messages/en.json, messages/ko.json",
+        "전 페이지 접근성 점검 + 수정",
+        "모바일 반응형 점검 + 수정",
+        "라이트/다크 양쪽 확인"
+      ],
+      "acceptanceCriteria": [
+        "KO/EN 전환 동작",
+        "모바일 375px 전 페이지 정상",
+        "라이트/다크 양쪽 정상",
+        "WCAG AA 대비 충족"
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-108",
+      "title": "최종 리뷰 — 전체 품질 자율 탐색",
+      "category": "meta",
+      "priority": 108,
+      "description": "전체 코드 리뷰(타입 안전성, 에러 핸들링, 번들 사이즈, 성능). Flask 원본 대비 기능 완전성 최종 체크. 발견된 이슈를 새 스토리로 추가.",
+      "steps": [
+        "전체 코드 리뷰",
+        "Flask 원본과 기능 완전성 체크",
+        "발견 이슈 새 스토리로 추가",
+        "이 스토리를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리 추가",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": false
     }
   ]
 }
