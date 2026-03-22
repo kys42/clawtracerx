@@ -55,6 +55,8 @@ const NODE_COLORS = {
   subagent: { grad: 'grad-sub',     stroke: '#fbbf24' },
 };
 
+function _isDark() { return getTheme() === 'dark'; }
+
 async function init() {
   const container = qs('#graph-container');
   if (!container) return;
@@ -78,7 +80,7 @@ async function init() {
     .attr('id', 'dot-grid').attr('width', 24).attr('height', 24)
     .attr('patternUnits', 'userSpaceOnUse');
   pat.append('circle').attr('cx', 1).attr('cy', 1).attr('r', 0.7)
-    .attr('fill', 'rgba(255,255,255,0.07)');
+    .attr('fill', _isDark() ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)');
   svgEl.append('rect').attr('width', '100%').attr('height', '100%')
     .attr('fill', 'url(#dot-grid)');
 
@@ -145,7 +147,9 @@ async function init() {
   linkSelection = g.append('g').selectAll('.d3-link')
     .data(allEdges).enter().append('path')
     .attr('class', 'd3-link').attr('fill', 'none')
-    .attr('stroke', d => d.type === 'spawns' ? 'rgba(245,158,11,0.35)' : 'rgba(99,102,241,0.22)')
+    .attr('stroke', d => d.type === 'spawns'
+      ? (_isDark() ? 'rgba(245,158,11,0.35)' : 'rgba(217,119,6,0.50)')
+      : (_isDark() ? 'rgba(99,102,241,0.22)' : 'rgba(79,70,229,0.30)'))
     .attr('stroke-width', d => d.type === 'spawns' ? 2 : 1)
     .attr('marker-end', d => d.type === 'spawns' ? 'url(#arrow-spawn)' : 'url(#arrow)');
 
@@ -177,7 +181,7 @@ async function init() {
 
   nodeSelection.append('text')
     .attr('text-anchor', 'middle').attr('dy', d => d.radius + 14)
-    .attr('fill', '#e2e8f0')
+    .attr('fill', _isDark() ? '#e2e8f0' : '#1f2937')
     .attr('font-size', d => d.type === 'tool' ? '9px' : '11px')
     .attr('font-family', 'Inter, system-ui, sans-serif').attr('font-weight', '500')
     .text(d => truncate(d.label, 20));
@@ -185,7 +189,7 @@ async function init() {
   nodeSelection.filter(d => d.sublabel && d.type !== 'tool')
     .append('text')
     .attr('text-anchor', 'middle').attr('dy', d => d.radius + 27)
-    .attr('fill', '#6b7280').attr('font-size', '9px')
+    .attr('fill', _isDark() ? '#6b7280' : '#4b5563').attr('font-size', '9px')
     .attr('font-family', 'Inter, system-ui, sans-serif')
     .text(d => truncate(d.sublabel, 25));
 

@@ -1295,6 +1295,24 @@
         "ruff + pytest pass"
       ],
       "passes": true
+    },
+    {
+      "id": "US-062",
+      "title": "Graph page light mode theme support",
+      "category": "bugfix",
+      "priority": 62,
+      "description": "graph.html D3 elements use hardcoded dark-mode colors making labels invisible and links barely visible in light mode. Fix dot grid, node labels, sublabels, and link strokes to be theme-aware.",
+      "steps": [
+        "Add _isDark helper",
+        "Fix dot grid fill",
+        "Fix label and sublabel fill colors",
+        "Fix link stroke colors"
+      ],
+      "acceptanceCriteria": [
+        "Graph readable in both light and dark modes",
+        "ruff + pytest pass"
+      ],
+      "passes": true
     }
   ]
 }
