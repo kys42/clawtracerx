@@ -333,5 +333,19 @@ function closePanel() { var p = qs('#node-panel'); if (p) p.style.display = 'non
 function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
 
 init();
+
+// Re-render graph when theme changes so D3 colors update
+window.addEventListener('themechange', function() {
+  var container = qs('#graph-container');
+  if (container) {
+    var svgOld = qs('#graph-svg');
+    if (svgOld) svgOld.remove();
+    var newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    newSvg.id = 'graph-svg';
+    container.appendChild(newSvg);
+    if (simulation) simulation.stop();
+    init();
+  }
+});
 </script>
 {% endblock %}
