@@ -1049,6 +1049,11 @@ def _build_turns(
 
                     if recursive_subagents and child_key:
                         child_file = find_subagent_child_session(child_key)
+                        # Fallback: try real session ID from runs.json
+                        if not child_file and reg:
+                            real_sid = reg.get("sessionId", "")
+                            if real_sid:
+                                child_file = _find_child_session_by_id(real_sid, agent_id)
                         if child_file:
                             child_analysis = parse_session(child_file, recursive_subagents=True, _depth=_depth + 1)
                             spawn.child_turns = child_analysis.turns
