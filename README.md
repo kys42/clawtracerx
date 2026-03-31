@@ -33,6 +33,20 @@ Parses JSONL session transcripts into a web dashboard + CLI. See every turn, too
 
 ---
 
+## Why ClawTracerX?
+
+AI agents run autonomously — cron jobs, heartbeats, multi-step workflows. Without observability, you have no idea what's actually happening inside.
+
+**A single cron turn can burn 1.98M tokens, call 63 tools, and produce 12 errors** — all while you sleep. The agent retries, hallucinates file paths, runs `sed` on the wrong line, spawns subagents that repeat the same mistakes. You won't know until the bill arrives or something breaks in production.
+
+ClawTracerX cracks open every session so you can see:
+- Exactly which tools were called, in what order, and which ones failed
+- How the agent's thinking evolved between each action (thinking → tool call → response → retry)
+- How much each turn actually cost in tokens and dollars
+- Which subagents were spawned, what tasks they were given, and what happened inside them
+
+---
+
 ## Features
 
 - **Session Timeline** — Every turn visualized: user messages, assistant thinking, tool calls, subagent spawns, with per-message token counts and cost
