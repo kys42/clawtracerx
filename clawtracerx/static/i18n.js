@@ -95,6 +95,10 @@
       'sessions.s_per_turn': '초/턴',
       'sessions.per_turn': '/턴',
       'sessions.turns': '턴',
+      'sessions.search_placeholder': '세션 검색 (ID, 에이전트, 메시지)...',
+      'sessions.no_match': '일치하는 세션 없음',
+      'sessions.export_csv': 'CSV 내보내기',
+      'sessions.high_cost': '고비용',
 
       // === Detail 페이지 ===
       'detail.title': '세션',
@@ -129,6 +133,15 @@
       'detail.system': '시스템',
       'detail.turn': '턴',
       'detail.error': '오류:',
+      'detail.expand_all': '전체 펼치기',
+      'detail.collapse_all': '전체 접기',
+      'detail.search_placeholder': '턴 검색...',
+      'detail.filter_all_tools': '전체 도구',
+      'detail.matches': '개 일치',
+      'detail.clear_filter': '초기화',
+      'detail.export_json': 'JSON 내보내기',
+      'detail.live': '실시간',
+      'detail.live_complete': '완료',
 
       // === Cost 페이지 ===
       'cost.title': '비용 대시보드',
@@ -169,6 +182,7 @@
       'graph.turns': '턴',
       'graph.tools': '도구',
       'graph.open_child': '하위 세션 열기',
+      'graph.no_data': '그래프 데이터가 없습니다.',
 
       // === Lab 페이지 ===
       'lab.title': '실험실',
@@ -220,6 +234,7 @@
       'lab.new_session': '새 세션:',
       'lab.send_failed': '전송 실패:',
       'lab.agent_completed': '에이전트 완료',
+      'lab.connection_lost': '연결이 끊겼습니다. 재연결하려면 클릭하세요.',
       'lab.no_context': '컨텍스트 파일 없음',
       'lab.modified': '수정됨',
       'lab.reload': '새로고침',
@@ -274,6 +289,7 @@
       'settings.show_config': '설정 파일 보기',
       'settings.hide_config': '설정 파일 숨기기',
       'settings.config_masked': '민감 정보는 마스킹됩니다.',
+      'settings.log_viewer': '로그 뷰어',
 
       // === Schedule 페이지 ===
       'schedule.title': '스케줄',
@@ -299,6 +315,7 @@
       'schedule.turns': '턴',
       'schedule.no_sessions': '최근 세션 없음.',
       'schedule.load_failed': '로딩 실패:',
+      'schedule.auto_refresh': '자동 갱신',
 
       // === turns.js 공유 ===
       'turns.ch': '자',
@@ -315,6 +332,8 @@
       'turns.delivered': '전달됨',
       'turns.subagents': '서브에이전트',
       'turns.cache': '캐시',
+      'turns.load_more': '더 보기',
+      'turns.remaining': '남음',
       'turns.view_raw': 'Raw JSONL 보기',
       'turns.user': '사용자',
       'turns.thinking': '사고',
@@ -337,6 +356,10 @@
       'turns.output': '출력:',
       'turns.show_full': '전문 보기',
       'turns.subagent_task': '서브에이전트 작업',
+
+      // === Update ===
+      'update.available': '새 버전이 있습니다:',
+      'update.view': '릴리스 보기',
     },
 
     en: {
@@ -430,6 +453,10 @@
       'sessions.s_per_turn': 's/turn',
       'sessions.per_turn': '/turn',
       'sessions.turns': 'turns',
+      'sessions.search_placeholder': 'Search sessions (ID, agent, message)...',
+      'sessions.no_match': 'No matching sessions',
+      'sessions.export_csv': 'Export CSV',
+      'sessions.high_cost': 'High Cost',
 
       // === Detail ===
       'detail.title': 'Session',
@@ -464,6 +491,15 @@
       'detail.system': 'System',
       'detail.turn': 'Turn',
       'detail.error': 'Error:',
+      'detail.expand_all': 'Expand All',
+      'detail.collapse_all': 'Collapse All',
+      'detail.search_placeholder': 'Search turns...',
+      'detail.filter_all_tools': 'All tools',
+      'detail.matches': ' matches',
+      'detail.clear_filter': 'Clear',
+      'detail.export_json': 'Export JSON',
+      'detail.live': 'Live',
+      'detail.live_complete': 'Complete',
 
       // === Cost ===
       'cost.title': 'Cost Dashboard',
@@ -504,6 +540,7 @@
       'graph.turns': 'Turns',
       'graph.tools': 'Tools',
       'graph.open_child': 'Open Child Session',
+      'graph.no_data': 'No graph data available.',
 
       // === Lab ===
       'lab.title': 'Lab',
@@ -555,6 +592,7 @@
       'lab.new_session': 'New session:',
       'lab.send_failed': 'Send failed:',
       'lab.agent_completed': 'Agent completed',
+      'lab.connection_lost': 'Connection lost. Click to reconnect.',
       'lab.no_context': 'No context files found',
       'lab.modified': 'modified',
       'lab.reload': 'Reload',
@@ -609,6 +647,7 @@
       'settings.show_config': 'Show Config',
       'settings.hide_config': 'Hide Config',
       'settings.config_masked': 'Sensitive values are masked.',
+      'settings.log_viewer': 'Log Viewer',
 
       // === Schedule ===
       'schedule.title': 'Schedule',
@@ -634,6 +673,7 @@
       'schedule.turns': 'turns',
       'schedule.no_sessions': 'No recent sessions.',
       'schedule.load_failed': 'Load failed:',
+      'schedule.auto_refresh': 'Auto-refresh',
 
       // === turns.js ===
       'turns.ch': 'ch',
@@ -650,6 +690,8 @@
       'turns.delivered': 'delivered',
       'turns.subagents': 'subagents',
       'turns.cache': 'cache',
+      'turns.load_more': 'Load more turns',
+      'turns.remaining': 'remaining',
       'turns.view_raw': 'View raw JSONL',
       'turns.user': 'User',
       'turns.thinking': 'Thinking',
@@ -672,6 +714,10 @@
       'turns.output': 'Out:',
       'turns.show_full': 'Show full',
       'turns.subagent_task': 'Subagent task',
+
+      // === Update ===
+      'update.available': 'New version available:',
+      'update.view': 'View Release',
     },
   };
 

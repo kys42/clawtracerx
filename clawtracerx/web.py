@@ -3,15 +3,20 @@ ClawTracerX web — Flask web dashboard for OpenClaw agent monitoring.
 """
 from __future__ import annotations
 
+import csv
 import glob as _glob
+import io
 import json
 import logging
+import logging.handlers
 import os
 import re
 import shutil
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -53,7 +58,7 @@ def _get_openclaw_src() -> Path | None:
         rel = m.group(1)  # e.g. ../../sources/openclaw/openclaw.mjs
         src = (wrapper.parent / rel).resolve().parent
         return src if src.is_dir() else None
-    except Exception:
+    except (OSError, ValueError):
         return None
 
 
@@ -121,9 +126,21 @@ def _build_tool_desc_map() -> dict:
 _lab_log_file = Path(_get_base_path()).parent / "lab.log"
 _lab_logger = logging.getLogger("ctrace.lab")
 _lab_logger.setLevel(logging.INFO)
-_lab_handler = logging.FileHandler(_lab_log_file, encoding="utf-8")
+_lab_handler = logging.handlers.RotatingFileHandler(
+    _lab_log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
 _lab_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
 _lab_logger.addHandler(_lab_handler)
+
+# --- Web request logger ---
+_web_log_file = Path(_get_base_path()).parent / "web.log"
+_web_logger = logging.getLogger("ctrace.web")
+_web_logger.setLevel(logging.INFO)
+_web_handler = logging.handlers.RotatingFileHandler(
+    _web_log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
+_web_handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+_web_logger.addHandler(_web_handler)
 
 # In-memory log for UI display (last 100 entries) — thread-safe deque
 _lab_activity_log: deque = deque(maxlen=100)
@@ -136,6 +153,21 @@ def _log_lab(action: str, **kwargs):
         _lab_activity_log.append(entry)
 
 
+# --- SSE streaming constants ---
+SSE_POLL_INTERVAL = 0.5       # seconds between file checks
+SSE_TIMEOUT_CYCLES = 600      # idle cycles before timeout (= 5 min at 0.5s)
+SSE_HEARTBEAT_INTERVAL = 30   # idle cycles between heartbeat comments
+
+
+def _int_param(name: str, default: int) -> int:
+    """Safely parse an integer query parameter, returning default on bad input."""
+    val = request.args.get(name, default)
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def create_app():
     _base = _get_base_path()
     app = Flask(__name__,
@@ -145,6 +177,18 @@ def create_app():
     @app.context_processor
     def inject_globals():
         return {'home_dir': os.path.expanduser('~')}
+
+    # --- Request logging ---
+    @app.after_request
+    def _log_request(response):
+        # Skip static files and SSE streams
+        if not request.path.startswith("/static") and not request.path.endswith("/stream"):
+            _web_logger.info(
+                "%s %s %s %s",
+                request.method, request.path, response.status_code,
+                request.remote_addr,
+            )
+        return response
 
     # --- Pages ---
 
@@ -177,7 +221,7 @@ def create_app():
     @app.route("/api/sessions")
     def api_sessions():
         agent = request.args.get("agent", "all")
-        last_n = int(request.args.get("last", 50))
+        last_n = _int_param("last", 50)
         session_type = request.args.get("type")
 
         sessions = list_sessions(
@@ -216,17 +260,23 @@ def create_app():
         if not file_path:
             abort(404, "Session not found")
 
-        analysis = parse_session(file_path, recursive_subagents=True)
+        try:
+            analysis = parse_session(file_path, recursive_subagents=True)
+        except (OSError, json.JSONDecodeError, KeyError) as e:
+            abort(400, f"Bad session data: {e}")
         return jsonify(_serialize_analysis(analysis))
 
     @app.route("/api/session/<session_id>/graph")
     def api_session_graph(session_id):
-        """Return graph data for subagent tree visualization."""
+        """Return nodes + edges for interactive D3 graph visualization."""
         file_path = _resolve(session_id)
         if not file_path:
             abort(404, "Session not found")
 
-        analysis = parse_session(file_path, recursive_subagents=True)
+        try:
+            analysis = parse_session(file_path, recursive_subagents=True)
+        except (OSError, json.JSONDecodeError, KeyError) as e:
+            abort(400, f"Bad session data: {e}")
         nodes, edges = _build_graph(analysis)
         return jsonify({"nodes": nodes, "edges": edges})
 
@@ -282,7 +332,7 @@ def create_app():
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
             return jsonify({"content": content, "size": path.stat().st_size, "name": path.name})
-        except Exception as e:
+        except OSError as e:
             abort(500, str(e))
 
     @app.route("/api/session/<session_id>/raw/<int:turn_index>")
@@ -292,6 +342,137 @@ def create_app():
             abort(404, "Session not found")
         raw_lines = get_raw_turn_lines(file_path, turn_index)
         return jsonify(raw_lines)
+
+    @app.route("/api/sessions/export")
+    def api_sessions_export():
+        """Export sessions list as CSV."""
+        agent = request.args.get("agent", "all")
+        last_n = _int_param("last", 200)
+        sessions = list_sessions(
+            agent_id=None if agent == "all" else agent,
+            last_n=last_n,
+        )
+        buf = io.StringIO()
+        buf.write("\ufeff")  # UTF-8 BOM for Excel
+        writer = csv.writer(buf)
+        writer.writerow(["session_id", "agent_id", "type", "model", "turns",
+                         "tokens", "cost", "started_at", "file_size",
+                         "tool_calls", "errors", "subagents", "channel"])
+        for s in sessions:
+            started = s.get("started_at", "")
+            writer.writerow([
+                s["session_id"], s["agent_id"], s.get("type", "chat"),
+                s.get("model", ""), s.get("turns", 0), s.get("tokens", 0),
+                round(s.get("cost", 0), 6),
+                started.isoformat() if hasattr(started, "isoformat") else "",
+                s.get("file_size", 0),
+                s.get("tool_calls", 0), s.get("errors", 0),
+                s.get("subagents", 0), s.get("channel", ""),
+            ])
+        return Response(
+            buf.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=sessions.csv"},
+        )
+
+    @app.route("/api/session/<session_id>/export")
+    def api_session_export(session_id):
+        """Export single session analysis as JSON."""
+        file_path = _resolve(session_id)
+        if not file_path:
+            abort(404, "Session not found")
+        analysis = parse_session(file_path, recursive_subagents=True)
+        data = _serialize_analysis(analysis)
+        return Response(
+            json.dumps(data, indent=2, ensure_ascii=False),
+            mimetype="application/json",
+            headers={"Content-Disposition": f"attachment; filename={session_id[:10]}.json"},
+        )
+
+    @app.route("/api/session/<session_id>/stream")
+    def api_session_stream(session_id):
+        """SSE stream for real-time session detail monitoring."""
+        file_path = _resolve(session_id)
+        if not file_path:
+            return jsonify({"error": "session not found"}), 404
+
+        def generate():
+            last_size = 0
+            last_turn_count = 0
+            event_id = 0
+            idle_count = 0
+
+            # Initial state — just send turn count so client knows baseline
+            try:
+                analysis = parse_session(file_path, recursive_subagents=True)
+                data = _serialize_analysis(analysis)
+                last_size = file_path.stat().st_size
+                last_turn_count = len(data.get("turns", []))
+                event_id += 1
+                yield f"id: {event_id}\nevent: init\ndata: {json.dumps({'turn_count': last_turn_count})}\n\n"
+            except Exception as e:  # broad catch: SSE must yield error, not crash
+                logging.warning("SSE init error: %s", e, exc_info=True)
+                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+                return
+
+            while True:
+                time.sleep(SSE_POLL_INTERVAL)
+                try:
+                    current_size = file_path.stat().st_size
+                except OSError:
+                    idle_count += 1
+                    if idle_count >= SSE_TIMEOUT_CYCLES:
+                        yield "event: timeout\ndata: {}\n\n"
+                        return
+                    if idle_count % SSE_HEARTBEAT_INTERVAL == 0:
+                        yield ": heartbeat\n\n"
+                    continue
+
+                if current_size == last_size:
+                    idle_count += 1
+                    if idle_count % SSE_HEARTBEAT_INTERVAL == 0:
+                        yield ": heartbeat\n\n"
+                    continue
+
+                idle_count = 0
+                last_size = current_size
+
+                try:
+                    analysis = parse_session(file_path, recursive_subagents=True)
+                    data = _serialize_analysis(analysis)
+                    turns = data.get("turns", [])
+                    new_count = len(turns)
+
+                    if new_count > last_turn_count:
+                        delta = {
+                            "new_turns": turns[last_turn_count:],
+                            "total_turns": new_count,
+                        }
+                        last_turn_count = new_count
+                        event_id += 1
+                        yield f"id: {event_id}\nevent: update\ndata: {json.dumps(delta)}\n\n"
+                        if turns[-1].get("stop_reason") == "stop":
+                            yield "event: done\ndata: {}\n\n"
+                            return
+                    elif new_count == last_turn_count and turns:
+                        event_id += 1
+                        yield f"id: {event_id}\nevent: patch\ndata: {json.dumps({'index': turns[-1]['index'], 'turn': turns[-1]})}\n\n"
+                        if turns[-1].get("stop_reason") == "stop":
+                            yield "event: done\ndata: {}\n\n"
+                            return
+                except Exception as e:  # broad catch: SSE must yield error, not crash
+                    logging.warning("SSE poll error: %s", e, exc_info=True)
+                    yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+        return Response(
+            stream_with_context(generate()),
+            content_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.route("/api/cost")
     def api_cost():
@@ -358,7 +539,7 @@ def create_app():
 
     @app.route("/api/crons")
     def api_crons():
-        last_n = int(request.args.get("last", 50))
+        last_n = _int_param("last", 50)
         runs = load_cron_runs(last_n=last_n)
         return jsonify([{
             "ts": r.ts,
@@ -388,14 +569,14 @@ def create_app():
                 "agent_id": job.get("agentId", ""),
                 "enabled": job.get("enabled", False),
                 "schedule_expr": schedule.get("expr", ""),
-                "schedule_tz": schedule.get("tz", ""),
+                "timezone": schedule.get("tz", ""),
                 "wake_mode": job.get("wakeMode", ""),
                 "last_status": state.get("lastStatus", ""),
                 "last_run_at_ms": state.get("lastRunAtMs"),
                 "last_duration_ms": state.get("lastDurationMs"),
                 "next_run_at_ms": state.get("nextRunAtMs"),
                 "consecutive_errors": state.get("consecutiveErrors", 0),
-                "payload_message": _truncate(job.get("payload", {}).get("message", ""), 200),
+                "payload_message": job.get("payload", {}).get("message", "") or job.get("payload", {}).get("text", ""),
                 "runs": runs,
             })
         jobs.sort(key=lambda j: (not j["enabled"], j.get("next_run_at_ms") or float('inf')))
@@ -425,7 +606,11 @@ def create_app():
     def api_agents():
         agents = []
         if _sp.AGENTS_DIR.exists():
-            for d in sorted(_sp.AGENTS_DIR.iterdir()):
+            try:
+                dirs = sorted(_sp.AGENTS_DIR.iterdir())
+            except OSError:
+                dirs = []
+            for d in dirs:
                 if d.is_dir():
                     sessions_dir = d / "sessions"
                     count = len(list(sessions_dir.glob("*.jsonl"))) if sessions_dir.exists() else 0
@@ -436,19 +621,19 @@ def create_app():
 
     @app.route("/lab")
     def lab_page():
-        return render_template("coming_soon.html", feature="Lab", active="lab")
+        return render_template("lab.html")
 
     @app.route("/api/lab/sessions")
     def api_lab_sessions():
         """Return gateway sessions (with real session keys) merged with local file info."""
         agent = request.args.get("agent")
-        limit = int(request.args.get("last", 30))
+        limit = _int_param("last", 30)
         try:
             gw_sessions = gateway.list_gateway_sessions(
                 agent_id=agent if agent and agent != "all" else None,
                 limit=limit,
             )
-        except Exception:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError):
             # Fallback to local file listing if gateway unavailable
             gw_sessions = []
 
@@ -473,7 +658,9 @@ def create_app():
 
     @app.route("/api/lab/send", methods=["POST"])
     def api_lab_send():
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
         message = data.get("message", "").strip()
         session_key = data.get("sessionKey", "").strip()
         if not message or not session_key:
@@ -499,16 +686,17 @@ def create_app():
             _log_lab("send_ok", sessionKey=session_key,
                      runId=result.get("runId", ""))
             return jsonify({"ok": True, "result": result}), 202
-        except Exception as e:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
             _log_lab("send_error", sessionKey=session_key, error=str(e))
             return jsonify({"ok": False, "error": str(e)}), 500
 
-    # Track file sizes for change detection
-    _poll_file_cache = {}  # session_id -> (file_path, file_size)
+    # Track file sizes for change detection (bounded to prevent memory leak)
+    _POLL_CACHE_MAX = 100
+    _poll_file_cache = {}  # cache_key -> file_size
 
     @app.route("/api/lab/poll/<session_id>")
     def api_lab_poll(session_id):
-        since_turns = int(request.args.get("since_turns", 0))
+        since_turns = _int_param("since_turns", 0)
         file_path = _resolve(session_id)
         if not file_path:
             return jsonify({"changed": False, "error": "session not found"})
@@ -522,6 +710,9 @@ def create_app():
         cache_key = str(file_path)
         prev_size = _poll_file_cache.get(cache_key, 0)
         _poll_file_cache[cache_key] = current_size
+        if len(_poll_file_cache) > _POLL_CACHE_MAX:
+            oldest = next(iter(_poll_file_cache))
+            del _poll_file_cache[oldest]
 
         if current_size == prev_size and since_turns > 0:
             return jsonify({"changed": False})
@@ -564,28 +755,29 @@ def create_app():
                 last_turn_count = len(data.get("turns", []))
                 event_id += 1
                 yield f"id: {event_id}\nevent: init\ndata: {json.dumps(data)}\n\n"
-            except Exception as e:
+            except Exception as e:  # broad catch: SSE must yield error, not crash
+                logging.warning("SSE init error: %s", e, exc_info=True)
                 yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
                 return
 
             # Change detection loop
             while True:
-                time.sleep(0.5)
+                time.sleep(SSE_POLL_INTERVAL)
 
                 try:
                     current_size = file_path.stat().st_size
                 except OSError:
                     idle_count += 1
-                    if idle_count >= 600:  # 5 min timeout
+                    if idle_count >= SSE_TIMEOUT_CYCLES:
                         yield "event: timeout\ndata: {}\n\n"
                         return
-                    if idle_count % 30 == 0:
+                    if idle_count % SSE_HEARTBEAT_INTERVAL == 0:
                         yield ": heartbeat\n\n"
                     continue
 
                 if current_size == last_size:
                     idle_count += 1
-                    if idle_count % 30 == 0:
+                    if idle_count % SSE_HEARTBEAT_INTERVAL == 0:
                         yield ": heartbeat\n\n"
                     continue
 
@@ -625,7 +817,8 @@ def create_app():
                             yield "event: done\ndata: {}\n\n"
                             return
 
-                except Exception as e:
+                except Exception as e:  # broad catch: SSE must yield error, not crash
+                    logging.warning("SSE poll error: %s", e, exc_info=True)
                     yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
 
         return Response(
@@ -654,7 +847,7 @@ def create_app():
                         "content": content,
                         "has_backup": backup.exists(),
                     })
-                except Exception:
+                except OSError:
                     files.append({"name": name, "size": 0, "content": "", "error": "read failed"})
         return jsonify(files)
 
@@ -697,7 +890,9 @@ def create_app():
             return jsonify({"error": f"Not an allowed file: {filename}"}), 400
         workspace = _get_workspace_dir()
         fp = workspace / filename
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
         content = data.get("content", "")
         # Create backup before overwriting
         _backup_context_file(fp)
@@ -707,12 +902,14 @@ def create_app():
 
     @app.route("/api/lab/settings/<session_key>", methods=["PATCH"])
     def api_lab_settings(session_key):
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
         _log_lab("settings_patch", sessionKey=session_key, **data)
         try:
             result = gateway.patch_session(session_key, **data)
             return jsonify({"ok": True, "result": result})
-        except Exception as e:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
     @app.route("/api/lab/activity")
@@ -738,7 +935,9 @@ def create_app():
     @app.route("/api/settings", methods=["POST"])
     def api_settings_save():
         from clawtracerx import config
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
         cfg = config.load()
         if "openclaw_dir" in data:
             new_dir = data["openclaw_dir"].strip()
@@ -758,7 +957,7 @@ def create_app():
             return jsonify({"ok": True, "path": str(config_path), "config": masked})
         except FileNotFoundError:
             return jsonify({"ok": False, "error": "not found", "path": str(config_path)})
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             return jsonify({"ok": False, "error": str(e), "path": str(config_path)})
 
     @app.route("/api/session/<session_id>/tc/<tc_id>/full")
@@ -790,6 +989,25 @@ def create_app():
                 return jsonify({"content": turn.user_text})
         abort(404, "Turn not found")
 
+    # --- Logs ---
+
+    @app.route("/api/logs")
+    def api_logs():
+        """Return last N lines of a log file (whitelist: web.log, lab.log)."""
+        file_name = request.args.get("file", "lab")
+        lines_count = min(_int_param("lines", 50), 200)
+        allowed = {"web": "web.log", "lab": "lab.log"}
+        if file_name not in allowed:
+            abort(400, "Invalid log file")
+        log_path = Path(_get_base_path()).parent / allowed[file_name]
+        if not log_path.exists():
+            return jsonify({"lines": [], "file": file_name, "missing": True})
+        try:
+            all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            return jsonify({"lines": all_lines[-lines_count:], "file": file_name})
+        except OSError as e:
+            return jsonify({"lines": [], "file": file_name, "error": str(e)})
+
     # --- Health ---
 
     _health_cache = {"data": None, "ts": 0}
@@ -808,7 +1026,7 @@ def create_app():
             checks["config"] = {"ok": True, "path": str(gateway.OPENCLAW_CONFIG)}
         except FileNotFoundError:
             checks["config"] = {"ok": False, "error": "not found", "path": str(gateway.OPENCLAW_CONFIG)}
-        except Exception as e:
+        except (OSError, json.JSONDecodeError) as e:
             checks["config"] = {"ok": False, "error": str(e)}
 
         # 2. Device identity
@@ -818,7 +1036,7 @@ def create_app():
                 with open(identity_path) as f:
                     did = json.load(f).get("deviceId", "?")
                 checks["device"] = {"ok": True, "device_id": did[:12]}
-            except Exception as e:
+            except (OSError, json.JSONDecodeError, KeyError) as e:
                 checks["device"] = {"ok": False, "error": str(e)}
         else:
             checks["device"] = {"ok": False, "error": "not found"}
@@ -826,11 +1044,15 @@ def create_app():
         # 3. Agents directory
         agents_dir = _sp.AGENTS_DIR
         if agents_dir.exists():
-            agent_count = sum(1 for d in agents_dir.iterdir() if d.is_dir())
+            try:
+                agent_dirs = [d for d in agents_dir.iterdir() if d.is_dir()]
+            except OSError:
+                agent_dirs = []
+            agent_count = len(agent_dirs)
             session_count = sum(
-                len(list((d / "sessions").glob("*.jsonl")))
-                for d in agents_dir.iterdir()
-                if d.is_dir() and (d / "sessions").exists()
+                sum(1 for _ in (d / "sessions").glob("*.jsonl"))
+                for d in agent_dirs
+                if (d / "sessions").exists()
             )
             checks["agents"] = {"ok": True, "agents": agent_count, "sessions": session_count}
         else:
@@ -840,7 +1062,7 @@ def create_app():
         try:
             result = gateway.list_agents()
             checks["gateway"] = {"ok": True, "agents": len(result) if isinstance(result, list) else 0}
-        except Exception as e:
+        except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
             checks["gateway"] = {"ok": False, "error": str(e)[:100]}
 
         # 5. Workspace
@@ -858,6 +1080,44 @@ def create_app():
         _health_cache["data"] = health
         _health_cache["ts"] = now
         return jsonify(health)
+
+    # --- Update check ---
+
+    _update_cache: dict = {"data": None, "ts": 0}
+    _UPDATE_CACHE_TTL = 3600  # 1 hour
+
+    @app.route("/api/check-update")
+    def api_check_update():
+        from clawtracerx import __version__
+
+        now = time.time()
+        if _update_cache["data"] and (now - _update_cache["ts"]) < _UPDATE_CACHE_TTL:
+            return jsonify(_update_cache["data"])
+
+        try:
+            req = urllib.request.Request(
+                "https://api.github.com/repos/kys42/clawtracerx/releases/latest",
+                headers={
+                    "Accept": "application/vnd.github.v3+json",
+                    "User-Agent": "clawtracerx",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                release = json.loads(resp.read())
+            latest = release["tag_name"].lstrip("v")
+            result = {
+                "current": __version__,
+                "latest": latest,
+                "update_available": latest != __version__,
+                "release_url": release["html_url"],
+                "release_name": release.get("name", release["tag_name"]),
+            }
+        except (urllib.error.URLError, json.JSONDecodeError, KeyError, OSError):
+            result = {"current": __version__, "latest": None, "update_available": False}
+
+        _update_cache["data"] = result
+        _update_cache["ts"] = now
+        return jsonify(result)
 
     return app
 
@@ -880,7 +1140,7 @@ def _get_workspace_dir() -> Path:
         workspace = full_cfg.get("agents", {}).get("defaults", {}).get("workspace", "")
         if workspace:
             return Path(workspace)
-    except Exception:
+    except (OSError, json.JSONDecodeError, KeyError):
         pass
     return _sp.OPENCLAW_DIR / "workspace"
 
@@ -923,7 +1183,11 @@ def _resolve(session_id: str):
     Searches for both active .jsonl files and soft-deleted
     .jsonl.deleted.{timestamp} files.
     """
-    for agent_dir in _sp.AGENTS_DIR.iterdir():
+    try:
+        agent_dirs = list(_sp.AGENTS_DIR.iterdir())
+    except OSError:
+        return None
+    for agent_dir in agent_dirs:
         if not agent_dir.is_dir():
             continue
         sessions_dir = agent_dir / "sessions"
@@ -933,9 +1197,12 @@ def _resolve(session_id: str):
         for f in sessions_dir.glob(f"{session_id}*.jsonl"):
             return f
         # Try .deleted.* variants
-        for f in sessions_dir.iterdir():
-            if f.name.startswith(session_id) and ".jsonl.deleted." in f.name:
-                return f
+        try:
+            for f in sessions_dir.iterdir():
+                if f.name.startswith(session_id) and ".jsonl.deleted." in f.name:
+                    return f
+        except OSError:
+            continue
     return None
 
 
@@ -1035,6 +1302,7 @@ def _serialize_turn(turn):
             **turn.channel_meta,
             "actual_text": _truncate(turn.channel_meta.get("actual_text", ""), 500),
         } if turn.channel_meta else None,
+        "delivery_texts": turn.delivery_texts if turn.delivery_texts else [],
     }
 
 
@@ -1080,6 +1348,7 @@ def _serialize_spawn(spawn):
         "cost_usd": round(spawn.cost_usd, 6) if spawn.cost_usd else None,
         "outcome": spawn.outcome,
         "announce_stats": spawn.announce_stats,
+        "tool_call_id": spawn.tool_call_id,
     }
 
 
@@ -1124,7 +1393,7 @@ def _build_graph(analysis):
         for tc in turn.tool_calls:
             if tc.name == "sessions_spawn":
                 continue  # handled by subagent nodes
-            tc_id = f"tool:{tc.id[:16]}"
+            tc_id = f"tool:{tc.id}"
             nodes.append({
                 "id": tc_id,
                 "type": "tool",
@@ -1167,7 +1436,7 @@ def _add_subagent_graph(nodes, edges, parent_id, spawn):
         for tc in child_turn.tool_calls:
             if tc.name == "sessions_spawn":
                 continue
-            tc_id = f"tool:{tc.id[:16]}"
+            tc_id = f"tool:{tc.id}"
             nodes.append({
                 "id": tc_id,
                 "type": "tool",
@@ -1194,3 +1463,78 @@ def _tool_summary(tc):
     elif tc.name in ("glob", "grep"):
         return tc.arguments.get("pattern", "")[:40]
     return ""
+
+
+def _build_turn_flow(turn):
+    """Build sequential execution flow for a single turn."""
+    steps = []
+    spawn_idx = 0
+
+    for tc in turn.tool_calls:
+        if tc.name == "sessions_spawn":
+            if spawn_idx < len(turn.subagent_spawns):
+                spawn = turn.subagent_spawns[spawn_idx]
+                spawn_idx += 1
+                steps.append({
+                    "type": "subagent",
+                    "label": spawn.label or "subagent",
+                    "task": _truncate(spawn.task, 120),
+                    "status": spawn.outcome,
+                    "cost": round(spawn.cost_usd, 4) if spawn.cost_usd else None,
+                    "tokens": spawn.total_tokens,
+                    "duration_ms": spawn.duration_ms,
+                    "child_session_id": spawn.child_session_id,
+                    "child_steps": _build_subagent_steps(spawn),
+                })
+        else:
+            steps.append({
+                "type": "tool",
+                "id": tc.id,
+                "name": tc.name,
+                "summary": _tool_summary(tc),
+                "duration_ms": tc.duration_ms,
+                "status": "error" if tc.is_error else "ok",
+            })
+
+    return {
+        "user_msg": _truncate(turn.user_text, 300),
+        "user_source": turn.user_source,
+        "assistant_msg": _truncate(turn.assistant_texts[-1] if turn.assistant_texts else "", 300),
+        "cost": round(turn.cost.get("total", 0), 4),
+        "tokens": turn.usage.get("totalTokens", 0),
+        "duration_ms": turn.duration_ms,
+        "model": turn.model,
+        "steps": steps,
+    }
+
+
+def _build_subagent_steps(spawn):
+    """Recursively build tool steps from a subagent spawn's child turns."""
+    steps = []
+    for child_turn in spawn.child_turns:
+        sub_spawn_idx = 0
+        for tc in child_turn.tool_calls:
+            if tc.name == "sessions_spawn":
+                if sub_spawn_idx < len(child_turn.subagent_spawns):
+                    nested = child_turn.subagent_spawns[sub_spawn_idx]
+                    sub_spawn_idx += 1
+                    steps.append({
+                        "type": "subagent",
+                        "label": nested.label or "subagent",
+                        "task": _truncate(nested.task, 80),
+                        "status": nested.outcome,
+                        "cost": round(nested.cost_usd, 4) if nested.cost_usd else None,
+                        "duration_ms": nested.duration_ms,
+                        "child_session_id": nested.child_session_id,
+                        "child_steps": _build_subagent_steps(nested),
+                    })
+            else:
+                steps.append({
+                    "type": "tool",
+                    "id": tc.id,
+                    "name": tc.name,
+                    "summary": _tool_summary(tc),
+                    "duration_ms": tc.duration_ms,
+                    "status": "error" if tc.is_error else "ok",
+                })
+    return steps

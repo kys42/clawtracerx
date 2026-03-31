@@ -8,7 +8,9 @@ with tool calls, subagent spawns, token usage, and cost tracking.
 from __future__ import annotations
 
 import json
+import logging
 import re
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -85,6 +87,7 @@ class SubagentSpawn:
     cost_usd: Optional[float] = None
     outcome: str = "unknown"
     announce_stats: Optional[dict] = None  # parsed from announce message
+    tool_call_id: str = ""  # links back to the sessions_spawn ToolCall.id
 
 
 @dataclass
@@ -113,6 +116,7 @@ class Turn:
     workflow_group_id: Optional[int] = None  # set if this turn is part of a multi-turn workflow chain
     channel_meta: Optional[dict] = None
     # {platform, sender, sender_id, channel, ts_str, message_id, actual_text, reply_context}
+    delivery_texts: list = field(default_factory=list)  # merged from delivery-mirror events
 
 
 @dataclass
@@ -282,12 +286,12 @@ def load_subagent_runs() -> dict:
     with _subagent_lock:
         if _subagent_cache is not None:
             return _subagent_cache
-        if not SUBAGENTS_FILE.exists():
+        try:
+            with open(SUBAGENTS_FILE) as f:
+                data = json.load(f)
+            _subagent_cache = data.get("runs", {})
+        except (FileNotFoundError, json.JSONDecodeError):
             _subagent_cache = {}
-            return _subagent_cache
-        with open(SUBAGENTS_FILE) as f:
-            data = json.load(f)
-        _subagent_cache = data.get("runs", {})
         return _subagent_cache
 
 
@@ -307,13 +311,19 @@ def find_subagent_child_session(child_session_key: str) -> Optional[Path]:
     if not session_id:
         return None
     # Search all agent session dirs
-    for agent_dir in AGENTS_DIR.iterdir():
+    try:
+        agent_dirs = list(AGENTS_DIR.iterdir())
+    except OSError:
+        return None
+    for agent_dir in agent_dirs:
         if not agent_dir.is_dir():
             continue
         sessions_dir = agent_dir / "sessions"
-        if not sessions_dir.exists():
+        try:
+            entries = list(sessions_dir.iterdir())
+        except OSError:
             continue
-        for f in sessions_dir.iterdir():
+        for f in entries:
             if not f.name.startswith(session_id):
                 continue
             # Match {uuid}.jsonl or {uuid}.jsonl.deleted.{ts}
@@ -346,11 +356,14 @@ _ANNOUNCE_LABEL_RE = re.compile(r'A subagent task "([^"]+)"')
 
 def _parse_token_str(s: str) -> int:
     s = s.strip().lower()
-    if s.endswith("m"):
-        return int(float(s[:-1]) * 1_000_000)
-    if s.endswith("k"):
-        return int(float(s[:-1]) * 1_000)
-    return int(float(s))
+    try:
+        if s.endswith("m"):
+            return int(float(s[:-1]) * 1_000_000)
+        if s.endswith("k"):
+            return int(float(s[:-1]) * 1_000)
+        return int(float(s))
+    except (ValueError, IndexError):
+        return 0
 
 
 def _parse_runtime_str(s: str) -> int:
@@ -406,14 +419,14 @@ def _parse_announce_match(m, full_text: str = "") -> Optional[dict]:
         return None
 
 
-def _resolve_child_from_transcript(spawn, transcript: str):
+def _resolve_child_from_transcript(spawn, transcript: str, _depth: int = 0):
     """Try to resolve child session turns from transcript path."""
     if not transcript:
         return
     tp = Path(transcript)
     # Check if the exact path exists
     if tp.exists():
-        child_analysis = parse_session(tp, recursive_subagents=True)
+        child_analysis = parse_session(tp, recursive_subagents=True, _depth=_depth + 1)
         spawn.child_turns = child_analysis.turns
         if not spawn.cost_usd and child_analysis.total_cost:
             spawn.cost_usd = child_analysis.total_cost
@@ -422,9 +435,13 @@ def _resolve_child_from_transcript(spawn, transcript: str):
     parent = tp.parent
     stem = tp.name  # e.g. "uuid.jsonl"
     if parent.exists():
-        for f in parent.iterdir():
+        try:
+            deleted_candidates = list(parent.iterdir())
+        except OSError:
+            deleted_candidates = []
+        for f in deleted_candidates:
             if f.name.startswith(stem) and ".deleted." in f.name:
-                child_analysis = parse_session(f, recursive_subagents=True)
+                child_analysis = parse_session(f, recursive_subagents=True, _depth=_depth + 1)
                 spawn.child_turns = child_analysis.turns
                 if not spawn.cost_usd and child_analysis.total_cost:
                     spawn.cost_usd = child_analysis.total_cost
@@ -566,7 +583,7 @@ def load_cron_runs(job_id: Optional[str] = None, last_n: int = 50) -> list:
         if job_id and fid != job_id:
             continue
         job_name = jobs.get(fid, {}).get("label", jobs.get(fid, {}).get("name", fid[:8]))
-        with open(f) as fh:
+        with open(f, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
@@ -679,11 +696,15 @@ def _parse_session_context(report: dict) -> SessionContext:
 
 # --- Session parsing ---
 
-def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> SessionAnalysis:
-    """Parse a session JSONL file into a SessionAnalysis."""
-    file_path = Path(file_path)
+_parse_cache: OrderedDict = OrderedDict()  # {path_str: (mtime, SessionAnalysis)} — LRU order
+_PARSE_CACHE_MAX = 50
+_PARSE_MAX_DEPTH = 10
+
+
+def _read_jsonl(file_path: Path) -> list:
+    """Read a JSONL file and return list of parsed JSON objects."""
     lines = []
-    with open(file_path) as f:
+    with open(file_path, encoding="utf-8", errors="replace") as f:
         for raw_line in f:
             raw_line = raw_line.strip()
             if not raw_line:
@@ -692,31 +713,16 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 lines.append(json.loads(raw_line))
             except json.JSONDecodeError:
                 continue
+    return lines
 
-    # Detect agent_id from path
-    agent_id = "unknown"
-    parts = file_path.parts
-    try:
-        agents_idx = parts.index("agents")
-        if agents_idx + 1 < len(parts):
-            agent_id = parts[agents_idx + 1]
-    except ValueError:
-        pass
 
-    # Extract session_id from filename (handles both .jsonl and .jsonl.deleted.*)
-    fname = file_path.name.split(".jsonl")[0]  # strip .jsonl and anything after
-    session_id = fname.split("-topic-")[0]
+def _extract_metadata(lines: list, analysis: SessionAnalysis) -> tuple:
+    """First pass: extract session metadata from lines.
 
-    analysis = SessionAnalysis(
-        session_id=session_id,
-        agent_id=agent_id,
-        file_path=str(file_path),
-    )
-
-    # First pass: extract metadata
+    Returns (model, provider, api, thinking_level) for use in turn building.
+    """
     current_model = ""
     current_provider = ""
-    current_api = ""
     current_thinking_level = ""
 
     for entry in lines:
@@ -743,9 +749,12 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
     analysis.model = current_model
     analysis.provider = current_provider
     analysis.thinking_level = current_thinking_level
+    return current_model, current_provider, "", current_thinking_level
 
-    # Build id → message info map for parent-chain lookups
-    id_to_msg_info = {}  # id -> {"role": str, "stop_reason": str, "model": str}
+
+def _build_id_map(lines: list) -> dict:
+    """Build id → message info map for parent-chain lookups."""
+    id_to_msg_info = {}
     for entry in lines:
         eid = entry.get("id")
         if eid and entry.get("type") == "message":
@@ -755,16 +764,30 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 "stop_reason": msg.get("stopReason", ""),
                 "model": msg.get("model", ""),
             }
+    return id_to_msg_info
 
-    # Second pass: build turns
-    # A turn starts with a user message (or a proactive/delivery assistant message)
-    # and includes all assistant messages + tool results until the next boundary.
+
+def _build_turns(
+    lines: list,
+    analysis: SessionAnalysis,
+    id_to_msg_info: dict,
+    initial_model: str,
+    initial_provider: str,
+    initial_api: str,
+    initial_thinking_level: str,
+    recursive_subagents: bool,
+    _depth: int = 0,
+) -> list:
+    """Second pass: build Turn objects from message entries."""
     turns = []
     current_turn = None
-    pending_tool_calls = {}  # id -> ToolCall
+    pending_tool_calls = {}
     turn_raw_lines = []
-    current_thinking_level = ""
-    _turn_round_idx = 0  # assistant message round counter within current turn
+    current_model = initial_model
+    current_provider = initial_provider
+    current_api = initial_api
+    current_thinking_level = initial_thinking_level
+    _turn_round_idx = 0
 
     for entry in lines:
         etype = entry.get("type")
@@ -785,13 +808,11 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         ts = _ts_to_dt(msg.get("timestamp") or entry.get("timestamp"))
 
         if role == "user":
-            # Finalize previous turn
             if current_turn is not None:
                 current_turn.raw_lines = turn_raw_lines
                 _finalize_turn(current_turn, pending_tool_calls)
                 turns.append(current_turn)
 
-            # Start new turn
             user_text = ""
             content = msg.get("content", [])
             if isinstance(content, list):
@@ -815,13 +836,10 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 api=current_api,
                 thinking_level=current_thinking_level,
             )
-            # 채널 메시지 파싱 (discord / telegram / whatsapp / slack / etc.)
             if source in _BRACKET_CHANNEL_MAP or source == "discord":
                 current_turn.channel_meta = _parse_channel_message(user_text, source)
-                # Correct user_source to match actual detected platform
                 if current_turn.channel_meta:
                     current_turn.user_source = current_turn.channel_meta.get("platform", source)
-                    # Set session-level channel from first channel message
                     if not analysis.channel:
                         analysis.channel = current_turn.channel_meta.get("platform", source)
             pending_tool_calls = {}
@@ -837,7 +855,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             current_stop = msg.get("stopReason", "")
 
             is_delivery_mirror = (model_name == "delivery-mirror")
-            # Proactive: parent is an assistant that completed normally (not an error retry)
             is_proactive = (
                 parent_role == "assistant"
                 and not is_delivery_mirror
@@ -845,17 +862,25 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 and parent_stop != "error"
             )
 
-            if is_delivery_mirror or is_proactive:
-                # Close current turn and start a new one
+            if is_delivery_mirror:
+                if current_turn is not None:
+                    dm_text = ""
+                    for block in msg.get("content", []):
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            dm_text += block.get("text", "")
+                    if dm_text.strip():
+                        current_turn.delivery_texts.append(dm_text.strip())
+                    turn_raw_lines.append(entry)
+                continue
+            elif is_proactive:
                 if current_turn is not None:
                     current_turn.raw_lines = turn_raw_lines
                     _finalize_turn(current_turn, pending_tool_calls)
                     turns.append(current_turn)
-                new_source = "delivery_mirror" if is_delivery_mirror else "proactive"
                 current_turn = Turn(
                     index=len(turns),
                     user_text="",
-                    user_source=new_source,
+                    user_source="proactive",
                     timestamp=ts,
                     model=current_model,
                     provider=current_provider,
@@ -866,7 +891,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 turn_raw_lines = []
                 _turn_round_idx = 0
             elif current_turn is None:
-                # Assistant message without prior user - create implicit turn
                 current_turn = Turn(
                     index=len(turns),
                     user_text="[implicit]",
@@ -883,9 +907,8 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
 
             turn_raw_lines.append(entry)
             content = msg.get("content", [])
-            _round_thinking_parts: list = []  # thinking in this assistant round
+            _round_thinking_parts: list = []
 
-            # Update model info from this message
             if msg.get("model"):
                 current_turn.model = msg["model"]
                 current_model = msg["model"]
@@ -898,7 +921,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
 
             current_turn.stop_reason = msg.get("stopReason", "")
 
-            # Accumulate usage
             usage = msg.get("usage", {})
             if usage:
                 for k in ("input", "output", "cacheRead", "cacheWrite", "totalTokens"):
@@ -908,7 +930,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     for k in ("input", "output", "cacheRead", "cacheWrite", "total"):
                         current_turn.cost[k] = current_turn.cost.get(k, 0) + msg_cost.get(k, 0)
 
-            # Parse content items
             if isinstance(content, list):
                 for c in content:
                     if not isinstance(c, dict):
@@ -917,14 +938,13 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
 
                     if ctype == "text":
                         text = c.get("text", "").strip()
-                        if text:  # skip empty/whitespace-only text blocks
+                        if text:
                             current_turn.assistant_texts.append(c.get("text", ""))
 
                     elif ctype == "thinking":
                         thinking_text = c.get("thinking", "")
                         if thinking_text:
                             _round_thinking_parts.append(thinking_text)
-                            # maintain backward-compat thinking_text (merged)
                             if current_turn.thinking_text:
                                 current_turn.thinking_text += "\n" + thinking_text
                             else:
@@ -947,7 +967,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                         pending_tool_calls[tc.id] = tc
                         current_turn.tool_calls.append(tc)
 
-            # Record per-round thinking in thinking_blocks
             round_thinking = "\n".join(_round_thinking_parts) or None
             while len(current_turn.thinking_blocks) <= _turn_round_idx:
                 current_turn.thinking_blocks.append(None)
@@ -974,11 +993,9 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             duration_ms = details.get("durationMs")
             status = details.get("status", "")
 
-            # Check for error in details
             if details.get("error") or details.get("status") == "error":
                 is_error = True
 
-            # Match to pending tool call
             if tc_id in pending_tool_calls:
                 tc = pending_tool_calls[tc_id]
                 tc.result_text = _truncate(result_text, 500)
@@ -987,7 +1004,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 tc.is_error = is_error
                 tc.status = status
             else:
-                # Orphan result - still record it
                 tc = ToolCall(
                     id=tc_id,
                     name=tool_name,
@@ -1000,12 +1016,10 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                 )
                 current_turn.tool_calls.append(tc)
 
-            # Check if this is a sessions_spawn result
             if tool_name == "sessions_spawn":
                 child_key = details.get("childSessionKey", "")
                 run_id = details.get("runId", "")
                 if child_key or run_id:
-                    # Get spawn arguments from matching toolCall
                     spawn_args = {}
                     if tc_id in pending_tool_calls:
                         spawn_args = pending_tool_calls[tc_id].arguments
@@ -1016,9 +1030,9 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                         task=_truncate(spawn_args.get("task", spawn_args.get("prompt", "")), 300),
                         child_session_key=child_key,
                         child_session_id=_extract_session_id_from_key(child_key),
+                        tool_call_id=tc_id,
                     )
 
-                    # Enrich from subagent registry
                     reg = get_subagent_run(run_id)
                     if reg:
                         started = reg.get("startedAt", 0)
@@ -1030,11 +1044,10 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                         if not spawn.label:
                             spawn.label = reg.get("label", "")
 
-                    # Recursively parse child session
                     if recursive_subagents and child_key:
                         child_file = find_subagent_child_session(child_key)
                         if child_file:
-                            child_analysis = parse_session(child_file, recursive_subagents=True)
+                            child_analysis = parse_session(child_file, recursive_subagents=True, _depth=_depth + 1)
                             spawn.child_turns = child_analysis.turns
                             spawn.cost_usd = child_analysis.total_cost
                             spawn.total_tokens = child_analysis.total_tokens
@@ -1047,24 +1060,11 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         _finalize_turn(current_turn, pending_tool_calls)
         turns.append(current_turn)
 
-    # Enrich subagent spawns from announce messages (uses real sessionId from announce prefix)
-    _enrich_spawns_from_announces(turns, agent_id=agent_id)
+    return turns
 
-    # Last-resort: load child sessions for spawns still missing child_turns
-    # (handles delivery_mirror case where routing UUID ≠ file UUID, no announce turn)
-    if recursive_subagents:
-        _try_load_missing_children(turns, agent_id=agent_id)
 
-    # Group consecutive turns that form a continuous workflow chain
-    _assign_workflow_groups(turns)
-
-    # Compute in_context based on compaction events
-    if analysis.compaction_events:
-        _compute_context_status(turns, lines, analysis.compaction_events)
-
-    analysis.turns = turns
-
-    # Calculate totals
+def _compute_totals(analysis: SessionAnalysis, turns: list, file_path: Path) -> None:
+    """Calculate total cost, tokens, duration, and detect session type."""
     for turn in turns:
         analysis.total_cost += turn.cost.get("total", 0)
         analysis.total_tokens += turn.usage.get("totalTokens", 0)
@@ -1074,7 +1074,6 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         last_turn = turns[-1]
         last_ts = last_turn.timestamp
         if first_ts and last_ts:
-            # Use the last raw line timestamp for more accuracy
             for raw in reversed(last_turn.raw_lines):
                 raw_ts = _ts_to_dt(raw.get("message", {}).get("timestamp") or raw.get("timestamp"))
                 if raw_ts:
@@ -1082,10 +1081,10 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
                     break
             analysis.total_duration_ms = int((last_ts - first_ts).total_seconds() * 1000)
 
-    # Detect session type from first user message (skip proactive/delivery_mirror turns)
+    # Detect session type
     if turns:
         first_real_turn = next(
-            (t for t in turns if t.user_source not in ("proactive", "delivery_mirror")),
+            (t for t in turns if t.user_source != "proactive"),
             turns[0] if turns else None,
         )
         first_source = first_real_turn.user_source if first_real_turn else "chat"
@@ -1093,10 +1092,101 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
             analysis.session_type = "cron"
         elif first_source == "heartbeat":
             analysis.session_type = "heartbeat"
-        elif "subagent" in str(file_path):
+        elif _is_subagent_session(file_path, analysis.agent_id, analysis.session_id):
             analysis.session_type = "subagent"
         else:
             analysis.session_type = "chat"
+
+
+def _is_subagent_session(file_path: Path, agent_id: str, session_id: str) -> bool:
+    """Check if a session is a subagent by checking sessions.json key pattern."""
+    meta = load_session_metadata(agent_id, session_id)
+    if meta and meta.get("spawnedBy"):
+        return True
+    # Fallback: check sessions.json keys for :subagent: pattern
+    sessions_file = AGENTS_DIR / agent_id / "sessions" / SESSIONS_JSON
+    if sessions_file.exists():
+        try:
+            with open(sessions_file, encoding="utf-8") as f:
+                data = json.load(f)
+            for key, entry in data.items():
+                if entry.get("sessionId", "").startswith(session_id):
+                    return ":subagent:" in key
+        except (OSError, json.JSONDecodeError):
+            pass
+    return False
+
+
+def parse_session(
+    file_path: str | Path,
+    recursive_subagents: bool = True,
+    _depth: int = 0,
+) -> SessionAnalysis:
+    """Parse a session JSONL file into a SessionAnalysis."""
+    file_path = Path(file_path)
+
+    # Depth limit: prevent infinite recursion on circular subagent refs
+    if _depth >= _PARSE_MAX_DEPTH:
+        recursive_subagents = False
+
+    # mtime-based cache check (LRU: move to end on hit)
+    path_key = str(file_path)
+    try:
+        current_mtime = file_path.stat().st_mtime
+    except OSError:
+        current_mtime = None
+
+    if current_mtime is not None and path_key in _parse_cache:
+        cached_mtime, cached_result = _parse_cache[path_key]
+        if cached_mtime == current_mtime:
+            _parse_cache.move_to_end(path_key)
+            return cached_result
+
+    # Read and parse JSONL
+    lines = _read_jsonl(file_path)
+
+    # Detect agent_id and session_id from path
+    agent_id = "unknown"
+    parts = file_path.parts
+    try:
+        agents_idx = parts.index("agents")
+        if agents_idx + 1 < len(parts):
+            agent_id = parts[agents_idx + 1]
+    except ValueError:
+        pass
+    fname = file_path.name.split(".jsonl")[0]
+    session_id = fname.split("-topic-")[0]
+
+    analysis = SessionAnalysis(
+        session_id=session_id, agent_id=agent_id, file_path=str(file_path),
+    )
+
+    # First pass: extract metadata
+    model, provider, api, thinking_level = _extract_metadata(lines, analysis)
+
+    # Build parent-chain lookup map
+    id_to_msg_info = _build_id_map(lines)
+
+    # Second pass: build turns from messages
+    turns = _build_turns(
+        lines, analysis, id_to_msg_info,
+        model, provider, api, thinking_level,
+        recursive_subagents,
+        _depth=_depth,
+    )
+
+    # Post-processing: enrich spawns, assign workflow groups, compute context
+    _enrich_spawns_from_announces(turns, agent_id=agent_id, _depth=_depth)
+    if recursive_subagents:
+        _try_load_missing_children(turns, agent_id=agent_id, _depth=_depth)
+    _assign_workflow_groups(turns)
+    if analysis.compaction_events:
+        _compute_context_status(turns, lines, analysis.compaction_events)
+
+    analysis.turns = turns
+
+    # Calculate totals and detect session type
+    _compute_totals(analysis, turns, file_path)
 
     # Enrich from sessions.json metadata
     meta = load_session_metadata(agent_id, session_id)
@@ -1110,6 +1200,13 @@ def parse_session(file_path: str | Path, recursive_subagents: bool = True) -> Se
         analysis.session_total_tokens = meta.get("totalTokens", 0)
         analysis.session_compaction_count = meta.get("compactionCount", 0)
         analysis.memory_flush_at = _ts_to_dt(meta.get("memoryFlushAt"))
+
+    # Store in cache (LRU eviction — oldest=least recently used first)
+    if current_mtime is not None:
+        _parse_cache[path_key] = (current_mtime, analysis)
+        _parse_cache.move_to_end(path_key)
+        while len(_parse_cache) > _PARSE_CACHE_MAX:
+            _parse_cache.popitem(last=False)
 
     return analysis
 
@@ -1186,14 +1283,19 @@ def _find_child_session_by_id(session_id: str, agent_id: str) -> Optional[Path]:
     agent_dir = AGENTS_DIR / agent_id
     if agent_dir.exists():
         search_dirs.append(agent_dir / "sessions")
-    for d in AGENTS_DIR.iterdir():
-        if d.is_dir() and d.name != agent_id:
-            search_dirs.append(d / "sessions")
+    try:
+        for d in AGENTS_DIR.iterdir():
+            if d.is_dir() and d.name != agent_id:
+                search_dirs.append(d / "sessions")
+    except OSError:
+        pass
 
     for sessions_dir in search_dirs:
-        if not sessions_dir.exists():
+        try:
+            entries = list(sessions_dir.iterdir())
+        except OSError:
             continue
-        for f in sessions_dir.iterdir():
+        for f in entries:
             if f.name.startswith(session_id):
                 if f.suffix == ".jsonl" or ".jsonl.deleted." in f.name:
                     return f
@@ -1223,15 +1325,20 @@ def _find_child_session_by_label(label: str, spawn_label: str, agent_id: str,
     agent_dir = AGENTS_DIR / agent_id
     if agent_dir.exists():
         search_dirs.append(agent_dir / "sessions")
-    for d in AGENTS_DIR.iterdir():
-        if d.is_dir() and d.name != agent_id:
-            search_dirs.append(d / "sessions")
+    try:
+        for d in AGENTS_DIR.iterdir():
+            if d.is_dir() and d.name != agent_id:
+                search_dirs.append(d / "sessions")
+    except OSError:
+        pass
 
     candidates = []
     for sessions_dir in search_dirs:
-        if not sessions_dir.exists():
+        try:
+            entries = list(sessions_dir.iterdir())
+        except OSError:
             continue
-        for f in sessions_dir.iterdir():
+        for f in entries:
             if not (f.suffix == ".jsonl" or ".jsonl.deleted." in f.name):
                 continue
             try:
@@ -1256,12 +1363,12 @@ def _find_child_session_by_label(label: str, spawn_label: str, agent_id: str,
                         if hits >= max(2, len(keywords) * 0.5):
                             return f
                         break
-        except Exception:
+        except (OSError, json.JSONDecodeError, KeyError):
             continue
     return None
 
 
-def _try_load_missing_children(turns: list, agent_id: str) -> None:
+def _try_load_missing_children(turns: list, agent_id: str, _depth: int = 0) -> None:
     """Last-resort: load child sessions for spawns that have no child_turns yet.
 
     This handles the delivery_mirror case where the subagent result bypasses the
@@ -1294,10 +1401,8 @@ def _try_load_missing_children(turns: list, agent_id: str) -> None:
                 )
             if not child_file:
                 continue
-            if not child_file:
-                continue
             try:
-                child_analysis = parse_session(child_file, recursive_subagents=False)
+                child_analysis = parse_session(child_file, recursive_subagents=False, _depth=_depth + 1)
                 spawn.child_turns = child_analysis.turns
                 if not spawn.cost_usd:
                     spawn.cost_usd = child_analysis.total_cost
@@ -1307,8 +1412,8 @@ def _try_load_missing_children(turns: list, agent_id: str) -> None:
                 real_sid = child_file.name.split(".jsonl")[0]
                 if real_sid and real_sid != spawn.child_session_id:
                     spawn.child_session_id = real_sid
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, KeyError) as e:
+                logging.debug("Failed to parse child session %s: %s", child_file, e)
 
 
 def _assign_workflow_groups(turns: list) -> None:
@@ -1361,7 +1466,7 @@ def _assign_workflow_groups(turns: list) -> None:
             turn.workflow_group_id = None
 
 
-def _enrich_spawns_from_announces(turns: list, agent_id: str = ""):
+def _enrich_spawns_from_announces(turns: list, agent_id: str = "", _depth: int = 0):
     """Match subagent announce messages to their spawns and load child turns.
 
     Current announce format:
@@ -1418,7 +1523,7 @@ def _enrich_spawns_from_announces(turns: list, agent_id: str = ""):
                 real_sid = stats.get("session_id", "")
                 child_file = _find_child_session_by_id(real_sid, agent_id)
                 if child_file:
-                    child_analysis = parse_session(child_file, recursive_subagents=True)
+                    child_analysis = parse_session(child_file, recursive_subagents=True, _depth=_depth + 1)
                     spawn.child_turns = child_analysis.turns
                     if not spawn.cost_usd and child_analysis.total_cost:
                         spawn.cost_usd = child_analysis.total_cost
@@ -1447,7 +1552,7 @@ def _enrich_spawns_from_announces(turns: list, agent_id: str = ""):
                                 label, spawn.label, agent_id, turn.timestamp
                             )
                         if child_file:
-                            child_analysis = parse_session(child_file, recursive_subagents=True)
+                            child_analysis = parse_session(child_file, recursive_subagents=True, _depth=_depth + 1)
                             spawn.child_turns = child_analysis.turns
                             # Store real session ID for Open Session link
                             if not spawn.announce_stats.get("session_id"):
@@ -1471,17 +1576,41 @@ def list_sessions(agent_id: Optional[str] = None, last_n: int = 20,
             agents = [agent_dir]
     else:
         if AGENTS_DIR.exists():
-            agents = [d for d in AGENTS_DIR.iterdir() if d.is_dir()]
+            try:
+                agents = [d for d in AGENTS_DIR.iterdir() if d.is_dir()]
+            except OSError:
+                agents = []
 
     for agent_dir in agents:
         aid = agent_dir.name
         sessions_dir = agent_dir / "sessions"
         if not sessions_dir.exists():
             continue
+
+        # Load sessions.json for session key → type mapping
+        session_key_types = {}  # session_id → type from key pattern
+        sessions_json = sessions_dir / SESSIONS_JSON
+        if sessions_json.exists():
+            try:
+                with open(sessions_json, encoding="utf-8") as sjf:
+                    sj_data = json.load(sjf)
+                for key, entry in sj_data.items():
+                    sid = entry.get("sessionId", "")
+                    if ":subagent:" in key or entry.get("spawnedBy"):
+                        session_key_types[sid] = "subagent"
+                    elif ":hook:" in key:
+                        session_key_types[sid] = "hook"
+            except (OSError, json.JSONDecodeError):
+                pass
+
         for f in sessions_dir.glob("*.jsonl"):
             stat = f.stat()
             # Quick scan: read first few lines for metadata
             meta = _quick_scan_session(f, aid)
+            # Override subagent/hook detection from sessions.json
+            sid = meta.get("session_id", "")
+            if sid in session_key_types:
+                meta["type"] = session_key_types[sid]
             if session_type and meta.get("type") != session_type:
                 continue
             meta["file_path"] = str(f)
@@ -1506,14 +1635,15 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
     }
 
     try:
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8", errors="replace") as f:
             user_count = 0
             total_cost = 0.0
             total_tokens = 0
             model = ""
             session_type = "chat"
 
-            last_user_text = ""
+            last_preview = ""
+            last_preview_role = "user"
             tool_call_count = 0
             subagent_count = 0
             error_count = 0
@@ -1555,13 +1685,14 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                             for c in content:
                                 if isinstance(c, dict) and c.get("type") == "text":
                                     user_text += c.get("text", "")
-                        last_user_text = user_text
+                        last_preview = user_text
+                        last_preview_role = "user"
                         # 채널 메시지: raw metadata 대신 실제 메시지 텍스트로 대체
                         _src = _detect_source(user_text)
                         if _src in _BRACKET_CHANNEL_MAP or _src == "discord":
                             _cm = _parse_channel_message(user_text, _src)
                             if _cm and _cm.get("actual_text"):
-                                last_user_text = _cm["actual_text"]
+                                last_preview = _cm["actual_text"]
                         if user_count == 1:
                             src = _detect_source(user_text)
                             if src == "cron":
@@ -1579,6 +1710,16 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                         if ts and msg.get("model") != "delivery-mirror":
                             current_turn_last_ts = ts
                     if role == "assistant":
+                        if msg.get("model") != "delivery-mirror":
+                            content = msg.get("content", [])
+                            if isinstance(content, list):
+                                for c in content:
+                                    if isinstance(c, dict) and c.get("type") == "text":
+                                        text = c.get("text", "").strip()
+                                        if text:
+                                            last_preview = text
+                                            last_preview_role = "assistant"
+                                            break
                         if msg.get("model"):
                             model = msg["model"]
                         usage = msg.get("usage", {})
@@ -1604,15 +1745,13 @@ def _quick_scan_session(file_path: Path, agent_id: str) -> dict:
                 if dur > 0:
                     turn_durations.append(dur)
 
-            if "subagent" in str(file_path):
-                session_type = "subagent"
-
             meta["type"] = session_type
             meta["model"] = model
             meta["turns"] = user_count
             meta["cost"] = total_cost
             meta["tokens"] = total_tokens
-            meta["last_message"] = last_user_text[:200] if last_user_text else ""
+            meta["last_message"] = last_preview[:200] if last_preview else ""
+            meta["last_message_role"] = last_preview_role
             meta["tool_calls"] = tool_call_count
             meta["subagents"] = subagent_count
             meta["errors"] = error_count

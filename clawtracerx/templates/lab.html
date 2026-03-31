@@ -20,7 +20,7 @@
     <select class="input-select" id="agent-select" onchange="loadGatewaySessions()">
       <option value="all" data-i18n="lab.all_agents">All Agents</option>
     </select>
-    <select class="input-select" id="session-select" onchange="selectSession()" style="min-width:300px">
+    <select class="input-select lab-session-select" id="session-select" onchange="selectSession()">
       <option value="" data-i18n="lab.select_session">Select session...</option>
     </select>
     <button class="btn btn-outline btn-sm" onclick="startNewSession()" data-i18n="lab.new" data-i18n-title="lab.new_title" title="New session">+ New</button>
@@ -108,7 +108,7 @@
 <!-- Fixed bottom message input -->
 <div class="lab-input-sticky" id="lab-input-sticky">
   <div class="lab-input-row">
-    <textarea class="input-textarea" id="message-input" rows="1" data-i18n-placeholder="lab.input_placeholder" placeholder="Type a message to send to the agent..." onkeydown="handleInputKeydown(event)" oninput="autoResizeTextarea(this)"></textarea>
+    <textarea class="input-textarea" id="message-input" rows="1" data-i18n-placeholder="lab.input_placeholder" placeholder="Type a message to send to the agent..." onkeydown="handleInputKeydown(event)" oninput="autoResizeTextarea(this);_saveDraft()"></textarea>
     <button class="btn btn-primary" onclick="sendMessage()" id="send-btn" data-i18n="lab.send">Send</button>
   </div>
   <div class="lab-input-meta">
@@ -136,6 +136,9 @@ let currentSessionId = null;   // JSONL file UUID — for streaming/viewing
 let currentSessionKey = null;  // gateway routing key — for sending
 let currentAgentId = 'main';
 let eventSource = null;        // SSE connection
+let sseReconnectCount = 0;
+const SSE_MAX_RECONNECT = 5;
+let sseReconnectTimer = null;
 let lastTurnCount = 0;
 let isSending = false;
 let isMac = false;
@@ -206,7 +209,9 @@ function hideElapsedAfterDelay() {
 function insertPendingMessage(text) {
   removePendingMessage();
   const container = qs('#turns-container');
-  qs('#timeline-empty').style.display = 'none';
+  if (!container) return;
+  const emptyEl = qs('#timeline-empty');
+  if (emptyEl) emptyEl.style.display = 'none';
   const card = document.createElement('div');
   card.className = 'pending-msg-card';
   card.id = 'pending-msg';
@@ -225,7 +230,33 @@ function removePendingMessage() {
 // --- Textarea auto-resize + keyboard ---
 function autoResizeTextarea(el) {
   el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+  var maxH = Math.min(window.innerHeight * 0.3, 200);
+  el.style.height = Math.min(el.scrollHeight, maxH) + 'px';
+}
+
+// --- Lab message draft (localStorage) ---
+var _draftTimer = null;
+function _draftKey() {
+  return 'clawtracerx-draft:' + (currentSessionKey || '_new');
+}
+function _saveDraft() {
+  clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(function() {
+    var val = qs('#message-input').value;
+    if (val) localStorage.setItem(_draftKey(), val);
+    else localStorage.removeItem(_draftKey());
+  }, 500);
+}
+function _restoreDraft() {
+  var saved = localStorage.getItem(_draftKey());
+  if (saved) {
+    var el = qs('#message-input');
+    el.value = saved;
+    autoResizeTextarea(el);
+  }
+}
+function _clearDraft() {
+  localStorage.removeItem(_draftKey());
 }
 
 function handleInputKeydown(e) {
@@ -309,6 +340,7 @@ async function init() {
   await loadGatewaySessions();
   loadContextFiles();
   loadActivityLog();
+  _restoreDraft();
 }
 
 async function loadAgents() {
@@ -433,6 +465,7 @@ async function sendMessage() {
   qs('#send-btn').disabled = true;
   qs('#message-input').value = '';
   autoResizeTextarea(qs('#message-input'));
+  _clearDraft();
 
   // Insert pending message card immediately
   insertPendingMessage(message);
@@ -500,6 +533,7 @@ function startStream() {
   eventSource.addEventListener('init', function(e) {
     const data = JSON.parse(e.data);
     console.log('[SSE] init:', data.turns?.length, 'turns');
+    sseReconnectCount = 0; // Reset on successful connection
     removePendingMessage();
     if (data.turns && data.turns.length > 0) {
       qs('#timeline-empty').style.display = 'none';
@@ -558,22 +592,36 @@ function startStream() {
     autoExpandLatestTurn();
   });
 
-  // Error / reconnect
+  // Error / reconnect with exponential backoff
   eventSource.addEventListener('error', function() {
     console.warn('[SSE] error, readyState:', eventSource.readyState);
     if (eventSource.readyState === EventSource.CLOSED) {
-      setStatus('idle');
+      if (sseReconnectCount < SSE_MAX_RECONNECT) {
+        var delay = Math.pow(2, sseReconnectCount) * 1000; // 1s, 2s, 4s, 8s, 16s
+        sseReconnectCount++;
+        console.log('[SSE] reconnecting in', delay, 'ms (attempt', sseReconnectCount + ')');
+        setStatus('connecting');
+        sseReconnectTimer = setTimeout(function() { startStream(); }, delay);
+      } else {
+        setStatus('idle');
+        showToast(_t('lab.connection_lost') || 'Connection lost. Click to reconnect.', 'error');
+        sseReconnectCount = 0;
+      }
     }
+    // CONNECTING state: browser auto-reconnects, just wait
   });
 
   // Server timeout
   eventSource.addEventListener('timeout', function() {
     console.log('[SSE] timeout');
     setStatus('idle');
+    sseReconnectCount = 0;
   });
 }
 
 function stopStream() {
+  if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
+  sseReconnectCount = 0;
   if (eventSource) {
     eventSource.close();
     eventSource = null;
@@ -615,6 +663,7 @@ function setStatus(status) {
 async function loadContextFiles() {
   const files = await fetchJSONSafe('/api/lab/context');
   const container = qs('#context-files');
+  if (!container) return;
 
   if (!files || !files.length) {
     container.innerHTML = '<div class="empty">' + _t('lab.no_context') + '</div>';
@@ -640,7 +689,7 @@ async function loadContextFiles() {
         '</div>' +
         '<span style="color:var(--text-3);font-size:11px;flex-shrink:0">\u25BE</span>' +
       '</div>' +
-      '<div class="lab-ctx-file-body" style="display:' + (openCards.has(f.name) ? 'block' : 'none') + '">' +
+      '<div class="lab-ctx-file-body' + (openCards.has(f.name) ? '' : ' collapsed') + '">' +
         '<textarea class="input-textarea" id="ctx-' + f.name + '" rows="12" oninput="markContextUnsaved(\'' + f.name + '\')">' + escHtml(f.content) + '</textarea>' +
         '<div class="lab-ctx-actions">' +
           '<div style="display:flex;gap:6px">' +
@@ -730,6 +779,7 @@ async function resetContextFile(name) {
 async function loadActivityLog() {
   const entries = await fetchJSONSafe('/api/lab/activity');
   const container = qs('#activity-log');
+  if (!container) return;
   if (!entries || !entries.length) {
     container.innerHTML = '<span class="dim">' + _t('lab.no_activity') + '</span>';
     return;
@@ -737,7 +787,7 @@ async function loadActivityLog() {
   container.innerHTML = entries.map(function(e) {
     var ts = e.ts ? e.ts.split('T')[1]?.split('+')[0]?.slice(0,8) : '';
     var action = e.action || '';
-    var key = e.sessionKey ? ' key=' + e.sessionKey : '';
+    var key = e.sessionKey ? ' key=' + escHtml(e.sessionKey) : '';
     var msg = '';
     if (e.message) {
       msg = ' msg="' + escHtml(truncate(e.message, 60))
@@ -750,10 +800,10 @@ async function loadActivityLog() {
         + makeShowFullBtn('···', 'ERR', e.error, 80)
         + '</span>';
     }
-    var file = e.file ? ' file=' + e.file : '';
-    var rid = e.runId ? ' run=' + e.runId.slice(0,8) : '';
+    var file = e.file ? ' file=' + escHtml(e.file) : '';
+    var rid = e.runId ? ' run=' + escHtml(e.runId.slice(0,8)) : '';
     return '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle)">' +
-      '<span style="color:var(--text-3)">' + ts + '</span> ' +
+      '<span style="color:var(--text-3)">' + escHtml(ts) + '</span> ' +
       '<span style="color:var(--accent);font-weight:600">' + escHtml(action) + '</span>' + key + msg + rid + file + err +
     '</div>';
   }).join('');

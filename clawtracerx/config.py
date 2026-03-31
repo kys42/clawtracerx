@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 CONFIG_FILE = Path.home() / ".openclaw" / "tools" / "ocmon" / "config.json"
 
@@ -18,8 +21,8 @@ def load() -> dict:
         try:
             with open(CONFIG_FILE) as f:
                 cfg.update(json.load(f))
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Failed to load config %s: %s", CONFIG_FILE, e)
     return cfg
 
 
@@ -35,8 +38,8 @@ def apply_paths(openclaw_dir: str = ""):
     if not openclaw_dir:
         return  # use defaults, no change
 
-    from clawtracerx import session_parser as sp
     from clawtracerx import gateway as gw
+    from clawtracerx import session_parser as sp
 
     base = Path(openclaw_dir)
     sp.OPENCLAW_DIR = base

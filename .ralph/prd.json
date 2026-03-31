@@ -1,0 +1,1333 @@
+{
+  "branchName": "feat/quality-and-ux",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "테스트 커버리지 대폭 확대",
+      "category": "testing",
+      "priority": 1,
+      "description": "현재 69개 테스트, API 14% 커버리지를 대폭 끌어올린다. 파서 I/O 함수(load_cron_runs, load_session_metadata, get_raw_turn_lines), parse_session 엣지 케이스(빈 세션, malformed JSONL, compaction, thinking), 웹 API 엔드포인트(/api/crons, /api/health, /api/schedule, 페이지 렌더링, raw turn), CLI 커맨드(cmd_sessions, cmd_cost, cmd_crons capsys 캡처), gateway 순수 함수까지 한번에 보강한다.",
+      "steps": [
+        "conftest.py에 cron JSONL fixture, sessions.json fixture, empty_session.jsonl, session_with_compaction.jsonl, session_with_thinking.jsonl 등 필요한 합성 데이터 모두 추가",
+        "test_session_parser.py: load_cron_runs(3), load_session_metadata(2), get_raw_turn_lines(2), parse_session 엣지케이스(빈 세션, malformed skip, compaction 파싱, thinking 추출 — 5+)",
+        "test_web.py: /api/crons, /api/health, /api/schedule, /cost, /schedule, /settings 페이지 렌더링, /api/session/:id/raw/:turn 정상+범위초과 (8+)",
+        "test_cli.py: cmd_sessions, cmd_cost, cmd_crons를 capsys + mock_openclaw_dir로 stdout 출력 검증 (6+)",
+        "ruff check + pytest -v 모두 통과"
+      ],
+      "acceptanceCriteria": [
+        "새 테스트 25개 이상 추가",
+        "파서 I/O 함수, CLI 커맨드, 웹 API 모두 커버",
+        "전체 pytest 통과 + ruff 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "디자인/UX 일괄 개선",
+      "category": "design",
+      "priority": 2,
+      "description": "색상 대비 WCAG AA 수정, 호버 상태 강화, 에러 배너 시스템, 로딩/빈 상태 개선, 접근성(aria-label), 모바일 반응형(사이드바 햄버거, 카드 wrap, 차트 높이 조정)을 한 묶음으로 처리. 기존 Dark Pro 디자인 시스템의 CSS 변수 체계 유지하며 개선.",
+      "steps": [
+        "style.css: --text-3 대비 수정, .data-table hover 강화, @media(hover:hover) ghost hover 방지",
+        "app.js: showErrorBanner(message, retryFn) 함수 추가 — fetchJSONSafe 실패 시 화면에 배너 표시 + Retry",
+        "detail.html: 로딩 실패 시 에러 메시지 + 뒤로가기 표시 (무한 로딩 제거)",
+        "base.html: 모바일 햄버거 메뉴 + @media(max-width:768px) 사이드바 토글",
+        "sessions.html: 카드 칩 모바일 wrap, cost.html: 차트 높이 모바일 조정",
+        "아이콘 전용 버튼에 aria-label 추가 (복사, raw 보기 등)",
+        "detail.html: Expand All / Collapse All 턴 토글 버튼 + 워크플로우 그룹 일괄 토글",
+        "브라우저에서 모바일 뷰포트 + 데스크톱 양쪽 확인"
+      ],
+      "acceptanceCriteria": [
+        "WCAG AA 대비 충족",
+        "API 에러 시 유저에게 배너 표시 + Retry 동작",
+        "768px 이하에서 사이드바 햄버거 전환",
+        "Expand All/Collapse All 동작",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "리뷰 & 개선점 탐색 (1차)",
+      "category": "meta",
+      "priority": 3,
+      "description": "US-001, US-002 완료 후 중간 점검. 코드베이스를 전체 탐색하여 깨진 부분, 누락된 테스트, TODO/FIXME, 미번역 문자열, 미사용 코드, 새로운 기능 아이디어를 찾는다. 발견한 개선점은 prd.json에 US-007~ 스토리로 추가한다. 코드 수정은 하지 않고 PRD만 업데이트.",
+      "steps": [
+        "clawtracerx/ 전체 Python 읽기 — TODO/FIXME/HACK 수집, 에러 핸들링 갭, 미사용 import",
+        "templates/ 전체 HTML — 하드코딩 문자열, 깨진 레이아웃, 미번역 텍스트, 접근성",
+        "static/ JS/CSS — 미사용 코드, 성능 병목, 일관성",
+        "pytest --co -q로 테스트 갭 확인, ruff check로 린트 이슈",
+        "발견한 항목을 US-007~ 스토리로 prd.json에 추가 (최소 3개, steps + acceptanceCriteria 포함)",
+        "이 스토리 자체를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리가 prd.json에 추가됨",
+        "각 스토리가 구체적이고 실행 가능",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-004",
+      "title": "검색 + 내보내기 + 차트 드릴다운",
+      "category": "feature",
+      "priority": 4,
+      "description": "세션 목록 검색(session_id, agent_id, 메시지 텍스트 클라이언트사이드 필터), 디테일 페이지 턴 검색/도구 필터, 세션 내보내기(CSV/JSON), 비용 차트 바 클릭→세션 필터 이동, Agent×Type 테이블 정렬, 고비용 세션 뱃지를 한번에 구현.",
+      "steps": [
+        "sessions.html: 검색 입력란 + input 이벤트 리스너, 실시간 필터, 'No matching sessions' 상태",
+        "detail.html: 턴 검색 입력 + 도구 이름 드롭다운 필터, 매칭 수 표시, 초기화 버튼",
+        "web.py: GET /api/sessions/export?format=csv, GET /api/session/:id/export?format=json 엔드포인트",
+        "sessions.html: 'Export CSV' 버튼, detail.html: 'Export JSON' 버튼",
+        "cost.html: ApexCharts bar click → location.href='/?agent=xxx', sessions.html에서 URL 쿼리 파라미터 자동 적용",
+        "cost.html: Agent×Type 테이블 헤더 클릭 정렬",
+        "sessions.html: 고비용 세션(상위 10%) 'High Cost' 뱃지",
+        "style.css에 필요한 스타일 추가"
+      ],
+      "acceptanceCriteria": [
+        "세션 검색 실시간 필터링 동작",
+        "턴 검색 + 도구 필터 동작",
+        "CSV/JSON 다운로드 동작",
+        "차트 클릭 → 필터된 세션 페이지 이동",
+        "테이블 정렬 동작",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-005",
+      "title": "세션 디테일 라이브 스트리밍 (SSE)",
+      "category": "feature",
+      "priority": 5,
+      "description": "세션 상세 페이지에서 JSONL이 실시간으로 갱신되면 새 턴/도구호출이 새로고침 없이 이어붙여짐. 기존 렌더된 턴 유지, 새 턴만 아래 추가, 진행 중 턴은 patch로 교체. Lab의 /api/lab/stream SSE 인프라 재활용. 스크롤 위치 보존(위를 보고 있으면 자동스크롤 안 함, 바닥이면 자동스크롤).",
+      "steps": [
+        "web.py: GET /api/session/:id/stream SSE 엔드포인트 (api_lab_stream과 동일 패턴 — init/update/patch/done 이벤트, 0.5초 폴링, mtime 감지)",
+        "detail.html: 'Live' 토글 버튼 추가 (기본 off), 활성화 시 초록 점 애니메이션",
+        "Live ON → EventSource 연결, init 이벤트는 무시 (이미 로드됨), update 이벤트의 new_turns를 turns 컨테이너에 append",
+        "patch 이벤트: 마지막 턴 카드 innerHTML 교체 (도구 호출 결과 도착 시)",
+        "스크롤 위치 보존: scrollHeight - scrollTop - clientHeight < 100이면 자동스크롤, 아니면 유지",
+        "done 이벤트: Live 버튼 'Complete' 표시 + SSE 종료",
+        "error/timeout: 3초 후 재연결 (최대 5회)",
+        "turns.js의 renderTurn을 단일 턴 append에도 사용 가능하도록 확인/수정",
+        "Live OFF → EventSource 닫기",
+        "style.css: .live-indicator 초록 점 pulse 애니메이션"
+      ],
+      "acceptanceCriteria": [
+        "Live ON → 새 턴이 새로고침 없이 실시간 추가",
+        "기존 턴 유지, 리렌더 없음",
+        "진행 중 턴 patch 업데이트 동작",
+        "스크롤 위치 보존 동작",
+        "세션 완료 시 자동 Live 종료",
+        "네트워크 끊김 시 자동 재연결",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-006",
+      "title": "캐싱 + 로그 뷰어 + Lab 초안 저장",
+      "category": "feature",
+      "priority": 6,
+      "description": "parse_session 결과 mtime 기반 LRU 캐시(50 세션), settings 페이지 로그 뷰어(web.log/lab.log 최근 50줄 + 탭 전환 + health Retry 버튼), Lab 메시지 초안 localStorage 자동저장/복원을 한 묶음으로.",
+      "steps": [
+        "session_parser.py: _parse_cache dict + mtime 검사 + LRU 50개 제한, parse_session 진입 시 캐시 확인",
+        "테스트: 같은 파일 2회 호출 시 캐시 히트, mtime 변경 시 캐시 무효화",
+        "web.py: GET /api/logs?file=web&lines=50 (화이트리스트: web.log, lab.log만)",
+        "settings.html: 로그 뷰어 섹션 (monospace, 자동스크롤, 새로고침, web/lab 탭 전환)",
+        "settings.html: health 카드 Retry 버튼 → /api/health 재호출",
+        "lab.html: 메시지 textarea input 이벤트 → localStorage 저장 (debounce 500ms), 로드 시 복원, 전송 시 삭제, 세션 키별 분리"
+      ],
+      "acceptanceCriteria": [
+        "같은 세션 2회 요청 시 파싱 1회 (캐시 동작)",
+        "로그 뷰어에서 최근 로그 표시 + 탭 전환",
+        "Lab 메시지 새로고침 후 복원",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-007",
+      "title": "Python 3.9 호환성 수정 + 에러 핸들링 강화",
+      "category": "bugfix",
+      "priority": 7,
+      "description": "web.py에 `from __future__ import annotations` 누락으로 Python 3.9에서 `Path | None` 등 PEP 604 문법 런타임 에러 발생 가능. 또한 config.py, session_parser.py, web.py 전반에 `except Exception: pass` 패턴이 6곳 이상 존재하여 디버깅 불가능한 사일런트 실패를 유발. 브로드 except를 구체적 예외로 변경하고 최소한 logging.warning 추가.",
+      "steps": [
+        "web.py 상단에 `from __future__ import annotations` 추가 (line 1~)",
+        "config.py line 21: `except Exception: pass` → `except (json.JSONDecodeError, OSError) as e: logging.warning(...)` 로 변경",
+        "session_parser.py line 1270, 1321: `except Exception: continue/pass` → 구체적 예외 + warning 로그",
+        "web.py line 58, 453, 895: 브로드 except → 구체적 예외 타입으로 변경 + 컨텍스트 로깅",
+        "gateway.py line 242: `agent_id: str = None` → `agent_id: Optional[str] = None` 수정",
+        "ruff check + pytest -v 통과 확인"
+      ],
+      "acceptanceCriteria": [
+        "web.py가 Python 3.9에서 import 에러 없이 로드됨",
+        "except Exception: pass 패턴 0개",
+        "모든 예외 핸들러에 최소 logging.warning 포함",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-008",
+      "title": "프론트엔드 접근성 + i18n 누락 문자열 보완",
+      "category": "accessibility",
+      "priority": 8,
+      "description": "base.html의 네비게이션 SVG 아이콘에 aria-label 없음, Lab 비활성 링크가 pointer-events:none으로 키보드 접근 차단, lab.html form input에 label 연결 안 됨, style.css .workflow-label이 미정의 var(--fg) 사용. detail.html의 'Expand All/Collapse All', home.html의 chat/cron/hb 뱃지 등 하드코딩 문자열 i18n 미적용.",
+      "steps": [
+        "base.html: 모든 nav SVG에 aria-label 또는 role='img' + aria-label 추가",
+        "base.html: Lab 비활성 링크를 aria-disabled='true' + tabindex='-1'로 변경 (pointer-events:none 제거)",
+        "lab.html: orphaned input에 <label for='...'> 연결",
+        "style.css: .workflow-label의 var(--fg) → var(--text-0), var(--fg-muted) → var(--text-3)으로 수정",
+        "detail.html: 'Expand All'/'Collapse All' 버튼 텍스트에 data-i18n 적용",
+        "home.html: 미니 뱃지 'chat','cron','hb' 텍스트 i18n 키 추가",
+        "graph.html: 'No graph data available.' i18n 적용",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 아이콘 버튼/링크에 aria-label 존재",
+        "키보드 전용 네비게이션으로 모든 인터랙티브 요소 접근 가능",
+        "CSS에 미정의 변수 0개",
+        "하드코딩 영문 문자열 i18n 적용",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-009",
+      "title": "테스트 커버리지 2차 확대 — config, web helpers, CLI 커맨드",
+      "category": "testing",
+      "priority": 9,
+      "description": "1차 테스트 확대(US-001) 이후에도 config.py 0%, web.py _serialize_*() 0%, CLI cmd_raw/cmd_subagents/cmd_context 0%, gateway RPC 모킹 0% 상태. 특히 _serialize_analysis/turn/tc/spawn은 API 응답 구조를 결정하므로 반드시 테스트 필요. config.py load/save도 설정 파일 손상 시 사일런트 실패하므로 커버 필수.",
+      "steps": [
+        "test_config.py 신규: load() 기본값, load() 커스텀 값, load() 파일 손상 시 기본값 폴백, save() 라운드트립",
+        "test_web.py 추가: _serialize_analysis, _serialize_turn, _serialize_tc, _serialize_spawn 단위 테스트 (mock SessionAnalysis/Turn/ToolCall/SubagentSpawn 사용)",
+        "test_web.py 추가: /api/session/<id>/graph, /api/skill-content, /api/file-content 엔드포인트",
+        "test_cli.py 추가: cmd_raw, cmd_subagents, cmd_context (capsys + mock 세션)",
+        "test_gateway.py 추가: rpc_call mock (websocket-client mock으로 connect/auth/rpc 시퀀스 검증)",
+        "pytest -v 전체 통과 + 새 테스트 20개 이상"
+      ],
+      "acceptanceCriteria": [
+        "config.py 테스트 커버리지 > 80%",
+        "_serialize_* 함수 모두 테스트됨",
+        "새 테스트 20개 이상 추가",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-010",
+      "title": "Lab 페이지 모바일 반응형 + JS 에러 핸들링 일관화",
+      "category": "design",
+      "priority": 10,
+      "description": "lab.html의 .lab-columns에 모바일 미디어쿼리 없어 좁은 화면에서 레이아웃 깨짐. cost.html 차트 컨테이너 overflow 미처리. JS에서 fetchJSON과 fetchJSONSafe 사용이 혼재되어 일부 호출은 에러 시 사용자에게 피드백 없이 console.error만 출력. clipboard API 에러 핸들링 누락.",
+      "steps": [
+        "style.css: .lab-columns @media(max-width:768px) 1열 스택으로 변경",
+        "style.css: cost 차트 컨테이너에 overflow-x: auto 추가",
+        "detail.html: navigator.clipboard.writeText 호출에 .catch() 추가 → 실패 시 fallback 또는 토스트",
+        "detail.html: fetchJSON() 호출을 fetchJSONSafe()로 통일 (modal 내 raw 텍스트 로딩 등)",
+        "home.html: Promise.all catch에서 console.error 대신 showErrorBanner() 사용",
+        "lab.html: textarea max-height 200px → CSS 변수 또는 vh 단위로 반응형 변경",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "Lab 페이지 768px 이하에서 1열 레이아웃",
+        "cost 차트 모바일에서 가로 스크롤 가능",
+        "clipboard 실패 시 사용자 피드백",
+        "fetchJSON 미사용 (fetchJSONSafe로 통일)",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-011",
+      "title": "parse_session 리팩토링 — 440줄 함수 분해",
+      "category": "refactoring",
+      "priority": 11,
+      "description": "session_parser.py의 parse_session()이 440+줄로 cyclomatic complexity 극히 높음. 메타데이터 추출, 턴 경계 감지, 도구 호출 매칭, 서브에이전트 enrichment, 컨텍스트 계산이 한 함수에 혼재. 내부 로직을 _extract_metadata(), _build_turns(), _match_tool_results() 등 서브함수로 분리하되, 외부 인터페이스(parse_session 시그니처, 반환값)는 변경하지 않음.",
+      "steps": [
+        "parse_session 내부의 1차 패스(메타데이터 추출) → _extract_metadata(lines, analysis) 분리",
+        "2차 패스(턴 생성 루프) → _build_turns_from_lines(lines, analysis) 분리",
+        "도구 호출 결과 매칭 로직 → _match_tool_results(turns, pending_calls) 분리",
+        "parse_session은 서브함수 호출 + 최종 조립만 담당 (100줄 이내)",
+        "기존 테스트 전부 통과 확인 (동작 변경 없음)",
+        "ruff check 통과"
+      ],
+      "acceptanceCriteria": [
+        "parse_session 본체 100줄 이내",
+        "새 서브함수 최소 3개",
+        "기존 108개 테스트 전부 통과 (동작 변경 없음)",
+        "ruff 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-FINAL",
+      "title": "최종 리뷰 & 추가 개선 탐색",
+      "category": "meta",
+      "priority": 99,
+      "description": "모든 스토리 완료 후 최종 점검. 전체 코드베이스를 탐색하여 남은 버그, 개선 기회, 새 기능 아이디어를 찾아 prd.json에 추가. 직접 코드 수정 없이 스토리만 추가.",
+      "steps": [
+        "전체 Python/HTML/JS/CSS 탐색 — TODO/FIXME, 에러 핸들링 갭, 일관성 깨진 부분",
+        "pytest + ruff 실행하여 남은 이슈 확인",
+        "실제 ctrace web --debug로 모든 페이지 접속하여 UX 확인",
+        "발견한 항목을 새 스토리로 prd.json에 추가 (최소 5개)",
+        "이 스토리를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 5개 이상 새 스토리 추가",
+        "각 스토리 구체적 steps + acceptanceCriteria 포함",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-012",
+      "title": "메모리 누수 방지 — 무한 증가 캐시 + EventSource 정리",
+      "category": "bugfix",
+      "priority": 12,
+      "description": "web.py의 _poll_file_cache가 무한 증가하여 장기 운영 시 메모리 누수. app.js의 window._textBuf도 모달 닫아도 삭제 안 됨. detail.html의 EventSource가 페이지 이탈 시 정리 안 됨 (beforeunload 미등록). Live 토글 빠르게 반복하면 중복 EventSource 생성 가능.",
+      "steps": [
+        "web.py: _poll_file_cache에 maxsize 제한 (100) + LRU 퇴출 적용",
+        "app.js: closeTextModal()에서 _textBuf 해당 키 삭제 (or 전체 리셋)",
+        "detail.html: window beforeunload 이벤트에서 _closeLive() 호출",
+        "detail.html: _startLive()에서 기존 _evtSource가 있으면 먼저 close",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "_poll_file_cache 최대 100개 유지",
+        "모달 닫으면 _textBuf 정리됨",
+        "페이지 이탈 시 EventSource 자동 정리",
+        "Live 빠르게 토글해도 중복 생성 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-013",
+      "title": "XSS 방지 — marked.parse DOMPurify + parse_session 에러 그레이스풀",
+      "category": "security",
+      "priority": 13,
+      "description": "app.js의 showTextModal에서 marked.parse() 결과를 innerHTML로 삽입하여 마크다운 내 <script> 태그가 실행될 수 있음. 또한 web.py의 api_session_detail에서 parse_session 호출 시 손상된 JSONL에 대해 500 에러 대신 그레이스풀 400 반환 필요. SSE 핸들러의 JSON.parse도 try-catch 미적용.",
+      "steps": [
+        "base.html: DOMPurify CDN 추가 (https://cdn.jsdelivr.net/npm/dompurify)",
+        "app.js: _refreshModalBody에서 marked.parse 후 DOMPurify.sanitize() 적용",
+        "web.py: api_session_detail, api_session_graph에 try-except 래핑 → 400 Bad Session Data",
+        "detail.html: SSE update/patch 핸들러의 JSON.parse를 try-catch로 감싸기",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "마크다운에 <script>alert(1)</script> 포함해도 실행 안 됨",
+        "손상된 JSONL 파싱 시 500 대신 400 반환",
+        "SSE 데이터 손상 시 에러 배너 표시 (크래시 없음)",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-014",
+      "title": "SSE 스트리밍 성능 개선 — 델타 파싱 + 매직 넘버 상수화",
+      "category": "performance",
+      "priority": 14,
+      "description": "api_session_stream과 api_lab_stream이 0.5초마다 전체 JSONL을 재파싱하여 대용량 세션에서 CPU 과부하. 파일 크기만 변경 감지하고 새 줄만 읽는 델타 파싱으로 전환. 또한 600(5분 타임아웃), 30(하트비트), 0.5(폴링 간격) 등 매직 넘버를 상수로 추출.",
+      "steps": [
+        "web.py: SSE_POLL_INTERVAL, SSE_TIMEOUT_CYCLES, SSE_HEARTBEAT_INTERVAL 상수 정의",
+        "web.py: api_session_stream에서 last_size 기반으로 새 줄만 읽어서 파싱하는 _delta_parse 헬퍼 도입",
+        "web.py: api_lab_stream에도 동일 패턴 적용",
+        "기존 SSE 테스트 + 새 유닛 테스트 통과",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "매직 넘버 0개 (모두 상수화)",
+        "파일 크기 변경 시 새 줄만 파싱 (전체 재파싱 아님)",
+        "기존 동작 변경 없음 (init/update/patch/done 이벤트)",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-015",
+      "title": "검색/필터 UX 개선 — 디바운스 + 키보드 단축키 + 연결 상태 표시",
+      "category": "ux",
+      "priority": 15,
+      "description": "detail.html의 filterTurns()가 키 입력마다 호출되어 대량 턴에서 렉 발생. sessions.html의 filterCards()도 동일. Live 버튼이 연결 중 상태를 표시하지 않아 사용자가 여러 번 클릭. 키보드 단축키(Ctrl+F 검색, Esc 필터 초기화)가 없음.",
+      "steps": [
+        "detail.html: filterTurns를 300ms 디바운스로 래핑",
+        "sessions.html: filterCards를 300ms 디바운스로 래핑",
+        "detail.html: Live 버튼 연결 중 'Connecting...' 상태 표시 (init 이벤트 수신까지)",
+        "detail.html: Ctrl+F → 턴 검색 입력 포커스, Esc → 필터 초기화",
+        "sessions.html: Ctrl+F → 세션 검색 입력 포커스",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "검색 입력 시 300ms 디바운스 적용",
+        "Live 버튼에 Connecting 상태 표시",
+        "Ctrl+F로 검색 입력 포커스",
+        "Esc로 필터 초기화",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-016",
+      "title": "SSE 스트리밍 + 내보내기 + 캐시 테스트 확대",
+      "category": "testing",
+      "priority": 16,
+      "description": "US-004~006에서 추가한 기능(검색, 내보내기, 라이브 스트리밍, 캐시, 로그)의 서버 측 테스트가 부족. 특히 SSE 스트리밍 이벤트 생성 로직, CSV 내보내기 필드 정확성, 로그 뷰어 라인 수 제한, 캐시 무효화 시나리오를 커버해야 함.",
+      "steps": [
+        "test_web.py: /api/sessions/export CSV 필드 검증 (헤더 + 데이터 행 매칭)",
+        "test_web.py: /api/session/<id>/export JSON 구조 검증 (turns, session_id 필드)",
+        "test_web.py: /api/logs lines 파라미터 제한 검증 (최대 200줄)",
+        "test_web.py: /api/session/<id>/stream SSE 초기 이벤트 검증 (mock 파일 변경)",
+        "test_session_parser.py: _read_jsonl, _extract_metadata, _build_id_map 단위 테스트",
+        "pytest -v 통과 + 새 테스트 10개 이상"
+      ],
+      "acceptanceCriteria": [
+        "CSV 내보내기 필드 정확성 테스트 통과",
+        "SSE 초기 이벤트 생성 테스트 통과",
+        "새 서브함수 단위 테스트 통과",
+        "새 테스트 10개 이상 추가",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-017",
+      "title": "web.py 남은 except Exception as e 정리 + 타입 힌트 보강",
+      "category": "code-quality",
+      "priority": 17,
+      "description": "US-007에서 except Exception: pass 패턴을 제거했으나 web.py에 아직 except Exception as e: 패턴이 10곳 이상 남아있음 (라우트 핸들러 내). KeyboardInterrupt/SystemExit도 잡히는 문제. 또한 _poll_file_cache, _lab_activity_log 등 모듈 수준 변수에 타입 힌트 누락.",
+      "steps": [
+        "web.py: 모든 라우트 핸들러의 except Exception as e → 구체적 예외 타입으로 변경",
+        "web.py: _poll_file_cache, _tool_desc_cache, _lab_activity_log 타입 힌트 보강",
+        "web.py: import csv as _csv → import csv (언더스코어 접두사 제거)",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "except Exception as e 패턴 최소화 (불가피한 경우 주석으로 이유 명시)",
+        "모듈 수준 변수 타입 힌트 존재",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-018",
+      "title": "__main__.py future annotations + 코드 일관성 정리",
+      "category": "code-quality",
+      "priority": 18,
+      "description": "__main__.py에 from __future__ import annotations 누락. 전체 Python 파일 중 유일하게 빠져있어 일관성 깨짐.",
+      "steps": [
+        "__main__.py에 from __future__ import annotations 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 Python 파일에 from __future__ import annotations 존재",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-019",
+      "title": "session_parser 버그 수정 — 중복 null 체크 + TOCTOU + ValueError 미처리",
+      "category": "bugfix",
+      "priority": 19,
+      "description": "session_parser.py에 3가지 버그: (1) _enrich_subagent_spawns()의 중복 `if not child_file: continue` (1346-1347 데드코드), (2) load_subagent_runs()의 exists()+open() TOCTOU 레이스 (파일 삭제 시 FileNotFoundError 미처리), (3) _parse_token_str()에서 잘못된 문자열 입력 시 ValueError 미처리. 또한 _enrich_subagent_spawns의 except pass에 최소 logging.debug 추가.",
+      "steps": [
+        "session_parser.py 1346-1347: 두 번째 중복 `if not child_file: continue` 제거",
+        "session_parser.py load_subagent_runs(): exists() 체크 제거, try/except FileNotFoundError로 TOCTOU 방지",
+        "session_parser.py _parse_token_str(): try/except ValueError → return 0",
+        "session_parser.py _enrich_subagent_spawns except 블록에 logging.debug 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "중복 null 체크 제거됨",
+        "load_subagent_runs가 TOCTOU 안전",
+        "_parse_token_str이 잘못된 입력에도 크래시 안 함",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-020",
+      "title": "cli.py future annotations + iterdir OSError 방어 + 파일 카운트 최적화",
+      "category": "bugfix",
+      "priority": 20,
+      "description": "cli.py에 from __future__ import annotations 누락 (US-018에서 빠짐). session_parser.py의 _find_child_session_file()에서 AGENTS_DIR.iterdir()가 OSError 미처리 (디렉토리 삭제/권한 문제 시 크래시). web.py /api/health의 len(list(glob()))을 sum(1 for ...)으로 최적화.",
+      "steps": [
+        "cli.py 상단에 from __future__ import annotations 추가",
+        "session_parser.py _find_child_session_file(): AGENTS_DIR.iterdir() 호출을 try/except OSError로 래핑",
+        "web.py health 엔드포인트의 len(list(glob())) → sum(1 for ...) 최적화",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 Python 소스 파일에 from __future__ import annotations 존재",
+        "_find_child_session_file이 OSError에 안전",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-021",
+      "title": "테스트 커버리지 4차 — _parse_announce_match + load_subagent_runs 엣지 케이스",
+      "category": "testing",
+      "priority": 21,
+      "description": "_parse_announce_match()는 서브에이전트 announce 텍스트에서 runtime/tokens/sessionId를 추출하는 핵심 함수지만 테스트 0개. load_subagent_runs()의 TOCTOU 수정(US-019)도 테스트 미커버. _find_child_session_file의 OSError 방어(US-020)도 테스트 필요.",
+      "steps": [
+        "test_session_parser.py: TestParseAnnounceMatch 클래스 — 정상 매치, sessionId 추출, label 추출, 잘못된 매치 시 None 반환",
+        "test_session_parser.py: load_subagent_runs — 파일 없을 때 빈 dict, JSON 손상 시 빈 dict",
+        "test_session_parser.py: _find_child_session_file — AGENTS_DIR 없을 때 None 반환",
+        "pytest -v 통과 + 새 테스트 6개 이상"
+      ],
+      "acceptanceCriteria": [
+        "_parse_announce_match 테스트 3개 이상",
+        "load_subagent_runs 엣지 케이스 테스트 2개 이상",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-022",
+      "title": "iterdir() OSError 방어 일괄 적용 — 크래시 방지",
+      "category": "bugfix",
+      "priority": 22,
+      "description": "session_parser.py의 _find_child_session_by_id(line 1248), _find_child_session_by_label(line 1285), line 436, line 1531과 web.py의 _resolve(line 1127), api_agents(line 568), api_health(line 992,995), cli.py(line 517)에서 AGENTS_DIR.iterdir()가 try-except OSError 없이 호출됨. 같은 파일의 line 313-314는 이미 방어 처리됨. 디렉토리 삭제/권한 변경 시 전체 애플리케이션 크래시. 모든 미방어 iterdir() 호출에 try-except OSError 래핑.",
+      "steps": [
+        "session_parser.py _find_child_session_by_id(): line 1248 AGENTS_DIR.iterdir() try-except OSError 래핑",
+        "session_parser.py _find_child_session_by_label(): line 1285 동일 처리",
+        "session_parser.py line 436 parent.iterdir() try-except OSError 래핑",
+        "session_parser.py line 1531 AGENTS_DIR.iterdir() try-except OSError 래핑",
+        "web.py _resolve(): line 1127 try-except OSError 래핑 → return None",
+        "web.py api_agents(): line 568 try-except OSError 래핑",
+        "web.py api_health(): line 992-995 try-except OSError 래핑",
+        "cli.py line 517 AGENTS_DIR.iterdir() try-except OSError 래핑",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 iterdir() 호출이 try-except OSError로 래핑됨",
+        "AGENTS_DIR 접근 불가 시 크래시 대신 빈 결과/None 반환",
+        "기존 160 테스트 전부 통과",
+        "ruff 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-023",
+      "title": "SSE except Exception 블록에 logging.warning 추가",
+      "category": "bugfix",
+      "priority": 23,
+      "description": "web.py의 SSE 스트리밍 엔드포인트 4곳(api_session_stream 2곳, api_lab_stream 2곳)에서 except Exception as e로 에러를 잡지만 logging 없이 SSE 이벤트로만 전달. 서버 로그에 에러가 기록되지 않아 프로덕션에서 SSE 장애 디버깅 불가. logging.warning 추가로 서버사이드 에러 추적 가능하게 함.",
+      "steps": [
+        "web.py: api_session_stream의 except Exception as e (line 374, 423)에 logging.warning 추가",
+        "web.py: api_lab_stream의 except Exception as e (line 715, 776)에 logging.warning 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "SSE except 블록 4곳 모두 logging.warning 포함",
+        "기존 테스트 통과",
+        "ruff 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-024",
+      "title": "모바일 완전 대응 — 전 페이지 터치 UX + 반응형 레이아웃",
+      "category": "design",
+      "priority": 24,
+      "description": "모든 페이지를 모바일(375px~768px)에서 완전히 사용 가능하게 만든다. 현재 햄버거 메뉴와 기본 반응형은 US-002에서 추가했지만, 각 페이지별 세부 레이아웃(차트, 테이블, 모달, 필터바, 턴 카드, Lab 2컬럼 등)이 모바일에서 깨지거나 사용하기 어려운 부분을 전부 수정한다. 터치 타겟 최소 44px, 스와이프/터치 친화적 인터랙션, 테이블 수평 스크롤, 모달 전체화면, 차트 높이 자동 조정 등.",
+      "steps": [
+        "모든 템플릿(home, sessions, detail, cost, schedule, settings, lab, graph)을 375px 뷰포트에서 확인하며 깨지는 부분 수집",
+        "style.css: @media(max-width:768px) 블록에 페이지별 수정 — 카드 패딩 축소, 테이블 overflow-x:auto, 필터바 세로 스택, 차트 height 조정",
+        "sessions.html: 세션 카드 칩을 2줄 wrap, 검색바 full-width, Export 버튼 아이콘만",
+        "detail.html: 턴 카드 패딩 축소, 도구호출 결과 truncate 줄임, Expand All 버튼 축소, Live 토글 위치 조정, raw 모달 전체화면",
+        "cost.html: 차트 세로 스택(2컬럼→1컬럼), 바 차트 높이 자동, Agent×Type 테이블 수평 스크롤",
+        "schedule.html: 크론 카드 패딩 축소, 24시간 바 높이 축소, 최근 실행 테이블 수평 스크롤",
+        "lab.html: 2컬럼→1컬럼 스택, 사이드바(컨텍스트) 접이식, 메시지 입력 sticky bottom",
+        "graph.html: 캔버스 터치 드래그/핀치줌 지원, 노드 패널 바텀시트로 전환",
+        "base.html: 햄버거 메뉴 열었을 때 오버레이 터치로 닫기 확인",
+        "버튼/링크 터치 타겟 최소 44px 확인, padding 조정",
+        "브라우저 DevTools 모바일 뷰포트(iPhone SE 375px, iPhone 14 390px)에서 전 페이지 확인"
+      ],
+      "acceptanceCriteria": [
+        "375px 뷰포트에서 모든 페이지가 깨지지 않고 사용 가능",
+        "터치 타겟 44px 이상",
+        "테이블은 수평 스크롤, 차트는 높이 자동 조정",
+        "Lab 페이지 모바일에서 1컬럼 레이아웃",
+        "모달이 모바일에서 전체화면",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-025",
+      "title": "모바일 기능 동작 분석 + 추가 개선 태스크 생성",
+      "category": "meta",
+      "priority": 25,
+      "description": "US-024 완료 후, 실제 모바일 환경에서의 기능 동작을 분석한다. 각 페이지를 375px 뷰포트로 열어 모든 인터랙션(검색, 필터, 내보내기, SSE 라이브, 차트 클릭, 턴 펼침/접기, Lab 전송, 로그 뷰어 등)을 점검하고, 동작하지 않거나 UX가 나쁜 부분을 찾아 prd.json에 US-026~ 스토리로 추가한다. 코드 수정은 하지 않고 PRD만 업데이트.",
+      "steps": [
+        "ctrace web --debug로 서버 실행",
+        "각 페이지를 모바일 뷰포트(375px)에서 렌더링 확인 — HTML/CSS/JS 코드를 읽고 모바일에서 문제될 부분 식별",
+        "세션 검색/필터가 모바일에서 동작하는지 코드 확인",
+        "SSE 라이브 스트리밍이 모바일 Safari/Chrome에서 동작하는지 EventSource 호환성 확인",
+        "차트 드릴다운(바 클릭→이동)이 터치에서 동작하는지 ApexCharts 터치 이벤트 확인",
+        "Lab 메시지 전송 + 컨텍스트 편집이 모바일에서 동작하는지 확인",
+        "발견한 문제를 US-026~ 스토리로 prd.json에 추가 (최소 3개)",
+        "이 스토리 자체를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리가 prd.json에 추가됨",
+        "각 스토리가 구체적 문제 설명 + steps + acceptanceCriteria 포함",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-026",
+      "title": "Lab 세션 셀렉트 + 인풋 min-width 모바일 대응",
+      "category": "bugfix",
+      "priority": 26,
+      "description": "Lab 페이지의 session-select 드롭다운이 min-width:300px 인라인 스타일로 고정되어 375px 뷰포트에서 넘친다. detail.html의 턴 검색 인풋도 min-width:200px로 고정. 이 고정 min-width들을 모바일에서 제거하거나 100%로 변경해야 한다.",
+      "steps": [
+        "lab.html의 session-select 인라인 style='min-width:300px'을 CSS class로 대체 — 768px 이하에서 min-width:0, width:100%",
+        "detail.html의 턴 검색 인풋 min-width:200px → 모바일에서 min-width:0",
+        "style.css에 모바일 미디어쿼리 추가",
+        "ruff + pytest 통과 확인"
+      ],
+      "acceptanceCriteria": [
+        "375px 뷰포트에서 Lab session-select가 넘치지 않음",
+        "375px 뷰포트에서 detail 검색바가 넘치지 않음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-027",
+      "title": "D3 그래프 SVG 터치 지원 + 노드 패널 모바일 스크롤",
+      "category": "bugfix",
+      "priority": 27,
+      "description": "graph.html의 D3 force graph가 SVG 위에서 터치 pan/zoom이 iOS Safari에서 동작하지 않는다. CSS의 touch-action:none이 canvas에만 적용되고 SVG에는 적용되지 않음. 또한 노드 상세 패널이 375px에서 뷰포트를 넘을 수 있어 스크롤 처리가 필요하다.",
+      "steps": [
+        "graph.html 또는 style.css에서 SVG 요소에 touch-action: manipulation 적용",
+        "기존 canvas 대상 touch-action:none을 svg 대상으로 변경 또는 추가",
+        "노드 패널(.node-panel)에 max-height + overflow-y:auto 추가 (모바일 미디어쿼리)",
+        "D3 zoom behavior에 touchstart/touchmove 이벤트 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모바일에서 그래프 터치 드래그/핀치줌 동작",
+        "노드 패널이 375px에서 스크롤 가능",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-028",
+      "title": "Schedule 24시간 바 터치 툴팁 + ApexCharts 모바일 responsive",
+      "category": "enhancement",
+      "priority": 28,
+      "description": "schedule.html의 24시간 활동 바가 mouseenter/mouseleave만 사용하여 모바일에서 툴팁이 표시되지 않는다. cost.html의 ApexCharts에 responsive 설정이 없어 375px에서 라벨이 겹치고 가독성이 나쁘다.",
+      "steps": [
+        "schedule.html의 hb-hour-seg에 @touchstart 이벤트 추가 — 터치 시 hoveredHour 설정",
+        "document 레벨에서 touchstart 시 hoveredHour null 처리 (외부 터치로 닫기)",
+        "cost.html의 APEX_BASE config에 responsive 배열 추가 — breakpoint 480px에서 라벨 폰트 축소, bar 높이 계산 조정",
+        "차트 legend 위치를 모바일에서 bottom으로 변경",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모바일에서 24시간 바 터치 시 툴팁 표시",
+        "375px에서 ApexCharts 라벨이 겹치지 않음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-029",
+      "title": "모바일 터치 피드백 — :active 스타일 + hover 안전장치",
+      "category": "enhancement",
+      "priority": 29,
+      "description": "현재 인터랙티브 요소(세션 카드, 칩, 버튼 등)의 시각적 피드백이 :hover에만 의존하여 터치 디바이스에서 피드백이 없다. :active 의사 클래스와 @media(hover:none) 조건으로 터치 기기에서도 탭 피드백을 제공해야 한다.",
+      "steps": [
+        "style.css에서 주요 :hover 규칙에 대응하는 :active 규칙 추가 (session-card, type-chip, agent-chip, btn, feature-card 등)",
+        "@media(hover:none) 블록에서 hover 효과 비활성화, active 효과만 유지",
+        "테스트를 위해 -webkit-tap-highlight-color 투명 처리 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "터치 기기에서 버튼/카드 탭 시 시각적 피드백 표시",
+        ":hover 상태가 터치 후 잔류하지 않음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-030",
+      "title": "Gateway RPC 파라미터 키 오류 + Schedule 필드 불일치 수정",
+      "category": "bugfix",
+      "priority": 30,
+      "description": "ANALYSIS_REPORT.md에 문서화된 5개 버그 수정: (1) sessions.patch의 sessionKey→key, (2) sessions.reset의 sessionKey→key, (3) schedule API의 schedule_tz→timezone 필드명 통일, (4) systemEvent 페이로드 text 필드 폴백, (5) send_agent_message의 model 파라미터가 무시되는 문제에 대한 주석 추가",
+      "steps": [
+        "gateway.py: patch_session/reset_session의 sessionKey를 key로 변경",
+        "web.py: schedule_tz를 timezone으로 변경하여 프론트와 일치",
+        "web.py: payload_message에 text 필드 폴백 추가",
+        "gateway.py: send_agent_message에 model 무시 주석 추가",
+        "관련 테스트 확인 및 통과"
+      ],
+      "acceptanceCriteria": [
+        "sessions.patch/reset RPC에 올바른 key 파라미터 전달",
+        "Schedule에서 타임존이 정상 표시",
+        "systemEvent 페이로드 텍스트 정상 표시",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-031",
+      "title": "JSONL 파일 인코딩 에러 처리 강화",
+      "category": "bugfix",
+      "priority": 31,
+      "description": "session_parser.py의 open() 호출에 encoding='utf-8', errors='replace' 추가하여 non-UTF-8 바이트가 포함된 JSONL 파일에서 UnicodeDecodeError 방지",
+      "steps": [
+        "_read_jsonl()에 encoding/errors 파라미터 추가",
+        "_quick_scan_session()에 encoding/errors 파라미터 추가",
+        "load_cron_runs()의 JSONL 읽기에 encoding/errors 파라미터 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "non-UTF-8 바이트 포함 JSONL 파싱 시 크래시 대신 대체 문자로 처리",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-032",
+      "title": "Lab 로그 파일 RotatingFileHandler로 디스크 성장 제한",
+      "category": "bugfix",
+      "priority": 32,
+      "description": "web.py의 lab.log가 FileHandler를 사용하여 무제한 성장. 장기 운영 시 디스크 공간 소진 위험. RotatingFileHandler(5MB, 3백업)로 교체.",
+      "steps": [
+        "import logging.handlers 추가",
+        "FileHandler → RotatingFileHandler(maxBytes=5MB, backupCount=3) 변경",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "lab.log가 5MB 초과 시 자동 로테이션",
+        "최대 3개 백업 파일 유지",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-033",
+      "title": "서브에이전트 감지를 sessions.json 기반으로 수정",
+      "category": "bugfix",
+      "priority": 33,
+      "description": "기존 서브에이전트 감지가 파일 경로에 'subagent' 문자열 포함 여부로 판단하여 실제로 작동하지 않음. sessions.json의 세션 키 패턴(:subagent:)과 spawnedBy 필드를 활용하여 정확한 감지로 교체.",
+      "steps": [
+        "list_sessions()에서 sessions.json 로드 → 세션 키 패턴으로 subagent/hook 타입 매핑",
+        "_compute_totals()의 'subagent in str(file_path)'를 _is_subagent_session() 함수로 교체",
+        "_quick_scan_session()의 동일한 깨진 체크 제거 (list_sessions에서 오버라이드)",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "서브에이전트 세션이 sessions.json 기반으로 정확히 분류됨",
+        "기존 cron/heartbeat 감지 로직 유지",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-034",
+      "title": "브라우저 테스트 버그 수정 일괄 처리",
+      "category": "bugfix",
+      "priority": 34,
+      "description": "agent-browser로 실제 UI 테스트 시 발견된 버그들을 일괄 수정한다. (1) 404 에러 배너에 raw HTML 노출 — fetchJSONSafe가 404 HTML body를 그대로 에러 메시지로 사용, 'Session not found'만 표시해야 함. (2) 404 후 'Loading session...' 영구 표시 — 에러 시 로딩 텍스트 제거 + '← Sessions' 돌아가기 유도. (3) Home 페이지 Total Cost $0 — Cost 페이지에서는 $20.94이지만 Home에서 $0, API 계산 기간 불일치 의심. (4) Lab 네비게이션 'soon' 표시 제거 — Lab은 이미 구현 완료, opacity/pointer-events 제거하여 접근 가능하게. (5) toast-container가 base.html에 없음 — showToast가 동작하려면 컨테이너 필요.",
+      "steps": [
+        "app.js의 fetchJSONSafe: 404 등 HTTP 에러 시 응답 body에서 HTML 태그 제거(strip tags), JSON 파싱 실패 시 status code + 간단 메시지만 표시",
+        "detail.html: API 로드 실패 시 'Loading session...' 텍스트를 에러 메시지로 교체 + '← Sessions' 링크 표시",
+        "home.html 또는 web.py /api/home: Total Cost 계산이 전체 기간을 커버하는지 확인, Cost 페이지와 동일한 기간 사용하도록 수정",
+        "base.html: Lab 네비 링크에서 opacity/pointer-events/soon 뱃지 제거",
+        "base.html: <div id='toast-container' class='toast-container'></div> 추가 (body 하단)",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "존재하지 않는 세션 접속 시 깔끔한 에러 메시지 표시 (HTML 태그 없음)",
+        "에러 시 Loading 텍스트 사라지고 돌아가기 링크 표시",
+        "Home과 Cost의 비용 수치가 일관됨",
+        "Lab 네비 링크 클릭 가능",
+        "toast가 정상 표시됨",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-035",
+      "title": "검색/필터/드릴다운 기능 보완",
+      "category": "feature",
+      "priority": 35,
+      "description": "브라우저 테스트에서 미동작 또는 미완성으로 확인된 기능들을 보완한다. (1) 세션 검색 필터링 — 'heartbeat' 입력 시 즉시 필터링 되어야 하는데 안 됨, 클라이언트 사이드 필터링 로직 확인/수정, 검색 결과 카운트('3 of 50 sessions') 표시. (2) Live 토글 버튼 — SSE 엔드포인트(/api/session/:id/stream)는 동작하지만 detail 페이지에 Live UI 버튼이 없음, 버튼 + EventSource 연결 + 새 턴 append + 스크롤 보존 구현. (3) 비용 차트 드릴다운 — ApexCharts 바 클릭 이벤트 핸들러가 없음, 클릭 시 해당 에이전트/모델 세션 목록으로 이동.",
+      "steps": [
+        "sessions.html: 검색 input의 이벤트 핸들러 확인 — 세션 카드의 display:none 토글이 실제로 동작하는지, 디바운스 타이밍, 매칭 로직 디버그",
+        "sessions.html: 검색 결과 카운트 표시 ('N of M sessions') 추가",
+        "detail.html: 'Live' 토글 버튼 추가 (header-actions 영역), 클릭 시 EventSource 연결, update 이벤트로 턴 append, patch로 마지막 턴 교체, done시 자동 종료, 초록 점 pulse 애니메이션",
+        "detail.html: 스크롤 위치 보존 — scrollHeight - scrollTop - clientHeight < 100이면 자동스크롤",
+        "cost.html: ApexCharts 바 차트에 events.dataPointSelection 핸들러 추가 → location.href='/?agent=xxx'",
+        "sessions.html: URL 쿼리 파라미터(?agent=xxx)에서 필터 자동 적용",
+        "style.css: .live-indicator 초록 점 pulse 애니메이션",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "세션 검색이 실시간 필터링 동작 + 결과 카운트 표시",
+        "Live 토글 ON → 새 턴이 실시간 추가, 기존 턴 유지",
+        "비용 차트 바 클릭 → 세션 페이지 필터 이동",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-036",
+      "title": "심화 기능 테스트 + 엣지케이스 탐색 → 추가 태스크 생성",
+      "category": "meta",
+      "priority": 36,
+      "description": "US-034, US-035 완료 후 아직 테스트하지 못한 영역을 코드 레벨에서 점검하고 이슈를 찾아 PRD에 추가한다. 점검 항목: (1) Export CSV/JSON 다운로드 실제 파일 내용 검증 — 한글이 깨지지 않는지, 필드 누락 없는지 (2) SSE 스트리밍 재연결 로직 — 네트워크 끊김 시 자동 재연결이 실제로 동작하는지 코드 확인 (3) 캐시(parse_session mtime 캐시) 무효화가 정상 동작하는지 확인 (4) 로그 뷰어(settings 페이지)가 실제로 동작하는지, web.log/lab.log 내용 표시 확인 (5) Lab 컨텍스트 편집 — save/diff/reset 플로우 확인 (6) Lab 메시지 초안 localStorage 저장/복원 확인 (7) 세션 카드 접근성 — keyboard navigation(Tab, Enter), screen reader aria-label (8) 모달 포커스 트랩 — Escape 닫기, Tab 순환. 발견한 이슈를 US-037~ 스토리로 추가. 코드 수정 없이 PRD만 업데이트.",
+      "steps": [
+        "각 점검 항목에 대해 해당 코드(HTML/JS/Python)를 읽고 동작 여부 판단",
+        "브라우저에서 테스트 불가능한 항목은 코드 리뷰로 대체",
+        "발견한 이슈를 US-037~ 스토리로 prd.json에 추가 (최소 3개)",
+        "이 스토리를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리가 prd.json에 추가됨",
+        "각 스토리가 구체적 문제 + steps + acceptanceCriteria 포함",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-037",
+      "title": "CSV Export UTF-8 BOM + 개행 이스케이프 + 필드 보강",
+      "category": "bugfix",
+      "priority": 37,
+      "description": "sessions.html의 exportCSV()에서 (1) UTF-8 BOM(\\uFEFF) 미포함으로 Excel에서 한글 깨짐, (2) last_message에 개행 문자 포함 시 CSV 파싱 깨짐, (3) file_size/tool_calls/errors 등 표시 데이터가 export에 누락.",
+      "steps": [
+        "sessions.html exportCSV(): Blob 생성 시 앞에 '\\uFEFF' BOM 추가",
+        "필드 값의 개행 문자를 공백으로 치환 후 CSV 셀에 삽입",
+        "header에 file_size, tool_calls, errors, subagents, channel 필드 추가 + 데이터 행도 매칭",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "다운로드된 CSV를 Excel에서 열면 한글이 정상 표시됨 (BOM 존재)",
+        "개행 포함 메시지가 CSV 구조를 깨뜨리지 않음",
+        "export 필드가 UI 표시 데이터와 일치",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-038",
+      "title": "접근성: 세션 카드 키보드 내비게이션 + 모달 포커스 트랩",
+      "category": "a11y",
+      "priority": 38,
+      "description": "세션 카드가 div onclick으로 구현되어 Tab/Enter 키보드 내비게이션 불가. 텍스트 모달에 포커스 트랩이 없어 Tab 키로 모달 밖으로 이탈 가능. (1) 세션 카드에 tabindex='0', role='link', Enter/Space keydown 핸들러 추가. (2) showTextModal()에서 포커스를 모달 내부로 이동, Tab 순환 트랩, 닫을 때 원래 요소로 포커스 복원.",
+      "steps": [
+        "sessions.html: session-card div에 tabindex='0' role='link' aria-label 추가",
+        "sessions.html: Enter/Space keydown 이벤트로 카드 클릭 동작",
+        "app.js showTextModal(): 열 때 모달 내 첫 포커스 가능 요소로 focus()",
+        "app.js: Tab 키 트랩 — 모달 내 포커스 가능 요소들 사이에서만 순환",
+        "app.js closeTextModal(): 닫을 때 이전 activeElement로 포커스 복원",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "Tab 키로 세션 카드 간 이동 가능, Enter로 세션 열림",
+        "모달 열린 상태에서 Tab이 모달 밖으로 나가지 않음",
+        "모달 닫으면 이전 요소에 포커스 복원",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-039",
+      "title": "Lab SSE 재연결 + 상태 표시 개선",
+      "category": "bugfix",
+      "priority": 39,
+      "description": "Lab의 SSE 스트리밍에서 네트워크 오류 시 자동 재연결이 없어 사용자에게 silent failure 발생. error 이벤트 핸들러가 CLOSED 상태만 체크하여 transient 오류 복구 불가. (1) 재연결 시 exponential backoff 로직 추가, (2) 최대 재시도 횟수 제한 + 사용자 알림, (3) detail.html의 Live SSE도 동일 패턴 적용.",
+      "steps": [
+        "lab.html SSE error 핸들러: readyState가 CONNECTING이면 재연결 대기 표시, CLOSED면 backoff 재연결 시도",
+        "reconnectCount + maxReconnect(5) + 지수 백오프(1s, 2s, 4s, 8s, 16s)",
+        "최대 재시도 초과 시 사용자에게 '연결 끊김' 토스트 + 수동 재연결 버튼",
+        "detail.html Live SSE에도 동일 재연결 로직 적용",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "네트워크 일시 끊김 후 자동 재연결됨",
+        "최대 재시도 후 사용자에게 명확한 알림",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-040",
+      "title": "Settings 로그 뷰어: web.log 초기화 + 파일 없음 표시",
+      "category": "bugfix",
+      "priority": 40,
+      "description": "Settings 페이지 로그 뷰어에서 web.log가 존재하지 않아 항상 빈 결과. lab.log는 RotatingFileHandler로 생성되지만 web.log는 아무 곳에서도 생성하지 않음. /api/logs 엔드포인트가 파일 미존재를 빈 배열로 반환하여 사용자가 오류 상황을 인지 불가.",
+      "steps": [
+        "web.py: Flask 앱에 web.log RotatingFileHandler 추가 (lab.log와 동일 패턴, 5MB, 3백업)",
+        "/api/logs 엔드포인트: 파일 미존재 시 {error: 'file not found', lines: []} 반환",
+        "settings.html: error 응답 시 '로그 파일이 아직 생성되지 않았습니다' 메시지 표시",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "web.log가 Flask 요청 로그를 기록",
+        "파일 없을 때 사용자에게 명확한 메시지 표시",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-041",
+      "title": "XSS 취약점 수정: turns.js 클래스명 이스케이프",
+      "category": "security",
+      "priority": 41,
+      "description": "turns.js에서 사용자 제어 데이터(t.user_source, cm.platform)가 CSS 클래스명에 이스케이프 없이 삽입됨. badge-${t.user_source} 패턴이 attribute injection 벡터가 될 수 있음. escHtml()로 래핑 필요.",
+      "steps": [
+        "turns.js: badge-${t.user_source} 패턴을 badge-${escHtml(t.user_source)}로 수정 (모든 위치)",
+        "turns.js: 기타 사용자 입력이 클래스명/속성에 직접 삽입되는 곳 점검",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "t.user_source에 특수문자가 포함되어도 HTML injection 불가",
+        "기존 UI 렌더링 변경 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-042",
+      "title": "parse_session 캐시 LRU 교체 + 서브에이전트 재귀 깊이 제한",
+      "category": "bugfix",
+      "priority": 42,
+      "description": "session_parser.py의 _parse_cache가 FIFO 방식으로 eviction하여 LRU 의도와 불일치. 또한 서브에이전트 재귀 파싱에 깊이 제한이 없어 순환 참조 시 스택 오버플로우 가능. (1) OrderedDict로 진정한 LRU 캐시 구현, (2) parse_session에 max_depth 파라미터 추가 (기본 10).",
+      "steps": [
+        "session_parser.py: _parse_cache를 OrderedDict로 변경, 캐시 히트 시 move_to_end()",
+        "parse_session()에 _depth 내부 파라미터 추가, max_depth(10) 초과 시 재귀 중단",
+        "기존 테스트 + 새 테스트(캐시 LRU 동작, 깊이 제한) 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "캐시가 LRU 순서로 eviction됨",
+        "깊이 10 이상 재귀 시 자동 중단, 에러 없이 부분 결과 반환",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-043",
+      "title": "대형 세션 성능: 턴 페이지네이션 + markdown 에러 핸들링",
+      "category": "performance",
+      "priority": 43,
+      "description": "1000+ 턴 세션에서 모든 턴을 한번에 DOM에 삽입하여 브라우저 프리즈 발생. 텍스트 모달의 marked.parse()가 예외 발생 시 무시됨. (1) turns.js에 턴 페이지네이션 (초기 50개 + Load More), (2) app.js marked.parse() try/catch + 폴백.",
+      "steps": [
+        "turns.js renderTurns(): 초기 50개만 렌더링, 나머지는 'Load more turns' 버튼으로 50개씩 추가",
+        "app.js _refreshModalBody(): marked.parse() 호출을 try/catch로 감싸고 실패 시 raw 텍스트 폴백",
+        "style.css: .load-more-turns 버튼 스타일",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "1000+ 턴 세션에서 초기 로딩이 빠름 (50개만 렌더링)",
+        "Load More 클릭 시 다음 50개 추가",
+        "마크다운 파싱 실패 시 raw 텍스트로 자동 폴백",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-044",
+      "title": "QA 버그 수정: 404 HTML 노출 + Loading 잔류 + Home $0 + Lab soon + toast",
+      "category": "bugfix",
+      "priority": 44,
+      "description": "QA 리포트(docs/qa/qa-report-2026-03-21.md)에서 발견된 MEDIUM 이슈 일괄 수정. (1) BUG-003: detail 페이지 404 시 에러 배너에 raw HTML 전체 노출 — app.js fetchJSONSafe에서 HTTP 에러 응답 body의 HTML 태그를 strip하고 간결한 메시지만 표시. (2) BUG-004: 404 후 'Loading session...' 텍스트 영구 잔류 — detail.html에서 API 실패 시 로딩 영역을 에러 메시지 + '← Sessions' 링크로 교체. (3) BUG-005: Home 페이지 Total Cost $0인데 Cost 페이지는 $20.94 — home.html 또는 /api/home의 비용 계산 로직이 Cost 페이지와 동일한 기간을 사용하는지 확인/수정. (4) BUG-008: Lab 네비 'soon' 뱃지 — Lab은 구현 완료인데 사이드바에서 opacity/pointer-events로 비활성. 제거하여 접근 가능하게. (5) BUG-006: base.html에 toast-container div 없음 — showToast 함수가 컨테이너를 찾지 못해 토스트 알림 불가. base.html body 하단에 추가.",
+      "steps": [
+        "app.js fetchJSONSafe: catch에서 response body가 HTML이면(<로 시작) 태그 제거 후 텍스트만 추출, 또는 status code + statusText만 사용",
+        "detail.html: loadSession() 에러 시 #turns-container 또는 로딩 영역의 innerHTML을 에러 메시지 + '← Sessions' 링크로 교체",
+        "home.html 또는 web.py /api/home: total_cost 계산이 전체 기간인지 확인, Cost 페이지 /api/cost와 동일한 로직 사용하도록 수정",
+        "base.html: Lab 네비 링크의 opacity, pointer-events, 'soon' 뱃지 제거",
+        "base.html: </body> 앞에 <div id='toast-container' class='toast-container'></div> 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "존재하지 않는 세션 접속 시 에러 배너에 HTML 태그 없는 깔끔한 메시지 표시",
+        "에러 시 Loading 텍스트 사라지고 돌아가기 링크 표시",
+        "Home과 Cost 페이지의 비용 수치 일관",
+        "Lab 네비 링크 클릭하여 /lab 접속 가능",
+        "showToast() 호출 시 토스트가 화면에 표시됨",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-045",
+      "title": "QA 기능 보완: 세션 검색 동작 수정 + Live 토글 UI + 차트 드릴다운",
+      "category": "feature",
+      "priority": 45,
+      "description": "QA 리포트 HIGH 이슈 수정. (1) BUG-001: 세션 검색 — sessions.html에서 검색 입력 시 세션 카드가 필터링되지 않음. 클라이언트 사이드 필터 로직(session_id, agent_id, last_message 매칭) 확인 및 수정. 검색 결과 카운트('N of M sessions') 표시 추가. (2) BUG-002: Live 토글 — detail.html에 Live 버튼 추가, 클릭 시 /api/session/:id/stream SSE 연결, update 이벤트로 새 턴 append, patch로 마지막 턴 교체, done시 자동 종료. 초록 점 pulse 애니메이션. 스크롤 위치 보존. (3) BUG-007: 비용 차트 드릴다운 — cost.html ApexCharts에 events.dataPointSelection 핸들러 추가, 클릭 시 location.href='/?agent=xxx'로 이동. sessions.html에서 URL ?agent= 파라미터 자동 적용.",
+      "steps": [
+        "sessions.html: 검색 input 이벤트 핸들러 디버그 — 카드의 data 속성 또는 텍스트 content로 매칭, display:none 토글 확인. 동작 안 하면 재구현",
+        "sessions.html: 검색 결과 카운트 표시 영역 추가 ('N of M sessions')",
+        "detail.html header-actions에 Live 토글 버튼 추가 (class='btn btn-outline live-toggle')",
+        "detail.html JS: toggleLive() — EventSource 연결/해제, update/patch/done 이벤트 핸들러",
+        "detail.html JS: appendTurn(turnData) — turns.js의 renderTurn 활용, 컨테이너에 추가",
+        "detail.html JS: 스크롤 보존 — 바닥 근처면 자동스크롤, 위면 유지",
+        "style.css: .live-toggle.active에 초록 점 pulse 애니메이션",
+        "cost.html: ApexCharts options에 chart.events.dataPointSelection 핸들러 추가",
+        "sessions.html: DOMContentLoaded에서 URLSearchParams로 ?agent= 파라미터 읽어 필터 자동 적용",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "세션 검색이 타이핑 즉시 필터링 동작 + 결과 카운트 표시",
+        "Live 토글 ON 시 새 턴이 실시간 추가, 기존 턴 유지, 완료 시 자동 종료",
+        "비용 차트 바 클릭 → 해당 에이전트 세션 목록으로 이동",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-046",
+      "title": "QA 심화 테스트 + 추가 이슈 탐색 → PRD 추가",
+      "category": "meta",
+      "priority": 46,
+      "description": "US-044, US-045 완료 후 QA 리포트의 '추가 테스트 필요' 항목들을 코드 레벨에서 점검. (1) Export CSV/JSON 한글 인코딩 (2) SSE 재연결 로직 (3) parse_session 캐시 무효화 (4) 로그 뷰어 settings UI 동작 (5) Lab 컨텍스트 편집 save/diff/reset (6) Lab 초안 localStorage (7) 키보드 접근성 (Tab/Enter) (8) 모달 포커스 트랩. 발견한 이슈를 새 스토리로 추가. 코드 수정 없이 PRD만 업데이트.",
+      "steps": [
+        "각 항목의 관련 코드(HTML/JS/Python)를 읽고 동작 여부 판단",
+        "특히 SSE 재연결(EventSource onerror), 캐시 무효화(mtime 비교), 키보드 접근성(tabindex, role) 집중 확인",
+        "발견한 이슈를 US-047~ 스토리로 prd.json에 추가 (최소 3개)",
+        "이 스토리를 passes: true로 마킹"
+      ],
+      "acceptanceCriteria": [
+        "최소 3개 이상 새 스토리가 prd.json에 추가됨",
+        "각 스토리가 구체적 문제 + steps + acceptanceCriteria 포함",
+        "코드 수정 없이 PRD만 업데이트"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-047",
+      "title": "API 요청 파라미터 유효성 검증",
+      "category": "bugfix",
+      "priority": 47,
+      "description": "web.py의 여러 API 엔드포인트에서 int() 변환이 try/except 없이 수행되어 비숫자 입력 시 500 에러 발생. /api/sessions?last=abc, /api/logs?lines=xyz 등. 또한 POST 엔드포인트의 request.get_json(force=True)도 잘못된 JSON 시 500 에러.",
+      "steps": [
+        "web.py: int() 변환을 안전 헬퍼로 교체 (기본값 반환) — 적용 대상: api_sessions, api_sessions_export, api_cost, api_crons, api_session_stream, api_lab_poll, api_logs",
+        "web.py: POST 엔드포인트에 request.get_json(silent=True) + None 체크 → 400 반환",
+        "테스트 추가: 잘못된 파라미터로 API 호출 시 400 반환 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "?last=abc 등 비숫자 입력 시 500 대신 기본값으로 동작",
+        "잘못된 JSON POST 시 400 에러 반환",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-048",
+      "title": "Graph 뷰: 도구 노드 ID 충돌 방지",
+      "category": "bugfix",
+      "priority": 48,
+      "description": "web.py의 _build_graph()와 _add_subagent_graph()에서 도구 노드 ID가 tool:{tc.id[:16]}으로 생성됨. 같은 세션의 다른 도구 호출이 동일한 16자 prefix를 공유하면 D3 그래프에서 노드 충돌/엣지 오류 발생.",
+      "steps": [
+        "web.py: 도구 노드 ID를 tool:{tc.id} 전체 사용 또는 고유 카운터 추가",
+        "그래프 렌더링이 깨지지 않는지 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "모든 도구 노드가 고유 ID를 가짐",
+        "그래프 뷰에서 노드/엣지가 정확히 연결됨",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-049",
+      "title": "세션 검색 필터 변경 시 no-match 메시지 정리",
+      "category": "bugfix",
+      "priority": 49,
+      "description": "sessions.html에서 검색 후 필터(agent/type) 변경 시 reload()가 sessions-list innerHTML을 교체하지만, filterCards()가 동적 생성한 #no-match-msg가 DOM에 잔류할 수 있음. reload() 시 search input과 no-match 메시지를 정리해야 함.",
+      "steps": [
+        "sessions.html reload(): 검색 입력 초기화 + #no-match-msg 제거 + search-count 초기화",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "필터 변경 후 이전 검색 상태가 깨끗이 정리됨",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-050",
+      "title": "turns.js null safety: optional chaining + 빈 배열 가드",
+      "category": "bugfix",
+      "priority": 50,
+      "description": "renderTurn()에서 t.cost.total, t.usage.totalTokens에 optional chaining 없이 접근하여 null/undefined 시 런타임 크래시. renderWorkflowGroup()에 빈 배열 가드 없음.",
+      "steps": [
+        "turns.js: t.cost.total → t.cost?.total, t.usage.totalTokens → t.usage?.totalTokens",
+        "turns.js: renderWorkflowGroup 시작에 빈 배열 가드 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "cost/usage가 null인 턴에서도 크래시 없이 렌더링",
+        "빈 workflow group에서 에러 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-051",
+      "title": "graph.html null safety: container/panel DOM 요소 방어",
+      "category": "bugfix",
+      "priority": 51,
+      "description": "graph.html의 init(), fitView(), showPanel(), closePanel()에서 DOM 요소에 null 체크 없이 접근하여 요소가 없을 때 런타임 크래시 발생.",
+      "steps": [
+        "init(): container null 체크 + clientWidth/clientHeight 기본값",
+        "fitView(): container null 체크 + 0 차원 방어",
+        "showPanel(): panel-title, panel-body, node-panel null 체크",
+        "closePanel(): null 체크"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-052",
+      "title": "gateway.py JSON 파싱 에러 핸들링",
+      "category": "bugfix",
+      "priority": 52,
+      "description": "gateway.py의 _connect()와 rpc_call()에서 json.loads(raw) 호출이 try/except 없이 수행됨. 서버가 비정상 응답을 보내면 JSONDecodeError로 크래시.",
+      "steps": [
+        "_connect(): json.loads(raw) try/except 추가 → 의미 있는 에러 메시지",
+        "rpc_call(): json.loads(raw) try/except 추가",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "비정상 JSON 응답 시 깔끔한 에러 메시지",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-053",
+      "title": "schedule.html + settings.html DOM null safety",
+      "category": "bugfix",
+      "priority": 53,
+      "description": "schedule.html의 renderSummary/renderHeartbeats/renderCronJobs와 settings.html의 toggleConfig()에서 getElementById() 결과에 null 체크 없이 접근하여 DOM 요소 누락 시 크래시.",
+      "steps": [
+        "schedule.html: renderSummary/renderHeartbeats/renderCronJobs에 null 가드 추가",
+        "schedule.html: catch 블록의 getElementById도 null 체크",
+        "settings.html: toggleConfig() 내 config-content/config-path null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-054",
+      "title": "CLI parse_session 에러 핸들링",
+      "category": "bugfix",
+      "priority": 54,
+      "description": "cli.py의 cmd_analyze()와 cmd_context()에서 parse_session() 호출에 try/except가 없어 손상된 JSONL 파일에서 크래시 발생.",
+      "steps": [
+        "cmd_analyze(): parse_session try/except (OSError, JSONDecodeError, KeyError)",
+        "cmd_context(): 동일 패턴 적용",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "손상된 세션 파일에서 깔끔한 에러 메시지 표시",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-055",
+      "title": "cost.html qs() null safety — DOM 요소 방어적 접근",
+      "category": "bugfix",
+      "priority": 55,
+      "description": "cost.html의 renderApexBar(), renderApexArea(), renderAgentTypeTable(), loadCost()에서 qs() 반환값에 null 체크 없이 .innerHTML 접근. DOM 요소가 누락되면 런타임 크래시 발생. settings.html의 renderHealth(), refreshHealth(), init()에서도 getElementById() 결과에 null 체크 누락.",
+      "steps": [
+        "cost.html: renderApexBar() — qs() 후 if (!el) return 가드",
+        "cost.html: renderApexArea() — 동일 패턴",
+        "cost.html: renderAgentTypeTable() — 동일 패턴",
+        "cost.html: loadCost() — qs('#cost-summary') null 체크",
+        "settings.html: renderHealth() — grid null 체크",
+        "settings.html: refreshHealth() — grid null 체크",
+        "settings.html: init() — info null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없이 graceful 처리",
+        "기존 UI 동작 변경 없음",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-056",
+      "title": "lab.html DOM null safety — qs() 반환값 방어",
+      "category": "bugfix",
+      "priority": 56,
+      "description": "lab.html의 loadContextFiles(), loadActivityLog(), showPendingMessage()에서 qs() 반환값에 null 체크 없이 .innerHTML/.appendChild 접근. DOM 요소 누락 시 런타임 크래시.",
+      "steps": [
+        "loadContextFiles(): container null 체크",
+        "loadActivityLog(): container null 체크",
+        "showPendingMessage(): container, timeline-empty null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없이 graceful 처리",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-057",
+      "title": "detail.html DOM null safety — qs() 반환값 방어",
+      "category": "bugfix",
+      "priority": 57,
+      "description": "detail.html의 populateToolFilter(), filterTurns(), clearFilters(), renderHeader(), SSE update 핸들러에서 qs() 반환값에 null 체크 없이 접근. DOM 요소 누락 시 런타임 크래시.",
+      "steps": [
+        "populateToolFilter(): sel null 체크",
+        "filterTurns(): countEl null 체크",
+        "clearFilters(): 각 qs() null 체크",
+        "renderHeader(): session-header null 체크",
+        "SSE update: container null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없이 graceful 처리",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-058",
+      "title": "sessions.html DOM null safety — qs() 반환값 방어",
+      "category": "bugfix",
+      "priority": 58,
+      "description": "sessions.html의 loadSessions(), filterCards(), loadAgents(), keyboard shortcut에서 qs() 반환값에 null 체크 없이 접근. DOM 요소 누락 시 런타임 크래시.",
+      "steps": [
+        "loadSessions(): list, load-more-wrap null 체크",
+        "filterCards(): session-search, sessions-list null 체크",
+        "loadAgents(): agent-list null 체크",
+        "keyboard shortcut: session-search null 체크",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "DOM 요소 누락 시에도 크래시 없이 graceful 처리",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-059",
+      "title": "라이트 모드 테마 시스템 구현",
+      "category": "design",
+      "priority": 59,
+      "description": "다크 모드 온리 → 라이트/다크 테마 토글 시스템 구현. style.css의 CSS 변수 체계(--bg-*, --text-*, --accent-* 등)를 전수 분석하고, 라이트 모드용 변수 세트 설계. 사이드바에 테마 토글 버튼, localStorage 저장, prefers-color-scheme OS 기본값 존중. 전 페이지 + 모든 컴포넌트(카드, 테이블, 차트, 모달, 토스트, 에러 배너, 코드 블록) + ApexCharts 테마 동적 전환. 구현 후 WCAG AA 대비 확인.",
+      "steps": [
+        "style.css 전수 분석 — 모든 CSS 변수 목록화",
+        "[data-theme='light'] 셀렉터로 라이트 모드 변수 세트 정의",
+        "base.html 사이드바에 테마 토글 버튼 추가",
+        "app.js 테마 전환 로직 — html data-theme 토글, localStorage, prefers-color-scheme",
+        "ApexCharts 테마 동적 전환",
+        "하드코딩 색상 → CSS 변수 교체",
+        "전 페이지 라이트 모드 WCAG AA 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "토글로 다크↔라이트 즉시 전환",
+        "재방문 시 선택 테마 유지",
+        "전 페이지 + ApexCharts 라이트 모드 정상",
+        "WCAG AA 대비 충족",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-060",
+      "title": "모바일 UX 전면 점검 및 개선",
+      "category": "design",
+      "priority": 60,
+      "description": "전 페이지 모바일 대응 현상 분석 → 수정 → 확인을 한 묶음으로. (1) 분석: 모든 템플릿+CSS의 @media 규칙, 인라인 고정 width, overflow, 터치 타겟, 터치 이벤트 전수 점검. (2) 수정: 고정 width→max-width/100%, 터치 타겟 44px 미만 확대, 테이블 overflow-x, 모달 전체화면, 차트 높이, 2컬럼→1컬럼 스택, Graph 터치 드래그/핀치줌. (3) 확인: 375px 뷰포트에서 전 페이지 주요 인터랙션(검색, 필터, 턴 펼침, 차트, 햄버거, 모달) 동작 코드 검증. 라이트/다크 양쪽.",
+      "steps": [
+        "전 템플릿 인라인 style + CSS 읽고 모바일 문제점 수집",
+        "@media(max-width:768px) 누락 페이지/컴포넌트에 추가",
+        "인라인 min-width/고정 width → CSS class + 미디어쿼리 교체",
+        "터치 타겟 44px 미만 → padding 확대",
+        "테이블 overflow-x:auto, 모달 모바일 전체화면",
+        "Lab 모바일 1컬럼 + 컨텍스트 접이식",
+        "Graph 터치 드래그/핀치줌 확인",
+        "라이트+다크 양쪽 모바일 확인",
+        "ruff + pytest 통과"
+      ],
+      "acceptanceCriteria": [
+        "375px에서 전 페이지 깨지지 않고 사용 가능",
+        "터치 타겟 44px 이상",
+        "모든 인터랙션 모바일에서 동작",
+        "라이트/다크 양쪽 정상",
+        "ruff + pytest 통과"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-061",
+      "title": "JS bugfix: textBuf early clear + DOMPurify XSS fallback",
+      "category": "bugfix",
+      "priority": 61,
+      "description": "Fix two JS bugs: (1) closeTextModal clears textBuf making other Full text buttons empty. (2) DOMPurify CDN fail causes XSS via innerHTML.",
+      "steps": [
+        "Remove textBuf clear from closeTextModal",
+        "Add textBuf clear to renderTurns",
+        "Fix DOMPurify fallback to textContent"
+      ],
+      "acceptanceCriteria": [
+        "Modal close does not break other Full text buttons",
+        "No XSS without DOMPurify",
+        "ruff + pytest pass"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-062",
+      "title": "Graph page light mode theme support",
+      "category": "bugfix",
+      "priority": 62,
+      "description": "graph.html D3 elements use hardcoded dark-mode colors making labels invisible and links barely visible in light mode. Fix dot grid, node labels, sublabels, and link strokes to be theme-aware.",
+      "steps": [
+        "Add _isDark helper",
+        "Fix dot grid fill",
+        "Fix label and sublabel fill colors",
+        "Fix link stroke colors"
+      ],
+      "acceptanceCriteria": [
+        "Graph readable in both light and dark modes",
+        "ruff + pytest pass"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-063",
+      "title": "Lab page shows coming_soon instead of actual lab.html",
+      "category": "bugfix",
+      "priority": 63,
+      "description": "The /lab route renders coming_soon.html placeholder despite lab.html being fully implemented with all API endpoints. Fix route to render lab.html.",
+      "steps": [
+        "Change lab_page route to render lab.html"
+      ],
+      "acceptanceCriteria": [
+        "/lab shows full Lab interface",
+        "ruff + pytest pass"
+      ],
+      "passes": true
+    }
+  ]
+}

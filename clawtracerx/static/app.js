@@ -3,11 +3,46 @@
 function qs(sel) { return document.querySelector(sel); }
 function qsa(sel) { return document.querySelectorAll(sel); }
 
+// === Theme toggle ===
+function getTheme() {
+  return document.documentElement.getAttribute('data-theme') || 'dark';
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('clawtracerx-theme', theme);
+  // Dispatch event so charts and other components can react
+  window.dispatchEvent(new CustomEvent('themechange', { detail: { theme: theme } }));
+}
+
+function toggleTheme() {
+  setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+}
+
+// Listen for OS preference changes (only if user hasn't manually chosen)
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function(e) {
+  if (!localStorage.getItem('clawtracerx-theme')) {
+    setTheme(e.matches ? 'light' : 'dark');
+  }
+});
+
+function debounce(fn, ms) {
+  var timer;
+  return function() {
+    var args = arguments, ctx = this;
+    clearTimeout(timer);
+    timer = setTimeout(function() { fn.apply(ctx, args); }, ms);
+  };
+}
+
 async function fetchJSON(url, opts) {
   const res = await fetch(url, opts);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+    // Strip HTML tags to avoid raw HTML in error banners
+    const clean = text.replace(/<[^>]*>/g, '').trim().slice(0, 200);
+    const msg = clean || ('HTTP ' + res.status);
+    throw new Error(msg);
   }
   return await res.json();
 }
@@ -18,8 +53,46 @@ async function fetchJSONSafe(url, fallback) {
     return await fetchJSON(url);
   } catch (e) {
     console.error('Fetch error:', e);
+    showErrorBanner(e.message, function() { return fetchJSONSafe(url, fallback); });
     return fallback !== undefined ? fallback : [];
   }
+}
+
+/** Show a dismissible error banner at the top of the content area. */
+function showErrorBanner(message, retryFn) {
+  var existing = document.getElementById('error-banner');
+  if (existing) existing.remove();
+
+  var banner = document.createElement('div');
+  banner.id = 'error-banner';
+  banner.className = 'error-banner';
+  banner.setAttribute('role', 'alert');
+
+  var msg = document.createElement('span');
+  msg.className = 'error-banner-msg';
+  msg.textContent = message || 'An error occurred';
+  banner.appendChild(msg);
+
+  if (retryFn) {
+    var retryBtn = document.createElement('button');
+    retryBtn.className = 'btn btn-sm btn-outline error-banner-retry';
+    retryBtn.textContent = 'Retry';
+    retryBtn.onclick = function() {
+      banner.remove();
+      retryFn();
+    };
+    banner.appendChild(retryBtn);
+  }
+
+  var dismissBtn = document.createElement('button');
+  dismissBtn.className = 'btn-close error-banner-dismiss';
+  dismissBtn.innerHTML = '&times;';
+  dismissBtn.setAttribute('aria-label', 'Dismiss error');
+  dismissBtn.onclick = function() { banner.remove(); };
+  banner.appendChild(dismissBtn);
+
+  var content = document.querySelector('.content');
+  if (content) content.insertBefore(banner, content.firstChild);
 }
 
 function fmtTokens(n) {
@@ -116,6 +189,9 @@ function toolIcon(name) {
 // === Text expansion modal (공통) ===
 window._textBuf = {};
 var _textBufIdx = 0;
+var _modalRawText = '';
+var _modalIsMarkdown = true;
+var _modalPreviousFocus = null;
 
 function _storeText(text) {
   var k = _textBufIdx++;
@@ -130,23 +206,139 @@ function makeShowFullBtn(label, title, text, threshold) {
     + escHtml(title) + '\',' + k + ')">' + escHtml(label) + '</button>';
 }
 
-function showTextModal(title, keyOrText) {
+async function showTextModal(title, keyOrText, opts) {
   var modal = document.getElementById('text-modal');
   if (!modal) return;
-  var text = typeof keyOrText === 'number' ? (window._textBuf[keyOrText] || '') : keyOrText;
+  opts = opts || {};
+
+  var text;
+  if (keyOrText && typeof keyOrText.then === 'function') {
+    _modalRawText = '';
+    _modalIsMarkdown = false;
+    document.getElementById('text-modal-title').textContent = title;
+    _refreshModalBody('Loading...');
+    modal.style.display = 'flex';
+    try {
+      var result = await keyOrText;
+      text = typeof result === 'string' ? result
+           : (result.content != null ? result.content : JSON.stringify(result, null, 2));
+    } catch(e) {
+      text = 'Error: ' + e.message;
+    }
+  } else {
+    text = typeof keyOrText === 'number'
+         ? (window._textBuf[keyOrText] || '')
+         : (keyOrText || '');
+  }
+
+  _modalRawText = text;
+  _modalIsMarkdown = (opts.markdown !== false);
   document.getElementById('text-modal-title').textContent = title;
-  document.getElementById('text-modal-body').textContent = text;
+  _refreshModalBody();
   modal.style.display = 'flex';
+  // Focus management: save trigger, focus first button
+  _modalPreviousFocus = document.activeElement;
+  var firstBtn = modal.querySelector('button');
+  if (firstBtn) firstBtn.focus();
+}
+
+function _refreshModalBody(loading) {
+  var pre    = document.getElementById('text-modal-pre');
+  var mdDiv  = document.getElementById('text-modal-md');
+  var toggle = document.getElementById('text-modal-toggle');
+  var text   = loading != null ? loading : _modalRawText;
+
+  if (_modalIsMarkdown && !loading && typeof marked !== 'undefined') {
+    try {
+      pre.style.display   = 'none';
+      mdDiv.style.display = 'block';
+      var html = marked.parse(text);
+      if (typeof DOMPurify !== 'undefined') {
+        mdDiv.innerHTML = DOMPurify.sanitize(html);
+      } else {
+        // DOMPurify unavailable — fall back to plain text to avoid XSS
+        mdDiv.textContent = text;
+      }
+      if (toggle) toggle.textContent = 'Raw';
+    } catch (e) {
+      // Markdown parse failed — fallback to raw text
+      console.warn('Markdown parse error, falling back to raw:', e);
+      _modalIsMarkdown = false;
+      mdDiv.style.display = 'none';
+      pre.style.display   = 'block';
+      pre.textContent     = text;
+      if (toggle) toggle.textContent = 'Markdown';
+    }
+  } else {
+    mdDiv.style.display = 'none';
+    pre.style.display   = 'block';
+    pre.textContent     = text;
+    if (toggle) toggle.textContent = loading ? '…' : 'Markdown';
+  }
+}
+
+function toggleModalMarkdown() {
+  _modalIsMarkdown = !_modalIsMarkdown;
+  _refreshModalBody();
+}
+
+function copyModalText() {
+  if (!_modalRawText) return;
+  var btn = document.getElementById('text-modal-copy');
+  navigator.clipboard.writeText(_modalRawText).then(function() {
+    if (btn) { btn.textContent = '✓ Copied'; setTimeout(function(){ btn.textContent = 'Copy'; }, 1500); }
+  }).catch(function() {
+    if (btn) btn.textContent = 'Copy';
+  });
 }
 
 function closeTextModal() {
   var modal = document.getElementById('text-modal');
   if (modal) modal.style.display = 'none';
+  _modalRawText = '';
+  // Restore focus to trigger element
+  if (_modalPreviousFocus && _modalPreviousFocus.focus) {
+    _modalPreviousFocus.focus();
+    _modalPreviousFocus = null;
+  }
 }
 
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeTextModal();
+  if (e.key === 'Escape') { closeTextModal(); return; }
+  // Focus trap for text modal
+  if (e.key === 'Tab') {
+    var modal = document.getElementById('text-modal');
+    if (modal && modal.style.display === 'flex') {
+      var focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (focusable.length) {
+        var first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+    }
+  }
 });
+
+// === Update check ===
+async function checkForUpdate() {
+  if (sessionStorage.getItem('clawtracerx-update-dismissed')) return;
+  const data = await fetchJSONSafe('/api/check-update', {});
+  if (!data.update_available) return;
+  const banner = document.getElementById('update-banner');
+  if (!banner) return;
+  banner.querySelector('.update-version').textContent = data.latest;
+  banner.querySelector('.update-link').href = data.release_url;
+  banner.style.display = 'flex';
+}
+
+function dismissUpdate() {
+  var banner = document.getElementById('update-banner');
+  if (banner) banner.style.display = 'none';
+  sessionStorage.setItem('clawtracerx-update-dismissed', '1');
+}
 
 async function postJSON(url, data) {
   try {

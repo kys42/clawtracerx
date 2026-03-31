@@ -7,28 +7,40 @@
 {% endblock %}
 
 {% block content %}
+<div x-data="costPage()" x-init="init()" @langchange.window="loadCostData()">
+
 <div class="page-header">
   <h1 data-i18n="cost.title">Cost Dashboard</h1>
   <div class="filters">
-    <select id="filter-period" class="input-select" onchange="loadCost()">
+    <select id="filter-period" class="input-select" x-model="period" @change="loadCostData()">
       <option value="today" data-i18n="cost.today">Today</option>
-      <option value="week" selected data-i18n="cost.this_week">This Week</option>
+      <option value="week" data-i18n="cost.this_week">This Week</option>
       <option value="month" data-i18n="cost.this_month">This Month</option>
       <option value="all" data-i18n="cost.all_time">All Time</option>
     </select>
-    <select id="filter-agent" class="input-select" onchange="loadCost()">
+    <select id="filter-agent" class="input-select" x-model="agent" @change="loadCostData()">
       <option value="all" data-i18n="cost.all_agents">All Agents</option>
+      <template x-for="a in agents" :key="a.id">
+        <option :value="a.id" x-text="a.id"></option>
+      </template>
     </select>
   </div>
 </div>
 
+<div x-show="loading" class="loading-bar"></div>
+
 <div class="cost-summary" id="cost-summary">
-  <div class="summary-card hero skeleton" style="height:112px"></div>
-  <div class="summary-card skeleton" style="height:112px"></div>
-  <div class="summary-card skeleton" style="height:112px"></div>
+  <template x-if="!loaded">
+    <div style="display:contents">
+      <div class="summary-card hero skeleton" style="height:112px"></div>
+      <div class="summary-card skeleton" style="height:112px"></div>
+      <div class="summary-card skeleton" style="height:112px"></div>
+    </div>
+  </template>
 </div>
 
-<div class="cost-grid">
+<div class="cost-grid" style="position:relative">
+  <div class="chart-loading-overlay" x-show="loading && loaded" x-transition.opacity>Loading...</div>
   <div class="card">
     <h3 data-i18n="cost.by_agent">Cost by Agent</h3>
     <div id="chart-agent"></div>
@@ -50,24 +62,29 @@
     <div id="chart-daily"></div>
   </div>
 </div>
+
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 const charts = {};
 
-const APEX_BASE = {
-  theme: { mode: 'dark' },
-  chart: {
-    background: 'transparent',
-    foreColor: '#b0b4c0',
-    fontFamily: "'JetBrains Mono', 'Inter', monospace",
-    toolbar: { show: false },
-    animations: { enabled: true, speed: 450, animateGradually: { enabled: true, delay: 80 } },
-  },
-  grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
-  tooltip: { theme: 'dark' },
-};
+function getApexBase() {
+  var isDark = getTheme() === 'dark';
+  return {
+    theme: { mode: isDark ? 'dark' : 'light' },
+    chart: {
+      background: 'transparent',
+      foreColor: isDark ? '#b0b4c0' : '#374151',
+      fontFamily: "'JetBrains Mono', 'Inter', monospace",
+      toolbar: { show: false },
+      animations: { enabled: true, speed: 450, animateGradually: { enabled: true, delay: 80 } },
+    },
+    grid: { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)', strokeDashArray: 4 },
+    tooltip: { theme: isDark ? 'dark' : 'light' },
+  };
+}
 
 function destroyChart(id) {
   if (charts[id]) {
@@ -78,6 +95,7 @@ function destroyChart(id) {
 
 function renderApexBar(containerId, dataMap) {
   const el = qs(`#${containerId}`);
+  if (!el) return;
   destroyChart(containerId);
   if (!dataMap || !Object.keys(dataMap).length) {
     el.innerHTML = '<div class="empty">' + _t('cost.no_data') + '</div>';
@@ -89,12 +107,22 @@ function renderApexBar(containerId, dataMap) {
   const values = entries.map(([, v]) => parseFloat(v.toFixed(6)));
 
   charts[containerId] = new ApexCharts(el, {
-    ...APEX_BASE,
+    ...getApexBase(),
     series: [{ name: _t('cost.cost_usd'), data: values }],
     chart: {
-      ...APEX_BASE.chart,
+      ...getApexBase().chart,
       type: 'bar',
       height: Math.max(160, categories.length * 38 + 48),
+      events: {
+        dataPointSelection: function(event, chartContext, config) {
+          const label = categories[config.dataPointIndex];
+          if (containerId === 'chart-agent') {
+            location.href = '/?agent=' + encodeURIComponent(label);
+          } else if (containerId === 'chart-type') {
+            location.href = '/?type=' + encodeURIComponent(label);
+          }
+        }
+      },
     },
     plotOptions: {
       bar: {
@@ -107,37 +135,48 @@ function renderApexBar(containerId, dataMap) {
     dataLabels: {
       enabled: true,
       formatter: v => fmtCost(v),
-      style: { fontSize: '11px', colors: ['#b0b4c0'], fontFamily: "'JetBrains Mono', monospace" },
+      style: { fontSize: '11px', colors: [getTheme() === 'dark' ? '#b0b4c0' : '#374151'], fontFamily: "'JetBrains Mono', monospace" },
       offsetX: 6,
     },
     xaxis: {
       categories,
       labels: {
         formatter: v => fmtCost(v),
-        style: { colors: '#6b7280', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
+        style: { colors: getTheme() === 'dark' ? '#6b7280' : '#4b5563', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
       },
-      axisBorder: { color: 'rgba(255,255,255,0.06)' },
-      axisTicks: { color: 'rgba(255,255,255,0.06)' },
+      axisBorder: { color: getTheme() === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' },
+      axisTicks: { color: getTheme() === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' },
     },
     yaxis: {
-      labels: { style: { colors: '#b0b4c0', fontSize: '12px' } },
+      labels: { style: { colors: getTheme() === 'dark' ? '#b0b4c0' : '#374151', fontSize: '12px' } },
     },
     fill: {
       type: 'gradient',
       gradient: {
-        shade: 'dark', type: 'horizontal',
+        shade: getTheme() === 'dark' ? 'dark' : 'light', type: 'horizontal',
         gradientToColors: ['#06b6d4'], stops: [0, 100],
         shadeIntensity: 0.4,
       },
     },
     colors: ['#6366f1'],
-    tooltip: { ...APEX_BASE.tooltip, y: { formatter: v => fmtCost(v) } },
+    tooltip: { ...getApexBase().tooltip, y: { formatter: v => fmtCost(v) } },
+    responsive: [{
+      breakpoint: 480,
+      options: {
+        chart: { height: Math.max(140, categories.length * 32 + 40) },
+        dataLabels: { style: { fontSize: '9px' } },
+        xaxis: { labels: { style: { fontSize: '9px' } } },
+        yaxis: { labels: { style: { fontSize: '10px' } } },
+        plotOptions: { bar: { barHeight: '70%', borderRadius: 3 } },
+      }
+    }],
   });
   charts[containerId].render();
 }
 
 function renderApexArea(containerId, dataMap) {
   const el = qs(`#${containerId}`);
+  if (!el) return;
   destroyChart(containerId);
   if (!dataMap || !Object.keys(dataMap).length) {
     el.innerHTML = '<div class="empty">' + _t('cost.no_data') + '</div>';
@@ -149,10 +188,10 @@ function renderApexArea(containerId, dataMap) {
   const values = entries.map(([, v]) => parseFloat(v.toFixed(6)));
 
   charts[containerId] = new ApexCharts(el, {
-    ...APEX_BASE,
+    ...getApexBase(),
     series: [{ name: _t('cost.cost_usd'), data: values }],
     chart: {
-      ...APEX_BASE.chart,
+      ...getApexBase().chart,
       type: 'area',
       height: 280,
       toolbar: {
@@ -165,9 +204,9 @@ function renderApexArea(containerId, dataMap) {
     fill: {
       type: 'gradient',
       gradient: {
-        shade: 'dark', type: 'vertical',
+        shade: getTheme() === 'dark' ? 'dark' : 'light', type: 'vertical',
         shadeIntensity: 0.5,
-        gradientToColors: ['#09090b'],
+        gradientToColors: [getTheme() === 'dark' ? '#09090b' : '#f8f9fb'],
         opacityFrom: 0.45, opacityTo: 0.02,
         stops: [0, 100],
       },
@@ -176,37 +215,48 @@ function renderApexArea(containerId, dataMap) {
     xaxis: {
       categories,
       labels: {
-        style: { colors: '#6b7280', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
+        style: { colors: getTheme() === 'dark' ? '#6b7280' : '#4b5563', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
         rotate: -45,
       },
-      axisBorder: { color: 'rgba(255,255,255,0.06)' },
-      axisTicks: { color: 'rgba(255,255,255,0.06)' },
+      axisBorder: { color: getTheme() === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' },
+      axisTicks: { color: getTheme() === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' },
     },
     yaxis: {
       labels: {
         formatter: v => fmtCost(v),
-        style: { colors: '#6b7280', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
+        style: { colors: getTheme() === 'dark' ? '#6b7280' : '#4b5563', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace" },
       },
     },
     markers: { size: 4, colors: ['#6366f1'], strokeColors: '#818cf8', strokeWidth: 2, hover: { size: 6 } },
     tooltip: {
-      ...APEX_BASE.tooltip,
+      ...getApexBase().tooltip,
       x: { show: true },
       y: { formatter: v => fmtCost(v) },
       crosshairs: { stroke: { color: '#6366f1', width: 1, dashArray: 3 } },
     },
     dataLabels: { enabled: false },
+    responsive: [{
+      breakpoint: 480,
+      options: {
+        chart: { height: 200 },
+        xaxis: { labels: { style: { fontSize: '9px' }, rotate: -60 } },
+        yaxis: { labels: { style: { fontSize: '9px' } } },
+        markers: { size: 3, hover: { size: 4 } },
+        legend: { position: 'bottom', fontSize: '10px' },
+      }
+    }],
   });
   charts[containerId].render();
 }
 
-async function loadCost() {
-  const period = qs('#filter-period').value;
-  const agent = qs('#filter-agent').value;
+async function loadCost(period, agent) {
+  period = period || qs('#filter-period').value;
+  agent = agent || qs('#filter-agent').value;
   const data = await fetchJSONSafe(`/api/cost?period=${period}&agent=${agent}`, {});
 
   // Hero metric cards
-  qs('#cost-summary').innerHTML = `
+  const summaryEl = qs('#cost-summary');
+  if (summaryEl) summaryEl.innerHTML = `
     <div class="summary-card hero">
       <div class="summary-value cost">${fmtCost(data.total_cost)}</div>
       <div class="summary-label">${_t('cost.total_cost')}</div>
@@ -230,6 +280,7 @@ async function loadCost() {
 
 function renderAgentTypeTable(containerId, byAgentType, byType) {
   const el = qs(`#${containerId}`);
+  if (!el) return;
   if (!byAgentType || !Object.keys(byAgentType).length) {
     el.innerHTML = '<div class="empty">' + _t('cost.no_data') + '</div>';
     return;
@@ -254,24 +305,44 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
 
   const fmtCell = (v) => v > 0 ? `<span style="color:var(--text-0);font-weight:500">${fmtCost(v)}</span>` : `<span style="color:var(--text-3)">—</span>`;
 
+  // Sortable columns: store refs for re-rendering
+  const colDefs = [
+    { key: '_agent', label: _t('cost.agent'), style: '', getValue: a => a },
+    ...activeTypes.map(t => ({ key: t, label: typeLabels[t], style: `color:${typeColors[t]}`, getValue: a => byAgentType[a][t] || 0 })),
+    { key: '_total', label: _t('cost.total'), style: 'color:var(--text-1)', getValue: a => rowTotal(a) },
+  ];
+
+  function renderRows(sortKey, sortAsc) {
+    let sorted = [...agents];
+    if (sortKey) {
+      const col = colDefs.find(c => c.key === sortKey);
+      if (col) {
+        sorted.sort((a, b) => {
+          const va = col.getValue(a), vb = col.getValue(b);
+          const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+          return sortAsc ? cmp : -cmp;
+        });
+      }
+    }
+    return sorted.map(a => `
+      <tr>
+        <td class="cbt-agent">${a}</td>
+        ${activeTypes.map(t => `<td class="cbt-val">${fmtCell(byAgentType[a][t] || 0)}</td>`).join('')}
+        <td class="cbt-total">${fmtCost(rowTotal(a))}</td>
+      </tr>
+    `).join('');
+  }
+
   el.innerHTML = `
     <div class="cost-breakdown-wrap">
-      <table class="cost-breakdown-table">
+      <table class="cost-breakdown-table" id="cbt-sortable">
         <thead>
           <tr>
-            <th>${_t('cost.agent')}</th>
-            ${activeTypes.map(t => `<th style="color:${typeColors[t]}">${typeLabels[t]}</th>`).join('')}
-            <th style="color:var(--text-1)">${_t('cost.total')}</th>
+            ${colDefs.map(c => `<th class="cbt-sortable" data-sort-key="${c.key}" style="${c.style};cursor:pointer">${c.label} <span class="sort-arrow"></span></th>`).join('')}
           </tr>
         </thead>
-        <tbody>
-          ${agents.map(a => `
-            <tr>
-              <td class="cbt-agent">${a}</td>
-              ${activeTypes.map(t => `<td class="cbt-val">${fmtCell(byAgentType[a][t] || 0)}</td>`).join('')}
-              <td class="cbt-total">${fmtCost(rowTotal(a))}</td>
-            </tr>
-          `).join('')}
+        <tbody id="cbt-tbody">
+          ${renderRows('_total', false)}
         </tbody>
         <tfoot>
           <tr>
@@ -283,22 +354,53 @@ function renderAgentTypeTable(containerId, byAgentType, byType) {
       </table>
     </div>
   `;
-}
 
-async function loadAgents() {
-  const agents = await fetchJSONSafe('/api/agents');
-  const sel = qs('#filter-agent');
-  agents.forEach(a => {
-    const opt = document.createElement('option');
-    opt.value = a.id;
-    opt.textContent = a.id;
-    sel.appendChild(opt);
+  // Attach sort handlers
+  let currentSortKey = '_total', currentSortAsc = false;
+  el.querySelectorAll('.cbt-sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if (currentSortKey === key) { currentSortAsc = !currentSortAsc; }
+      else { currentSortKey = key; currentSortAsc = key === '_agent'; }
+      qs('#cbt-tbody').innerHTML = renderRows(currentSortKey, currentSortAsc);
+      el.querySelectorAll('.sort-arrow').forEach(a => a.textContent = '');
+      th.querySelector('.sort-arrow').textContent = currentSortAsc ? ' ▲' : ' ▼';
+    });
   });
+  // Set initial arrow
+  const initTh = el.querySelector('[data-sort-key="_total"] .sort-arrow');
+  if (initTh) initTh.textContent = ' ▼';
 }
 
-loadAgents();
-loadCost();
+// Re-render charts on theme change
+window.addEventListener('themechange', function() {
+  var periodEl = qs('#filter-period');
+  var agentEl = qs('#filter-agent');
+  if (periodEl && agentEl) {
+    loadCost(periodEl.value, agentEl.value);
+  }
+});
 
-document.addEventListener('langchange', function() { loadCost(); });
+document.addEventListener('alpine:init', () => {
+  Alpine.data('costPage', () => ({
+    period: 'week',
+    agent: 'all',
+    agents: [],
+    loading: false,
+    loaded: false,
+
+    async init() {
+      this.agents = await fetchJSONSafe('/api/agents');
+      await this.loadCostData();
+    },
+
+    async loadCostData() {
+      this.loading = true;
+      await loadCost(this.period, this.agent);
+      this.loading = false;
+      this.loaded = true;
+    }
+  }));
+});
 </script>
 {% endblock %}

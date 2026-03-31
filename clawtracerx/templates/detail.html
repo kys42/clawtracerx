@@ -3,29 +3,42 @@
 {% block title %}Session {{ session_id[:10] }}{% endblock %}
 
 {% block content %}
+<div x-data="detailPage()" x-init="init()" @langchange.window="onLangChange()">
+
 <div class="page-header">
   <a href="/" class="back-link">&larr; <span data-i18n="detail.back">Sessions</span></a>
   <div class="header-actions">
-    <button class="btn btn-outline btn-sm" id="sort-btn" onclick="toggleSort()" data-i18n="detail.sort_newest">Newest first</button>
+    <button class="btn btn-outline btn-sm" id="expand-all-btn" onclick="expandAllTurns()" aria-label="Expand all turns" data-i18n="detail.expand_all">Expand All</button>
+    <button class="btn btn-outline btn-sm" id="collapse-all-btn" onclick="collapseAllTurns()" aria-label="Collapse all turns" data-i18n="detail.collapse_all">Collapse All</button>
+    <button class="btn btn-outline btn-sm" id="sort-btn" @click="toggleSort()"
+            x-text="sortNewest ? _t('detail.sort_newest') : _t('detail.sort_oldest')">Newest first</button>
+    <button class="btn btn-outline btn-sm" @click="exportJSON()" data-i18n="detail.export_json">Export JSON</button>
+    <button class="btn btn-outline btn-sm" :class="{ 'btn-live-active': liveActive }" @click="toggleLive()" id="live-btn">
+      <span class="live-dot" x-show="liveActive"></span>
+      <span x-text="liveLabel">Live</span>
+    </button>
     <a href="/session/{{ session_id }}/graph" class="btn btn-outline" id="graph-btn" data-i18n="detail.graph">Graph View</a>
   </div>
 </div>
 
 <div id="session-header" class="card session-header">
-  <div class="loading" data-i18n="detail.loading">Loading session...</div>
+  <div class="loading" data-i18n="detail.loading" x-show="!loaded">Loading session...</div>
+</div>
+
+<div class="turn-filter-bar" x-show="loaded" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+  <input type="text" class="input-search" id="turn-search"
+         :placeholder="_t('detail.search_placeholder')"
+         data-i18n-placeholder="detail.search_placeholder"
+         @input="debouncedFilterTurns()" style="flex:1">
+  <select class="input-select" id="tool-filter" @change="filterTurns()">
+    <option value="" data-i18n="detail.filter_all_tools">All tools</option>
+  </select>
+  <span id="filter-match-count" style="color:var(--text-3);font-size:12px"></span>
+  <button class="btn btn-outline btn-sm" @click="clearFilters()" data-i18n="detail.clear_filter">Clear</button>
 </div>
 
 <div id="turns-container"></div>
 
-<!-- Raw log modal -->
-<div id="raw-modal" class="modal" onclick="if(event.target===this)closeRawModal()">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3><span data-i18n="detail.raw_jsonl">Raw JSONL</span> — <span id="raw-title"></span></h3>
-      <button class="btn-close" onclick="closeRawModal()">&times;</button>
-    </div>
-    <pre id="raw-content" class="raw-json"></pre>
-  </div>
 </div>
 {% endblock %}
 
@@ -40,28 +53,239 @@ function getSortedTurns(turns) {
   return sortOrder === 'newest' ? [...turns].reverse() : turns;
 }
 
-function toggleSort() {
-  sortOrder = sortOrder === 'newest' ? 'oldest' : 'newest';
-  const btn = qs('#sort-btn');
-  if (btn) btn.textContent = _t('detail.sort_' + sortOrder);
-  if (sessionData) {
-    renderTurns(
-      getSortedTurns(sessionData.turns),
-      sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
-    );
-  }
-}
-
 async function loadSession() {
   sessionData = await fetchJSONSafe(`/api/session/${SESSION_ID}`, {});
   renderHeader(sessionData);
   renderTurns(getSortedTurns(sessionData.turns), []);
 }
 
+document.addEventListener('alpine:init', () => {
+  Alpine.data('detailPage', () => ({
+    sortNewest: true,
+    loaded: false,
+    liveActive: false,
+    liveLabel: 'Live',
+    _evtSource: null,
+    _reconnectCount: 0,
+
+    debouncedFilterTurns: null,
+
+    async init() {
+      await loadSession();
+      if (!sessionData || !sessionData.turns) {
+        // Load failed — replace loading text with error + back link
+        const hdr = qs('#session-header');
+        if (hdr) hdr.innerHTML = '<div class="error-state"><p style="color:var(--error)">Session not found or failed to load.</p><a href="/" class="back-link">&larr; Sessions</a></div>';
+        return;
+      }
+      this.loaded = true;
+      this.populateToolFilter();
+      this.debouncedFilterTurns = debounce(() => this.filterTurns(), 300);
+
+      // Keyboard shortcuts
+      const self = this;
+      document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'f' && self.loaded) {
+          e.preventDefault();
+          const searchEl = qs('#turn-search');
+          if (searchEl) searchEl.focus();
+        }
+        if (e.key === 'Escape') {
+          self.clearFilters();
+        }
+      });
+    },
+
+    populateToolFilter() {
+      if (!sessionData || !sessionData.turns) return;
+      const tools = new Set();
+      sessionData.turns.forEach(t => (t.tool_calls || []).forEach(tc => tools.add(tc.name)));
+      const sel = qs('#tool-filter');
+      if (!sel) return;
+      const sorted = [...tools].sort();
+      sorted.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+    },
+
+    filterTurns() {
+      const q = (qs('#turn-search').value || '').toLowerCase().trim();
+      const toolName = qs('#tool-filter').value;
+      const cards = qsa('#turns-container > .turn-card, #turns-container > .workflow-group');
+      let visible = 0;
+      cards.forEach(card => {
+        const text = (card.textContent || '').toLowerCase();
+        const matchText = !q || text.includes(q);
+        const matchTool = !toolName || text.includes(toolName.toLowerCase());
+        const show = matchText && matchTool;
+        card.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      const countEl = qs('#filter-match-count');
+      if (countEl) {
+        if (q || toolName) {
+          countEl.textContent = visible + _t('detail.matches');
+        } else {
+          countEl.textContent = '';
+        }
+      }
+    },
+
+    clearFilters() {
+      const searchEl = qs('#turn-search');
+      const filterEl = qs('#tool-filter');
+      const countEl = qs('#filter-match-count');
+      if (searchEl) searchEl.value = '';
+      if (filterEl) filterEl.value = '';
+      if (countEl) countEl.textContent = '';
+      qsa('#turns-container > .turn-card, #turns-container > .workflow-group').forEach(c => c.style.display = '');
+    },
+
+    exportJSON() {
+      if (!sessionData) return;
+      const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = SESSION_ID.slice(0, 10) + '.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    },
+
+    toggleLive() {
+      if (this.liveActive) {
+        this._closeLive();
+      } else {
+        this._startLive();
+      }
+    },
+
+    _startLive() {
+      const self = this;
+      // Close existing connection first to prevent duplicates
+      if (self._evtSource) {
+        self._evtSource.close();
+        self._evtSource = null;
+      }
+      self.liveActive = true;
+      self.liveLabel = 'Connecting...';
+      self._reconnectCount = 0;
+
+      // Cleanup on page unload
+      window.addEventListener('beforeunload', function() { self._closeLive(); });
+
+      const es = new EventSource(`/api/session/${SESSION_ID}/stream`);
+      self._evtSource = es;
+
+      es.addEventListener('init', function() {
+        self.liveLabel = 'Live';
+        self._reconnectCount = 0;
+      });
+
+      es.addEventListener('update', function(e) {
+        var data;
+        try { data = JSON.parse(e.data); } catch(err) { return; }
+        if (data.new_turns && data.new_turns.length && sessionData) {
+          sessionData.turns.push(...data.new_turns);
+          // Append new turn cards
+          const container = qs('#turns-container');
+          if (container) {
+            data.new_turns.forEach(function(t) {
+              const div = document.createElement('div');
+              div.innerHTML = renderSingleTurn(t);
+              while (div.firstChild) container.appendChild(div.firstChild);
+            });
+          }
+          _autoScroll();
+        }
+      });
+
+      es.addEventListener('patch', function(e) {
+        var data;
+        try { data = JSON.parse(e.data); } catch(err) { return; }
+        if (data.turn && sessionData) {
+          // Replace last turn in data
+          const idx = sessionData.turns.findIndex(function(t) { return t.index === data.index; });
+          if (idx >= 0) sessionData.turns[idx] = data.turn;
+          // Re-render last turn card
+          const cards = qsa('#turns-container > .turn-card');
+          const lastCard = cards[cards.length - 1];
+          if (lastCard) {
+            const div = document.createElement('div');
+            div.innerHTML = renderSingleTurn(data.turn);
+            lastCard.replaceWith(div.firstElementChild || div);
+          }
+          _autoScroll();
+        }
+      });
+
+      es.addEventListener('done', function() {
+        self.liveLabel = 'Complete';
+        self._closeLive();
+      });
+
+      es.addEventListener('error', function() {
+        if (es.readyState === EventSource.CLOSED) {
+          if (self._reconnectCount < 5) {
+            var delay = Math.pow(2, self._reconnectCount) * 1000;
+            self._reconnectCount++;
+            self.liveLabel = 'Reconnecting...';
+            self._reconnectTimer = setTimeout(function() { self._startLive(); }, delay);
+          } else {
+            self._closeLive();
+            self.liveLabel = 'Live';
+          }
+        }
+        // CONNECTING: browser auto-reconnects
+      });
+
+      es.addEventListener('timeout', function() {
+        self._closeLive();
+        self.liveLabel = 'Live';
+      });
+    },
+
+    _closeLive() {
+      if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+      if (this._evtSource) {
+        this._evtSource.close();
+        this._evtSource = null;
+      }
+      this.liveActive = false;
+      this._reconnectCount = 0;
+    },
+
+    toggleSort() {
+      this.sortNewest = !this.sortNewest;
+      sortOrder = this.sortNewest ? 'newest' : 'oldest';
+      if (sessionData) {
+        renderTurns(
+          getSortedTurns(sessionData.turns),
+          sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
+        );
+      }
+    },
+
+    onLangChange() {
+      if (sessionData) {
+        renderHeader(sessionData);
+        renderTurns(
+          getSortedTurns(sessionData.turns),
+          sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
+        );
+      }
+    }
+  }));
+});
+
 function renderHeader(s) {
   const contextPanel = s.context ? renderContextPanel(s) : '';
 
-  qs('#session-header').innerHTML = `
+  const headerEl = qs('#session-header');
+  if (!headerEl) return;
+  headerEl.innerHTML = `
     <div class="session-meta">
       <h2>
         <code class="session-id">${s.session_id.slice(0,12)}</code>
@@ -109,7 +333,7 @@ function renderHeader(s) {
       ${s.file_path ? `
       <div class="meta-file-path">
         <code title="${escHtml(s.file_path)}">${escHtml(s.file_path.replace(/^\/Users\/[^/]+/, '~'))}</code>
-        <button class="btn-copy-path" onclick="navigator.clipboard.writeText('${escHtml(s.file_path)}')" title="Copy path">📋</button>
+        <button class="btn-copy-path" onclick="navigator.clipboard.writeText('${escHtml(s.file_path)}').catch(function(){})" title="Copy path" aria-label="Copy file path">📋</button>
       </div>` : ''}
       ${contextPanel}
     </div>
@@ -228,8 +452,8 @@ function renderContextPanel(s) {
   const sysPct  = Math.round((ctx.nonProjectContextChars || 0) / maxChars * 100);
 
   return `
-  <details class="context-panel">
-    <summary>
+  <div class="context-panel" x-data="{ ctxOpen: false }">
+    <div class="context-panel-summary" @click="ctxOpen = !ctxOpen" style="cursor:pointer">
       <div class="context-summary-left">
         <span class="context-title">${_t('detail.context_injection')}</span>
         ${ctx.workspaceDir ? `<code style="font-size:10px;color:var(--text-3);font-family:'JetBrains Mono',monospace">${ctx.workspaceDir.replace(/^\/Users\/\w+/, '~')}</code>` : ''}
@@ -237,10 +461,10 @@ function renderContextPanel(s) {
       <div class="context-meta">
         <span>${fmtChars(usedChars)} / ${fmtChars(maxChars)}</span>
         <span class="context-pct ${pctClass}">${usagePct}%</span>
-        <span class="context-chevron">▾</span>
+        <span class="context-chevron" :style="ctxOpen ? 'transform:rotate(180deg)' : ''">▾</span>
       </div>
-    </summary>
-    <div class="context-body">
+    </div>
+    <div class="context-body" x-show="ctxOpen" x-transition.duration.200ms>
       <div class="context-section">
         <div class="context-label">${_t('detail.system_prompt')}</div>
         <div class="ctx-usage-bar">
@@ -256,28 +480,15 @@ function renderContextPanel(s) {
       ${skillsHtml}
       ${toolsHtml}
     </div>
-  </details>`;
+  </div>`;
 }
 
-async function showRaw(turnIndex) {
-  const modal = qs('#raw-modal');
-  qs('#raw-title').textContent = `Turn ${turnIndex}`;
-  qs('#raw-content').textContent = 'Loading...';
-  modal.style.display = 'flex';
-
-  try {
-    const data = await fetchJSON(`/api/session/${SESSION_ID}/raw/${turnIndex}`);
-    qs('#raw-content').textContent = JSON.stringify(data, null, 2);
-  } catch(e) {
-    qs('#raw-content').textContent = _t('detail.error') + ' ' + e.message;
-  }
+function showRaw(turnIndex) {
+  showTextModal(`Turn ${turnIndex} — Raw JSONL`,
+    fetchJSON(`/api/session/${SESSION_ID}/raw/${turnIndex}`).then(d => JSON.stringify(d, null, 2)),
+    { markdown: false }
+  );
 }
-
-function closeRawModal() {
-  qs('#raw-modal').style.display = 'none';
-}
-
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRawModal(); });
 
 // Context panel click handlers (file / skill preview)
 document.addEventListener('click', e => {
@@ -300,17 +511,8 @@ document.addEventListener('click', e => {
   }
 });
 
-async function openRawModal(title, fetchPromise) {
-  const modal = qs('#raw-modal');
-  qs('#raw-title').textContent = title;
-  qs('#raw-content').textContent = 'Loading...';
-  modal.style.display = 'flex';
-  try {
-    const data = await fetchPromise;
-    qs('#raw-content').textContent = data.content;
-  } catch(e) {
-    qs('#raw-content').textContent = `Error: ${e.message}`;
-  }
+function openRawModal(title, fetchPromise) {
+  showTextModal(title, fetchPromise.then(d => d.content != null ? d.content : JSON.stringify(d, null, 2)), { markdown: false });
 }
 
 function openFullContent(tcId, field) {
@@ -325,18 +527,31 @@ function openFullUserText(turnIdx) {
   openRawModal(`Turn ${turnIdx} — user`, fetchJSON(`/api/session/${SESSION_ID}/turn/${turnIdx}/user-text`));
 }
 
-loadSession();
+function expandAllTurns() {
+  qsa('.turn-body.collapsed').forEach(el => el.classList.remove('collapsed'));
+  qsa('.workflow-body.collapsed').forEach(el => el.classList.remove('collapsed'));
+  qsa('.subagent-body.collapsed').forEach(el => el.classList.remove('collapsed'));
+}
 
-document.addEventListener('langchange', function() {
-  const btn = qs('#sort-btn');
-  if (btn) btn.textContent = _t('detail.sort_' + sortOrder);
-  if (sessionData) {
-    renderHeader(sessionData);
-    renderTurns(
-      getSortedTurns(sessionData.turns),
-      sortOrder === 'oldest' ? (sessionData.compaction_events || []) : []
-    );
+function collapseAllTurns() {
+  qsa('.turn-body:not(.collapsed)').forEach(el => el.classList.add('collapsed'));
+  qsa('.workflow-body:not(.collapsed)').forEach(el => el.classList.add('collapsed'));
+  qsa('.subagent-body:not(.collapsed)').forEach(el => el.classList.add('collapsed'));
+}
+
+/* Render a single turn card for live append */
+function renderSingleTurn(t) {
+  return renderTurn(t, 0);
+}
+
+/* Auto-scroll if user is near bottom */
+function _autoScroll() {
+  const el = document.scrollingElement || document.documentElement;
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 150) {
+    window.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }
-});
+}
+
+/* loadSession is called from Alpine init */
 </script>
 {% endblock %}

@@ -12,19 +12,17 @@ Protocol (v3):
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import time
 from pathlib import Path
 from uuid import uuid4
 
 import websocket
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
-    load_pem_private_key,
-    load_pem_public_key,
     Encoding,
     PublicFormat,
+    load_pem_private_key,
+    load_pem_public_key,
 )
 
 OPENCLAW_CONFIG = Path.home() / ".openclaw" / "openclaw.json"
@@ -118,7 +116,10 @@ def _connect() -> websocket.WebSocket:
 
     # 1. Receive connect.challenge event
     raw = ws.recv()
-    challenge = json.loads(raw)
+    try:
+        challenge = json.loads(raw)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Invalid JSON from gateway: {raw[:200]}")
     if challenge.get("type") != "event" or challenge.get("event") != "connect.challenge":
         raise RuntimeError(f"Expected connect.challenge, got: {raw[:200]}")
 
@@ -174,7 +175,10 @@ def _connect() -> websocket.WebSocket:
 
     # 4. Receive auth response
     raw = ws.recv()
-    resp = json.loads(raw)
+    try:
+        resp = json.loads(raw)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Invalid auth response JSON: {raw[:200]}")
     if resp.get("type") == "res" and resp.get("id") == connect_id:
         if not resp.get("ok", False):
             raise RuntimeError(f"Auth failed: {resp.get('error', {})}")
@@ -202,7 +206,10 @@ def rpc_call(method: str, params: dict, timeout: int = 30) -> dict:
         deadline = time.time() + timeout
         while time.time() < deadline:
             raw = ws.recv()
-            resp = json.loads(raw)
+            try:
+                resp = json.loads(raw)
+            except json.JSONDecodeError:
+                continue  # Skip malformed messages
             if resp.get("type") == "res" and resp.get("id") == req_id:
                 if not resp.get("ok", False):
                     raise RuntimeError(f"RPC error ({method}): {resp.get('error', {})}")
@@ -252,14 +259,14 @@ def list_gateway_sessions(agent_id: str = None, limit: int = 30) -> list:
 
 def patch_session(session_key: str, **kwargs) -> dict:
     """Patch session settings via sessions.patch RPC."""
-    params = {"sessionKey": session_key}
+    params = {"key": session_key}
     params.update(kwargs)
     return rpc_call("sessions.patch", params)
 
 
 def reset_session(session_key: str) -> dict:
     """Reset session transcript via sessions.reset RPC."""
-    return rpc_call("sessions.reset", {"sessionKey": session_key})
+    return rpc_call("sessions.reset", {"key": session_key})
 
 
 def list_models() -> list:

@@ -17,8 +17,6 @@ function renderChannelMsg(cm) {
     <pre class="channel-msg-body">${escHtml(cm.actual_text || '')}</pre>
   </div>`;
 }
-const DELIVERY_MIRROR_SOURCE = 'delivery_mirror';
-
 function fmtChars(n) {
   if (!n) return '0';
   if (n < 1000) return n + _t('turns.ch');
@@ -26,13 +24,19 @@ function fmtChars(n) {
   return (n / 1000000).toFixed(2) + 'M';
 }
 
+var _turnsPageState = null; // {items, compactionEvents, contextBoundaryIdx, rendered}
+var _TURNS_PAGE_SIZE = 50;
+
 function renderTurns(turns, compactionEvents) {
   const container = qs('#turns-container');
-  let html = '';
+
+  // Clear text buffer from previous render to prevent memory buildup
+  window._textBuf = {};
+  _textBufIdx = 0;
 
   // Build compaction boundary: find the first in-context turn index
-  let contextBoundaryIdx = -1;
-  for (let i = 0; i < turns.length; i++) {
+  var contextBoundaryIdx = -1;
+  for (var i = 0; i < turns.length; i++) {
     if (turns[i].in_context && (i === 0 || !turns[i-1].in_context)) {
       contextBoundaryIdx = i;
       break;
@@ -52,7 +56,7 @@ function renderTurns(turns, compactionEvents) {
 
   const items = []; // [{type:'turn', turn, startIdx} | {type:'workflow', turns, startIdx}]
   const processedWorkflows = new Set();
-  let i = 0;
+  i = 0;
   while (i < turns.length) {
     const t = turns[i];
     const gid = t.workflow_group_id;
@@ -63,7 +67,7 @@ function renderTurns(turns, compactionEvents) {
       // Separate workflow turns (wf==gid) from interleaved gap turns (wf==null)
       const workflowTurns = [];
       const gapTurns = [];
-      for (let j = bounds.first; j <= bounds.last; j++) {
+      for (var j = bounds.first; j <= bounds.last; j++) {
         if (turns[j].workflow_group_id === gid) workflowTurns.push({ turn: turns[j], idx: j });
         else gapTurns.push({ turn: turns[j], idx: j });
       }
@@ -82,16 +86,36 @@ function renderTurns(turns, compactionEvents) {
     }
   }
 
-  let animIdx = 0;
-  for (const item of items) {
-    const firstTurnIdx = item.startIdx;
+  // Store state for pagination
+  _turnsPageState = {
+    items: items,
+    compactionEvents: compactionEvents,
+    contextBoundaryIdx: contextBoundaryIdx,
+    rendered: 0,
+  };
+
+  // Render first page
+  container.innerHTML = '';
+  _renderTurnsBatch(container, _TURNS_PAGE_SIZE);
+}
+
+function _renderTurnsBatch(container, count) {
+  if (!_turnsPageState) return;
+  var state = _turnsPageState;
+  var end = Math.min(state.rendered + count, state.items.length);
+  var html = '';
+  var animIdx = state.rendered;
+
+  for (var k = state.rendered; k < end; k++) {
+    var item = state.items[k];
+    var firstTurnIdx = item.startIdx;
     // Insert compaction divider at the context boundary
-    if (firstTurnIdx === contextBoundaryIdx && firstTurnIdx > 0 && compactionEvents.length > 0) {
-      const lastCe = compactionEvents[compactionEvents.length - 1];
-      const tokensBefore = lastCe.tokens_before ? fmtTokens(lastCe.tokens_before) : '?';
-      const tokensAfter  = lastCe.tokens_after  ? fmtTokens(lastCe.tokens_after)  : null;
-      const hookLabel = lastCe.from_hook ? ' ' + _t('turns.hook') : '';
-      const summaryHtml = lastCe.summary ? `
+    if (firstTurnIdx === state.contextBoundaryIdx && firstTurnIdx > 0 && state.compactionEvents.length > 0) {
+      var lastCe = state.compactionEvents[state.compactionEvents.length - 1];
+      var tokensBefore = lastCe.tokens_before ? fmtTokens(lastCe.tokens_before) : '?';
+      var tokensAfter  = lastCe.tokens_after  ? fmtTokens(lastCe.tokens_after)  : null;
+      var hookLabel = lastCe.from_hook ? ' ' + _t('turns.hook') : '';
+      var summaryHtml = lastCe.summary ? `
         <details class="compaction-detail">
           <summary>${_t('turns.summary')} ▾</summary>
           <div class="compaction-summary-text">${escHtml(lastCe.summary)}</div>
@@ -113,10 +137,27 @@ function renderTurns(turns, compactionEvents) {
       html += renderTurn(item.turn, animIdx++);
     }
   }
-  container.innerHTML = html;
+  state.rendered = end;
+
+  // Remove existing "load more" button
+  var existingBtn = container.querySelector('.load-more-turns');
+  if (existingBtn) existingBtn.remove();
+
+  container.insertAdjacentHTML('beforeend', html);
+
+  // Add "load more" button if more items remain
+  var remaining = state.items.length - state.rendered;
+  if (remaining > 0) {
+    var btn = document.createElement('button');
+    btn.className = 'btn btn-outline load-more-turns';
+    btn.textContent = (_t('turns.load_more') || 'Load more turns') + ' (' + remaining + ' ' + (_t('turns.remaining') || 'remaining') + ')';
+    btn.onclick = function() { _renderTurnsBatch(container, _TURNS_PAGE_SIZE); };
+    container.appendChild(btn);
+  }
 }
 
 function renderWorkflowGroup(turns, animIdx) {
+  if (!turns || !turns.length) return '';
   const firstTurn = turns[0];
   const lastTurn  = turns[turns.length - 1];
   const gid = firstTurn.workflow_group_id;
@@ -168,22 +209,16 @@ function renderTurn(t, animIdx) {
   const isHighCost = (t.cost?.total || 0) > 0.10;
   const isSubagentSpawn = t.subagent_spawns && t.subagent_spawns.length > 0;
 
-  const isDeliveryMirror = t.user_source === DELIVERY_MIRROR_SOURCE;
-
   let classes = 'turn-card';
   if (hasErrors)          classes += ' has-errors';
   if (isCompacted)        classes += ' compacted';
   if (isHighCost && !hasErrors) classes += ' high-cost';
   if (isSubagentSpawn && !hasErrors && !isHighCost) classes += ' spawns-subagent';
-  if (isDeliveryMirror)   classes += ' delivery-mirror';
 
   const delay = (animIdx || 0) * 40;
 
-  // preview: delivery_mirror has no user_text — show assistant text instead
   let previewText;
-  if (isDeliveryMirror) {
-    previewText = (t.assistant_texts[0] || '').replace(/\n/g, ' ');
-  } else if (t.channel_meta) {
+  if (t.channel_meta) {
     const cm = t.channel_meta;
     previewText = (cm.sender ? cm.sender + ': ' : '') +
                   (cm.actual_text || '').replace(/\n/g, ' ');
@@ -192,32 +227,31 @@ function renderTurn(t, animIdx) {
   }
 
   return `
-  <div class="${classes}" id="turn-${t.index}" style="animation-delay:${delay}ms">
+  <div class="${classes}" id="turn-${t.index}" data-source="${escHtml(t.user_source)}" style="animation-delay:${delay}ms">
     <div class="turn-header" onclick="toggleTurn(${t.index})">
       <div class="turn-left">
         <span class="turn-index">${_t('turns.turn')} ${t.index}</span>
         ${t.timestamp ? `<span class="turn-timestamp">${fmtTurnTime(t.timestamp)}</span>` : ''}
         ${isCompacted ? `<span class="badge badge-compacted">${_t('turns.compacted_label')}</span>` : ''}
-        <span class="badge badge-${t.user_source} badge-type">${isDeliveryMirror ? '📨 ' + _t('turns.delivered') : t.user_source}</span>
+        <span class="badge badge-${escHtml(t.user_source)} badge-type">${escHtml(t.user_source)}</span>
         <span class="turn-preview">${escHtml(truncate(previewText, 80))}</span>
       </div>
       <div class="turn-stats">
         ${t.tool_calls.length ? `<span class="stat-chip tools">${t.tool_calls.length} ${_t('turns.tools')}</span>` : ''}
         ${t.subagent_spawns.length ? `<span class="stat-chip subagents">${t.subagent_spawns.length} ${_t('turns.subagents')}</span>` : ''}
-        ${!isDeliveryMirror ? `<span class="stat-chip duration">${fmtDuration(t.duration_ms)}</span>` : ''}
-        ${!isDeliveryMirror ? `<span class="stat-chip cost">${fmtCost(t.cost.total || 0)}</span>` : ''}
-        ${!isDeliveryMirror ? `<span class="stat-chip tokens">${fmtTokens(t.usage.totalTokens || 0)}</span>` : ''}
+        <span class="stat-chip duration">${fmtDuration(t.duration_ms)}</span>
+        <span class="stat-chip cost">${fmtCost(t.cost?.total || 0)}</span>
+        <span class="stat-chip tokens">${fmtTokens(t.usage?.totalTokens || 0)}</span>
         ${(t.cache_hit_rate > 0) ? `<span class="stat-chip cache">${Math.round(t.cache_hit_rate * 100)}% ${_t('turns.cache')}</span>` : ''}
         ${t.thinking_level ? `<span class="stat-chip thinking">💭 ${t.thinking_level}</span>` : ''}
-        ${typeof showRaw === 'function' ? `<button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" data-i18n-title="turns.view_raw" title="${_t('turns.view_raw')}">{ }</button>` : ''}
+        ${typeof showRaw === 'function' ? `<button class="btn-icon raw-btn" onclick="event.stopPropagation();showRaw(${t.index})" data-i18n-title="turns.view_raw" title="${_t('turns.view_raw')}" aria-label="${_t('turns.view_raw')}">{ }</button>` : ''}
       </div>
     </div>
-    <div class="turn-body" id="turn-body-${t.index}" style="display:none">
+    <div class="turn-body collapsed" id="turn-body-${t.index}">
       <div class="turn-detail">
-        ${isDeliveryMirror ? '' : `
         <!-- User message -->
         <div class="msg-block user-msg">
-          <div class="msg-role">${_t('turns.user')} <span class="badge badge-${t.user_source} badge-type" style="font-size:10px">${t.user_source}</span></div>
+          <div class="msg-role">${_t('turns.user')} <span class="badge badge-${escHtml(t.user_source)} badge-type" style="font-size:10px">${escHtml(t.user_source)}</span></div>
           ${t.channel_meta
             ? renderChannelMsg(t.channel_meta)
             : `<pre class="msg-content">${escHtml(t.user_text.slice(0, 2000))}</pre>
@@ -225,15 +259,19 @@ function renderTurn(t, animIdx) {
                  ? `<button class="tc-full-btn" onclick="openFullUserText(${t.index})">${_t('turns.show_full')} (${fmtSize(t.user_text.length)})</button>`
                  : ''}`
           }
-        </div>`}
+        </div>
 
         <!-- Token breakdown -->
         <div class="token-bar">
           ${renderTokenBar(t.usage)}
         </div>
 
-        <!-- Thinking + Tool calls (interleaved by round) -->
+        <!-- Thinking + Tool calls (interleaved by round, merged headers) -->
         ${(() => {
+          const spawnsByTcId = {};
+          for (const s of t.subagent_spawns) {
+            if (s.tool_call_id) spawnsByTcId[s.tool_call_id] = s;
+          }
           const roundTcs = {};
           for (const tc of t.tool_calls) {
             const r = tc.round_idx ?? 0;
@@ -246,18 +284,35 @@ function renderTurn(t, animIdx) {
               ...Object.keys(roundTcs).map(Number),
               0
             );
+            // Accumulate tool calls across rounds; flush when thinking appears or at end
+            let pendingTcs = [];
             for (let r = 0; r <= maxR; r++) {
               const th = t.thinking_blocks[r];
               const tcs = roundTcs[r] || [];
-              if (th) html += `
-              <div class="thinking-block">
-                <div class="thinking-label">${_t('turns.thinking')}</div>
-                <pre class="thinking-content">${escHtml(th)}</pre>
-              </div>`;
-              if (tcs.length) html += `
+              if (th) {
+                // Flush accumulated tool calls before this thinking block
+                if (pendingTcs.length) {
+                  html += `
+                  <div class="tool-calls">
+                    <div class="tc-header">${_t('turns.tool_calls')}</div>
+                    ${pendingTcs.map(tc => renderToolCall(tc, spawnsByTcId)).join('')}
+                  </div>`;
+                  pendingTcs = [];
+                }
+                html += `
+                <div class="thinking-block">
+                  <div class="thinking-label">${_t('turns.thinking')}</div>
+                  <pre class="thinking-content">${escHtml(th)}</pre>
+                </div>`;
+              }
+              if (tcs.length) pendingTcs.push(...tcs);
+            }
+            // Flush remaining tool calls
+            if (pendingTcs.length) {
+              html += `
               <div class="tool-calls">
                 <div class="tc-header">${_t('turns.tool_calls')}</div>
-                ${tcs.map(tc => renderToolCall(tc)).join('')}
+                ${pendingTcs.map(tc => renderToolCall(tc, spawnsByTcId)).join('')}
               </div>`;
             }
           } else {
@@ -269,15 +324,21 @@ function renderTurn(t, animIdx) {
             if (t.tool_calls.length) html += `
             <div class="tool-calls">
               <div class="tc-header">${_t('turns.tool_calls')}</div>
-              ${t.tool_calls.map(tc => renderToolCall(tc)).join('')}
+              ${t.tool_calls.map(tc => renderToolCall(tc, spawnsByTcId)).join('')}
             </div>`;
           }
           if (t.thinking_encrypted) html += `<div class="thinking-block encrypted"><span class="thinking-label">${_t('turns.thinking_encrypted')}</span></div>`;
           return html;
         })()}
 
-        <!-- Subagent spawns -->
-        ${t.subagent_spawns.map(s => renderSubagent(s, 0)).join('')}
+        <!-- Delivery mirror tags (merged from delivery-mirror events) -->
+        ${(t.delivery_texts && t.delivery_texts.length) ? `
+        <div class="delivery-tags">
+          ${t.delivery_texts.map(dt => `<span class="delivery-tag">📨 ${escHtml(dt)}</span>`).join('')}
+        </div>` : ''}
+
+        <!-- Subagent spawns not linked to a tool call (fallback) -->
+        ${t.subagent_spawns.filter(s => !s.tool_call_id).map(s => renderSubagent(s, 0)).join('')}
 
         <!-- Assistant response -->
         ${t.assistant_texts.map(txt => `
@@ -298,7 +359,7 @@ function getToolCategory(name) {
   return 'other';
 }
 
-function renderToolCall(tc) {
+function renderToolCall(tc, spawnsByTcId) {
   const icon = toolIcon(tc.name);
   const category = getToolCategory(tc.name);
   const errorClass = tc.is_error ? 'tc-error' : '';
@@ -334,11 +395,11 @@ function renderToolCall(tc) {
     ${durStr}${sizeStr}
     ${tc.is_error ? '<span class="tc-err-badge">ERROR</span>' : ''}
     ${argFullBtns ? `<div onclick="event.stopPropagation()">${argFullBtns}</div>` : ''}
-    <div class="tc-result" style="display:none">
+    <div class="tc-result collapsed">
       <pre>${escHtml(tc.result_text)}</pre>
       ${resultFullBtn}
     </div>
-  </div>`;
+  </div>${spawnsByTcId && spawnsByTcId[tc.id] ? renderSubagent(spawnsByTcId[tc.id], 0) : ''}`;
 }
 
 function extractAgentId(childSessionKey) {
@@ -393,7 +454,7 @@ function renderSubagent(s, depth) {
       <span class="subagent-stats">${durStr} &middot; ${costStr} &middot; ${tokensStr} ${_t('turns.tokens')}</span>
       ${s.child_session_id ? `<a href="/session/${s.child_session_id}" class="btn btn-sm" onclick="event.stopPropagation()">${_t('turns.open_session')}</a>` : ''}
     </div>
-    <div class="subagent-body" style="display:none">
+    <div class="subagent-body collapsed">
       <div class="subagent-task">
         ${escHtml(truncate(s.task, 300))}
         ${makeShowFullBtn(_t('turns.show_full'), _t('turns.subagent_task'), s.task, 300)}
@@ -458,24 +519,24 @@ function renderTokenBar(usage) {
 
 function toggleTurn(idx) {
   const body = qs(`#turn-body-${idx}`);
-  body.style.display = body.style.display === 'none' ? 'block' : 'none';
+  body.classList.toggle('collapsed');
 }
 
 function toggleSubagent(headerEl) {
   const body = headerEl.nextElementSibling;
-  if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+  if (body) body.classList.toggle('collapsed');
 }
 
 function toggleTcResult(el) {
   const result = el.querySelector('.tc-result');
-  if (result) result.style.display = result.style.display === 'none' ? 'block' : 'none';
+  if (result) result.classList.toggle('collapsed');
 }
 
 function toggleEl(el) {
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el) el.classList.toggle('collapsed');
 }
 
 function toggleWorkflow(gid) {
   const body = qs(`#workflow-body-${gid}`);
-  if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+  if (body) body.classList.toggle('collapsed');
 }

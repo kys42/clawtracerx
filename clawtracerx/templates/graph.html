@@ -47,7 +47,7 @@ let nodeMap = {};
 let nodeSelection = null, linkSelection = null;
 let isTreeMode = false;
 
-const NODE_SIZES = { session: 40, turn: 26, tool: 14, subagent: 30 };
+const NODE_SIZES  = { session: 40, turn: 26, tool: 14, subagent: 30 };
 const NODE_COLORS = {
   session:  { grad: 'grad-session', stroke: '#818cf8' },
   turn:     { grad: 'grad-turn',    stroke: '#38bdf8' },
@@ -55,31 +55,33 @@ const NODE_COLORS = {
   subagent: { grad: 'grad-sub',     stroke: '#fbbf24' },
 };
 
+function _isDark() { return getTheme() === 'dark'; }
+
 async function init() {
   const container = qs('#graph-container');
-  const W = container.clientWidth;
-  const H = container.clientHeight;
+  if (!container) return;
+  const W = container.clientWidth || 800;
+  const H = container.clientHeight || 600;
 
   const graphData = await fetchJSONSafe(`/api/session/${SESSION_ID}/graph`, {});
 
-  svgEl = d3.select('#graph-svg')
-    .attr('width', W)
-    .attr('height', H);
+  if (!graphData || !graphData.nodes || !graphData.nodes.length) {
+    container.innerHTML = '<div class="empty-state">' + _t('graph.no_data') + '</div>';
+    return;
+  }
 
-  // ── Defs ─────────────────────────────────────────────────────────────
+  svgEl = d3.select('#graph-svg').attr('width', W).attr('height', H);
+
+  // Defs
   const defs = svgEl.append('defs');
 
-  // Dot-grid background pattern
+  // Dot-grid background
   const pat = defs.append('pattern')
-    .attr('id', 'dot-grid')
-    .attr('width', 24).attr('height', 24)
+    .attr('id', 'dot-grid').attr('width', 24).attr('height', 24)
     .attr('patternUnits', 'userSpaceOnUse');
   pat.append('circle').attr('cx', 1).attr('cy', 1).attr('r', 0.7)
-    .attr('fill', 'rgba(255,255,255,0.07)');
-
-  // Background rect
-  svgEl.append('rect')
-    .attr('width', '100%').attr('height', '100%')
+    .attr('fill', _isDark() ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)');
+  svgEl.append('rect').attr('width', '100%').attr('height', '100%')
     .attr('fill', 'url(#dot-grid)');
 
   // Radial gradients
@@ -89,56 +91,45 @@ async function init() {
     ['grad-tool',    '#4ade80', '#16a34a'],
     ['grad-sub',     '#fbbf24', '#d97706'],
   ].forEach(([id, c1, c2]) => {
-    const g = defs.append('radialGradient')
-      .attr('id', id)
-      .attr('cx', '35%').attr('cy', '35%').attr('r', '65%');
-    g.append('stop').attr('offset', '0%').attr('stop-color', c1);
-    g.append('stop').attr('offset', '100%').attr('stop-color', c2);
+    const gr = defs.append('radialGradient')
+      .attr('id', id).attr('cx', '35%').attr('cy', '35%').attr('r', '65%');
+    gr.append('stop').attr('offset', '0%').attr('stop-color', c1);
+    gr.append('stop').attr('offset', '100%').attr('stop-color', c2);
   });
 
   // Glow filter
   const flt = defs.append('filter').attr('id', 'glow')
-    .attr('x', '-50%').attr('y', '-50%')
-    .attr('width', '200%').attr('height', '200%');
-  flt.append('feGaussianBlur').attr('in', 'SourceGraphic')
-    .attr('stdDeviation', '4').attr('result', 'blur');
+    .attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+  flt.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', '4').attr('result', 'blur');
   const mg = flt.append('feMerge');
   mg.append('feMergeNode').attr('in', 'blur');
   mg.append('feMergeNode').attr('in', 'SourceGraphic');
 
   // Arrow markers
   function addMarker(id, color) {
-    defs.append('marker')
-      .attr('id', id)
-      .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 1).attr('refY', 0)
-      .attr('markerWidth', 6).attr('markerHeight', 6)
-      .attr('orient', 'auto')
+    defs.append('marker').attr('id', id)
+      .attr('viewBox', '0 -5 10 10').attr('refX', 1).attr('refY', 0)
+      .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
       .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', color);
   }
   addMarker('arrow',       'rgba(99,102,241,0.45)');
   addMarker('arrow-spawn', 'rgba(245,158,11,0.65)');
 
-  // ── Main group (for zoom) ─────────────────────────────────────────────
+  // Main group for zoom
   g = svgEl.append('g');
 
-  // ── Zoom behavior ─────────────────────────────────────────────────────
-  zoomBehavior = d3.zoom()
-    .scaleExtent([0.05, 5])
+  // Zoom
+  zoomBehavior = d3.zoom().scaleExtent([0.05, 5])
     .on('zoom', evt => g.attr('transform', evt.transform));
   svgEl.call(zoomBehavior);
 
-  // ── Prepare nodes & edges ─────────────────────────────────────────────
-  allNodes = graphData.nodes.map(n => ({
-    ...n,
-    radius: NODE_SIZES[n.type] || 18,
-  }));
+  // Nodes & edges
+  allNodes = graphData.nodes.map(n => ({ ...n, radius: NODE_SIZES[n.type] || 18 }));
   allEdges = graphData.edges.map(e => ({ ...e }));
-
   nodeMap = {};
   allNodes.forEach(n => (nodeMap[n.id] = n));
 
-  // ── D3 force simulation ───────────────────────────────────────────────
+  // Force simulation
   simulation = d3.forceSimulation(allNodes)
     .force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => {
       const t = typeof d.target === 'object' ? d.target : nodeMap[d.target];
@@ -152,32 +143,24 @@ async function init() {
     .force('center', d3.forceCenter(W / 2, H / 2))
     .force('collision', d3.forceCollide().radius(d => d.radius + 14));
 
-  // ── Render links ──────────────────────────────────────────────────────
+  // Links
   linkSelection = g.append('g').selectAll('.d3-link')
     .data(allEdges).enter().append('path')
-    .attr('class', 'd3-link')
-    .attr('fill', 'none')
+    .attr('class', 'd3-link').attr('fill', 'none')
     .attr('stroke', d => d.type === 'spawns'
-      ? 'rgba(245,158,11,0.35)'
-      : 'rgba(99,102,241,0.22)')
+      ? (_isDark() ? 'rgba(245,158,11,0.35)' : 'rgba(217,119,6,0.50)')
+      : (_isDark() ? 'rgba(99,102,241,0.22)' : 'rgba(79,70,229,0.30)'))
     .attr('stroke-width', d => d.type === 'spawns' ? 2 : 1)
     .attr('marker-end', d => d.type === 'spawns' ? 'url(#arrow-spawn)' : 'url(#arrow)');
 
-  // ── Render nodes ──────────────────────────────────────────────────────
-  const dragBehavior = d3.drag()
-    .on('start', dragStarted)
-    .on('drag',  dragged)
-    .on('end',   dragEnded);
-
+  // Nodes
   nodeSelection = g.append('g').selectAll('.d3-node')
     .data(allNodes).enter().append('g')
     .attr('class', d => `d3-node d3-node-${d.type}`)
-    .call(dragBehavior)
+    .call(d3.drag().on('start', dragStarted).on('drag', dragged).on('end', dragEnded))
     .on('click', (evt, d) => {
       evt.stopPropagation();
-      // Clear all glows
       nodeSelection.select('circle').attr('filter', null);
-      // Apply glow to selected
       d3.select(evt.currentTarget).select('circle').attr('filter', 'url(#glow)');
       showPanel(d);
     })
@@ -185,58 +168,41 @@ async function init() {
       if (d.child_session_id) location.href = `/session/${d.child_session_id}`;
     });
 
-  // Circle
   nodeSelection.append('circle')
     .attr('r', d => d.radius)
     .attr('fill', d => `url(#${(NODE_COLORS[d.type] || NODE_COLORS.tool).grad})`)
-    .attr('stroke', d => {
-      if (d.status === 'error') return '#ef4444';
-      return (NODE_COLORS[d.type] || NODE_COLORS.tool).stroke;
-    })
+    .attr('stroke', d => d.status === 'error' ? '#ef4444' : (NODE_COLORS[d.type] || NODE_COLORS.tool).stroke)
     .attr('stroke-width', 1.5);
 
-  // Error indicator dot
   nodeSelection.filter(d => d.status === 'error')
-    .append('circle')
-    .attr('r', 5)
-    .attr('cx', d =>  d.radius * 0.65)
-    .attr('cy', d => -d.radius * 0.65)
+    .append('circle').attr('r', 5)
+    .attr('cx', d =>  d.radius * 0.65).attr('cy', d => -d.radius * 0.65)
     .attr('fill', '#ef4444');
 
-  // Main label
   nodeSelection.append('text')
-    .attr('text-anchor', 'middle')
-    .attr('dy', d => d.radius + 14)
-    .attr('fill', '#e2e8f0')
+    .attr('text-anchor', 'middle').attr('dy', d => d.radius + 14)
+    .attr('fill', _isDark() ? '#e2e8f0' : '#1f2937')
     .attr('font-size', d => d.type === 'tool' ? '9px' : '11px')
-    .attr('font-family', 'Inter, system-ui, sans-serif')
-    .attr('font-weight', '500')
+    .attr('font-family', 'Inter, system-ui, sans-serif').attr('font-weight', '500')
     .text(d => truncate(d.label, 20));
 
-  // Sub-label
   nodeSelection.filter(d => d.sublabel && d.type !== 'tool')
     .append('text')
-    .attr('text-anchor', 'middle')
-    .attr('dy', d => d.radius + 27)
-    .attr('fill', '#6b7280')
-    .attr('font-size', '9px')
+    .attr('text-anchor', 'middle').attr('dy', d => d.radius + 27)
+    .attr('fill', _isDark() ? '#6b7280' : '#4b5563').attr('font-size', '9px')
     .attr('font-family', 'Inter, system-ui, sans-serif')
     .text(d => truncate(d.sublabel, 25));
 
-  // Click background to deselect
   svgEl.on('click', () => {
     nodeSelection.select('circle').attr('filter', null);
     closePanel();
   });
 
-  // ── Tick ─────────────────────────────────────────────────────────────
   simulation.on('tick', tick);
   simulation.on('end', () => { if (!isTreeMode) fitView(); });
 
-  // Resize
   window.addEventListener('resize', () => {
-    const W2 = container.clientWidth;
-    const H2 = container.clientHeight;
+    const W2 = container.clientWidth, H2 = container.clientHeight;
     svgEl.attr('width', W2).attr('height', H2);
     simulation.force('center', d3.forceCenter(W2 / 2, H2 / 2)).alpha(0.1).restart();
   });
@@ -244,62 +210,39 @@ async function init() {
 
 function tick() {
   linkSelection.attr('d', d => {
-    const sx = d.source.x, sy = d.source.y;
-    const tx = d.target.x, ty = d.target.y;
-    const sr = d.source.radius || 18;
-    const tr = d.target.radius || 18;
-    const dx = tx - sx, dy = ty - sy;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    // Start at source circumference, end at target circumference
-    const x1 = sx + (dx / dist) * sr;
-    const y1 = sy + (dy / dist) * sr;
-    const x2 = tx - (dx / dist) * (tr + 2);
-    const y2 = ty - (dy / dist) * (tr + 2);
-    // Quadratic bezier with slight perpendicular offset
-    const qx = (x1 + x2) / 2 - dy * 0.1;
-    const qy = (y1 + y2) / 2 + dx * 0.1;
+    const sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
+    const sr = d.source.radius || 18, tr = d.target.radius || 18;
+    const dx = tx - sx, dy = ty - sy, dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const x1 = sx + (dx/dist)*sr, y1 = sy + (dy/dist)*sr;
+    const x2 = tx - (dx/dist)*(tr+2), y2 = ty - (dy/dist)*(tr+2);
+    const qx = (x1+x2)/2 - dy*0.1, qy = (y1+y2)/2 + dx*0.1;
     return `M${x1},${y1}Q${qx},${qy} ${x2},${y2}`;
   });
   nodeSelection.attr('transform', d => `translate(${d.x},${d.y})`);
 }
 
-// ── Drag ─────────────────────────────────────────────────────────────────
 function dragStarted(evt, d) {
   if (!evt.active) simulation.alphaTarget(0.3).restart();
   d.fx = d.x; d.fy = d.y;
 }
-function dragged(evt, d) {
-  d.fx = evt.x; d.fy = evt.y;
-}
-function dragEnded(evt, d) {
-  if (!evt.active) simulation.alphaTarget(0);
-  // Node stays fixed after drag (intentional pin)
-}
+function dragged(evt, d) { d.fx = evt.x; d.fy = evt.y; }
+function dragEnded(evt, d) { if (!evt.active) simulation.alphaTarget(0); }
 
-// ── Fit view ─────────────────────────────────────────────────────────────
 function fitView() {
   if (!allNodes.length) return;
   const container = qs('#graph-container');
-  const W = container.clientWidth;
-  const H = container.clientHeight;
-  const pad = 80;
-  const xs = allNodes.map(n => n.x);
-  const ys = allNodes.map(n => n.y);
-  const minX = Math.min(...xs) - pad;
-  const maxX = Math.max(...xs) + pad;
-  const minY = Math.min(...ys) - pad;
-  const maxY = Math.max(...ys) + pad;
-  const scaleX = W / (maxX - minX);
-  const scaleY = H / (maxY - minY);
-  const scale = Math.min(scaleX, scaleY, 1.5) * 0.88;
-  const tx = (W - scale * (minX + maxX)) / 2;
-  const ty = (H - scale * (minY + maxY)) / 2;
+  if (!container) return;
+  const W = container.clientWidth || 800, H = container.clientHeight || 600, pad = 80;
+  const xs = allNodes.map(n => n.x), ys = allNodes.map(n => n.y);
+  const minX = Math.min(...xs)-pad, maxX = Math.max(...xs)+pad;
+  const minY = Math.min(...ys)-pad, maxY = Math.max(...ys)+pad;
+  const scale = Math.min(W/(maxX-minX), H/(maxY-minY), 1.5) * 0.88;
+  const tx = (W - scale*(minX+maxX))/2, ty = (H - scale*(minY+maxY))/2;
   svgEl.transition().duration(750)
     .call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
 }
 
 function resetView() {
-  // Unpin all nodes and restart simulation
   allNodes.forEach(n => { n.fx = null; n.fy = null; });
   isTreeMode = false;
   simulation.alpha(0.8).restart();
@@ -307,27 +250,19 @@ function resetView() {
 
 function toggleLayout() {
   if (!isTreeMode) {
-    // Switch to tree layout
     simulation.stop();
     computeTreePositions();
     isTreeMode = true;
-    // Animate to tree positions
     nodeSelection.transition().duration(600)
       .attr('transform', d => `translate(${d.x},${d.y})`);
-    linkSelection.transition().duration(600)
-      .attr('d', d => {
-        const sx = d.source.x, sy = d.source.y;
-        const tx = d.target.x, ty = d.target.y;
-        const sr = d.source.radius || 18;
-        const tr = d.target.radius || 18;
-        const dx = tx - sx, dy = ty - sy;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const x1 = sx + (dx / dist) * sr;
-        const y1 = sy + (dy / dist) * sr;
-        const x2 = tx - (dx / dist) * (tr + 2);
-        const y2 = ty - (dy / dist) * (tr + 2);
-        return `M${x1},${y1}L${x2},${y2}`;
-      });
+    linkSelection.transition().duration(600).attr('d', d => {
+      const sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
+      const sr = d.source.radius||18, tr = d.target.radius||18;
+      const dx = tx-sx, dy = ty-sy, dist = Math.sqrt(dx*dx+dy*dy)||1;
+      const x1 = sx+(dx/dist)*sr, y1 = sy+(dy/dist)*sr;
+      const x2 = tx-(dx/dist)*(tr+2), y2 = ty-(dy/dist)*(tr+2);
+      return `M${x1},${y1}L${x2},${y2}`;
+    });
     setTimeout(fitView, 650);
   } else {
     resetView();
@@ -337,8 +272,6 @@ function toggleLayout() {
 function computeTreePositions() {
   const root = allNodes.find(n => n.type === 'session');
   if (!root) return;
-
-  // Build children map from edge source/target (may be objects after simulation)
   const children = {};
   allEdges.forEach(e => {
     const fromId = typeof e.source === 'object' ? e.source.id : e.source;
@@ -346,44 +279,30 @@ function computeTreePositions() {
     if (!children[fromId]) children[fromId] = [];
     children[fromId].push(toId);
   });
-
-  // BFS to assign levels
-  const levels = {};
-  const queue = [{ id: root.id, level: 0 }];
-  const visited = new Set([root.id]);
-
+  const levels = {}, queue = [{ id: root.id, level: 0 }], visited = new Set([root.id]);
   while (queue.length) {
     const { id, level } = queue.shift();
     if (!levels[level]) levels[level] = [];
     levels[level].push(id);
     (children[id] || []).forEach(cid => {
-      if (!visited.has(cid)) {
-        visited.add(cid);
-        queue.push({ id: cid, level: level + 1 });
-      }
+      if (!visited.has(cid)) { visited.add(cid); queue.push({ id: cid, level: level+1 }); }
     });
   }
-
-  const levelGap = 150;
   Object.entries(levels).forEach(([level, ids]) => {
-    const y = parseInt(level) * levelGap;
+    const y = parseInt(level) * 150;
     const spacing = Math.max(70, 700 / Math.max(ids.length, 1));
     ids.forEach((id, i) => {
       const node = nodeMap[id];
       if (!node) return;
-      node.x  = (i - (ids.length - 1) / 2) * spacing;
-      node.y  = y;
-      node.fx = node.x;
-      node.fy = node.y;
+      node.x = node.fx = (i - (ids.length-1)/2) * spacing;
+      node.y = node.fy = y;
     });
   });
 }
 
-// ── Panel ─────────────────────────────────────────────────────────────────
 function showPanel(node) {
-  const panel = qs('#node-panel');
-  qs('#panel-title').textContent = `${node.type}: ${node.label}`;
-
+  var panelTitle = qs('#panel-title');
+  if (panelTitle) panelTitle.textContent = `${node.type}: ${node.label}`;
   const items = [
     [_t('graph.type'),     node.type],
     [_t('graph.status'),   node.status || node.outcome || '—'],
@@ -394,29 +313,39 @@ function showPanel(node) {
     [_t('graph.turns'),    node.turns  != null ? node.turns  : '—'],
     [_t('graph.tools'),    node.tools  != null ? node.tools  : '—'],
   ].filter(([, v]) => v && v !== '—');
-
   let html = `<div class="panel-grid">`;
   items.forEach(([k, v]) => {
-    html += `<div class="panel-item">
-      <span class="panel-label">${k}</span>
-      <span class="panel-value">${v}</span>
-    </div>`;
+    html += `<div class="panel-item"><span class="panel-label">${k}</span><span class="panel-value">${v}</span></div>`;
   });
   html += '</div>';
-
   if (node.sublabel) html += `<div class="panel-desc">${escHtml(node.sublabel)}</div>`;
   if (node.child_session_id) {
     html += `<a href="/session/${node.child_session_id}" class="btn btn-primary btn-sm" style="margin-top:10px;display:inline-flex">${_t('graph.open_child')}</a>`;
   }
-
-  qs('#panel-body').innerHTML = html;
-  panel.style.display = 'block';
+  var panelBody = qs('#panel-body');
+  if (panelBody) panelBody.innerHTML = html;
+  var nodePanel = qs('#node-panel');
+  if (nodePanel) nodePanel.style.display = 'block';
 }
 
-function closePanel() {
-  qs('#node-panel').style.display = 'none';
-}
+function closePanel() { var p = qs('#node-panel'); if (p) p.style.display = 'none'; }
+
+function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
 
 init();
+
+// Re-render graph when theme changes so D3 colors update
+window.addEventListener('themechange', function() {
+  var container = qs('#graph-container');
+  if (container) {
+    var svgOld = qs('#graph-svg');
+    if (svgOld) svgOld.remove();
+    var newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    newSvg.id = 'graph-svg';
+    container.appendChild(newSvg);
+    if (simulation) simulation.stop();
+    init();
+  }
+});
 </script>
 {% endblock %}

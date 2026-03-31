@@ -1,45 +1,66 @@
+<div align="center">
+
+<img src="docs/image.png" alt="ClawTracerX" width="180" />
+
 # ClawTracerX
 
-**OpenClaw agent session monitor** — visualizes what happens inside AI agent runs: tool calls, subagents, token usage, cost, and timing.
+**See what your AI agents actually do.**
+
+[![CI](https://github.com/kys42/clawtracerx/actions/workflows/ci.yml/badge.svg)](https://github.com/kys42/clawtracerx/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/clawtracerx?color=blue)](https://pypi.org/project/clawtracerx/)
+[![npm](https://img.shields.io/npm/v/clawtracerx?color=cb3837)](https://www.npmjs.com/package/clawtracerx)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)](https://python.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+Observability tool for [OpenClaw](https://github.com/openclaw/openclaw) agents.<br/>
+Parses JSONL session transcripts into a web dashboard + CLI. See every turn, tool call, subagent spawn, and dollar spent — **locally, without sending data anywhere.**
+
+[Installation](#installation) · [Quick Start](#quick-start) · [Web Dashboard](#web-dashboard) · [CLI](#cli) · [Architecture](#architecture)
+
+</div>
 
 ---
 
-## What is this?
+## Screenshots
 
-ClawTracerX reads the JSONL transcripts that [OpenClaw](https://github.com/kys42/openclaw) writes locally and turns them into a web dashboard + CLI. No data leaves your machine.
+| Home | Sessions | Cost Dashboard |
+|:---:|:---:|:---:|
+| ![Home](docs/screenshots/home.png) | ![Sessions](docs/screenshots/sessions.png) | ![Cost](docs/screenshots/cost.png) |
 
-- **Session timeline** — every turn: user message → assistant thinking → tool calls → subagent spawns, with per-message token counts and cost
-- **Subagent tree** — recursively parses child sessions so you see the full execution tree
-- **Cost dashboard** — per-agent, per-model, per-day breakdown with charts
-- **Cron monitor** — job run history, success/failure tracking
-- **Interactive graph** — Canvas-based execution tree (drag, zoom, Tree/Force layout)
-- **Lab** *(coming soon)* — send messages to agents directly from the dashboard
+| Session Detail | Schedule |
+|:---:|:---:|
+| ![Session Detail](docs/screenshots/detail.png) | ![Schedule](docs/screenshots/schedule.png) |
 
 ---
 
-## Requirements
+## Features
 
-- [OpenClaw](https://github.com/kys42/openclaw) installed and configured (`~/.openclaw/`)
-- **Python 3.9+** (pip install) **or** **Node.js 18+** (npm install, no Python needed)
+- **Session Timeline** — Every turn visualized: user messages, assistant thinking, tool calls, subagent spawns, with per-message token counts and cost
+- **Subagent Tree** — Recursively parses child sessions to render the full multi-agent execution tree
+- **Interactive Graph** — Canvas-based D3 visualization with Tree/Force layout, drag, zoom, and filtering
+- **Cost Dashboard** — Per-agent, per-model, per-day breakdown with interactive charts
+- **Cron Monitor** — Job run history, heartbeat tracking, success/failure status
+- **Lab** — Send messages to agents directly from the dashboard *(beta)*
+- **CLI Analysis** — Rich terminal output with ANSI color, Unicode tree rendering, and flexible filtering
+- **Read-Only by Design** — Never modifies OpenClaw data; only reads local JSONL files
 
 ---
 
 ## Installation
 
-### npm — no Python required (recommended)
+### npm (recommended, no Python required)
 
 ```bash
 npm install -g clawtracerx
 ```
 
-`postinstall` automatically downloads the pre-built binary for your platform.
+Automatically downloads the pre-built binary for your platform via `postinstall`.
 
-| Platform | Supported |
-|----------|-----------|
-| macOS arm64 (Apple Silicon) | ✅ |
-| macOS x64 (Intel) | ❌ (use pip) |
-| Linux x64 | ✅ |
-| Windows | ❌ (use pip) |
+| Platform | Status |
+|----------|--------|
+| macOS arm64 (Apple Silicon) | Supported |
+| Linux x64 | Supported |
+| macOS x64 / Windows | Use pip |
 
 ### pip
 
@@ -52,7 +73,7 @@ pip install "clawtracerx[web]"
 ```bash
 git clone https://github.com/kys42/clawtracerx.git
 cd clawtracerx
-pip install -e ".[web]"
+pip install -e ".[dev]"
 ```
 
 ### Verify
@@ -62,58 +83,72 @@ ctrace --version
 ctrace sessions
 ```
 
+> **Prerequisite** — [OpenClaw](https://github.com/openclaw/openclaw) installed and configured (`~/.openclaw/`).
+
 ---
 
-## Usage
+## Quick Start
 
-### Web dashboard
+```bash
+# Launch the web dashboard
+ctrace web
+
+# Analyze a specific session
+ctrace analyze a6604d70
+
+# Check this week's cost
+ctrace cost --period week
+```
+
+---
+
+## Web Dashboard
 
 ```bash
 ctrace web                  # http://localhost:8901
 ctrace web --port 9000      # custom port
-ctrace web --debug          # debug mode
+ctrace web --debug          # debug mode with hot reload
 ```
 
-| Page | URL | Description |
-|------|-----|-------------|
-| Sessions | `/` | All sessions with agent/type filters |
-| Session Detail | `/session/<id>` | Turn-by-turn timeline, tool call results, token chart |
-| Graph | `/session/<id>/graph` | Interactive execution tree |
-| Cost | `/cost` | Token/cost breakdown by agent, model, day |
-| Schedule | `/schedule` | Cron job and heartbeat status |
+| Page | Route | Description |
+|------|-------|-------------|
+| Sessions | `/` | All sessions with agent, type, and date filters |
+| Session Detail | `/session/<id>` | Turn-by-turn timeline with tool calls, tokens, cost chart |
+| Graph | `/session/<id>/graph` | Interactive execution tree (Tree / Force layout) |
+| Cost | `/cost` | Token and cost breakdown by agent, model, day |
+| Schedule | `/schedule` | Cron job history and heartbeat status |
+| Lab | `/lab` | Send messages to agents in real time |
 
-### CLI
+---
+
+## CLI
 
 ```bash
-# List sessions
+# Sessions
 ctrace sessions                          # recent 20
 ctrace sessions --agent aki --last 50    # filter by agent
 ctrace sessions --type cron              # cron sessions only
 
-# Analyze a session (core feature)
-ctrace analyze <session-id>              # UUID prefix works
-ctrace analyze a6604d70
+# Session analysis
+ctrace analyze <session-id>              # UUID prefix match
 ctrace analyze aki:92de0796              # agent:id format
 ctrace analyze ~/.openclaw/agents/aki/sessions/xxxx.jsonl
 
-# View raw JSONL for a turn
+# Raw JSONL inspection
 ctrace raw <session-id> --turn 0
 
-# Cost summary
+# Cost
 ctrace cost                              # today
 ctrace cost --period week
 ctrace cost --period month --agent aki
 
-# Cron history
-ctrace crons
+# Cron & Subagents
 ctrace crons --last 50 --job <job-id>
-
-# Subagent history
-ctrace subagents
 ctrace subagents --parent a6604d70
 ```
 
-### Example: `ctrace analyze` output
+<details>
+<summary><strong>Example output: <code>ctrace analyze</code></strong></summary>
 
 ```
 ═══════════════════════════════════════════════════════
@@ -123,79 +158,121 @@ Type: cron | CWD: ~/.openclaw/workspace
 ═══════════════════════════════════════════════════════
 
 ── Turn 0 ────────────────────────────────────────────
-  📩 User (cron)
+  User (cron)
      "[cron:01257c8d Nightly Daily Review & Self-Update]..."
 
-  🤖 Assistant                          ⏱ 4m 28s  💰 $0.305
+  Assistant                                4m 28s  $0.305
      Tokens: in=568.3K, out=3.3K, cache=224.9K, total=571.6K
 
-     ├─ 🔧 session_status
-     ├─ 💻 exec(python3 scripts/log_chunker.py)          2.3s
-     ├─ 🔀 subagent → nightly-map-batch-0
-     │     task: "batch mapper..."
-     │     ok | 14.7s | $0.042 | 12K tokens
-     │     ├─ 📁 read(batch_0_chunks.md)                201ms
-     │     ├─ 💻 exec(gh pr diff 92)                   2340ms
-     │     └─ ✅ Done (3 turns)
-     └─ 💬 "DONE: batches=4..."
+     |-- session_status
+     |-- exec(python3 scripts/log_chunker.py)          2.3s
+     |-- subagent -> nightly-map-batch-0
+     |     task: "batch mapper..."
+     |     ok | 14.7s | $0.042 | 12K tokens
+     |     |-- read(batch_0_chunks.md)                201ms
+     |     |-- exec(gh pr diff 92)                   2340ms
+     |     +-- Done (3 turns)
+     +-- "DONE: batches=4..."
 
 ═══════════════════════════════════════════════════════
 Summary
   Turns: 4 | Duration: 4m 28s | Cost: $0.330
   Tokens: in=568K out=3.3K cache=225K total=618K
-  Tools: exec×13, write×3, sessions_spawn×3
+  Tools: exec*13, write*3, sessions_spawn*3
   Subagents: 3 (success: 2, error: 1)
 ```
 
+</details>
+
 ---
 
-## Data sources
+## Data Sources
 
-ClawTracerX is **read-only** — it only reads files OpenClaw writes locally.
+ClawTracerX reads from `~/.openclaw/` — all sources are **read-only**.
 
 | Source | Path | Contents |
 |--------|------|----------|
-| Session transcripts | `~/.openclaw/agents/{id}/sessions/*.jsonl` | Messages, tool calls, tokens, cost, timing |
-| Subagent registry | `~/.openclaw/subagents/runs.json` | parent↔child mapping, task, duration, outcome |
-| Cron run logs | `~/.openclaw/cron/runs/*.jsonl` | jobId, status, duration, summary |
-| Cron job definitions | `~/.openclaw/cron/jobs.json` | schedule, agent, model, delivery |
+| Session transcripts | `agents/{id}/sessions/*.jsonl` | Messages, tool calls, tokens, cost, timing |
+| Session metadata | `agents/{id}/sessions/sessions.json` | Context injection, system prompt, skills |
+| Subagent registry | `subagents/runs.json` | Parent-child mapping, task, duration, outcome |
+| Cron run logs | `cron/runs/*.jsonl` | Job ID, status, duration, summary |
+| Cron definitions | `cron/jobs.json` | Schedule, agent, model, delivery config |
 
-### What's tracked (and what isn't)
+### What's tracked
 
-| Item | Available | Notes |
-|------|-----------|-------|
-| Per-message token/cost | ✅ | usage + cost on every assistant message |
-| Per-tool-call tokens | ❌ | multiple tool calls share one assistant message |
-| Per-tool-call timing | ✅ partial | `exec`, `read` etc. have `durationMs` |
-| Subagent internals | ✅ | recursive child JSONL parsing |
-| Google/Gemini thinking | ✅ | plain text in `thinking` field |
-| OpenAI thinking | ❌ | Fernet-encrypted, not locally decryptable |
-| Turn duration | ✅ | user timestamp → last assistant timestamp |
-| Model change tracking | ✅ | `model_change` events, per-message model field |
+| Metric | Status | Notes |
+|--------|--------|-------|
+| Per-message token & cost | Yes | Usage + cost on every assistant message |
+| Per-tool-call timing | Partial | `exec`, `read`, etc. include `durationMs` |
+| Subagent internals | Yes | Recursive child JSONL parsing |
+| Turn duration | Yes | User timestamp to last assistant timestamp |
+| Model changes | Yes | `model_change` events, per-message model field |
+| Google/Gemini thinking | Yes | Plain text in `thinking` field |
+| OpenAI thinking | No | Fernet-encrypted, not locally decryptable |
 
 ---
 
 ## Architecture
 
 ```
-clawtracerx/
-├── __main__.py          CLI entrypoint (argparse)
-├── session_parser.py    JSONL → SessionAnalysis (Turn / ToolCall / SubagentSpawn tree)
-├── cli.py               CLI commands → ANSI terminal output
-├── web.py               Flask server + REST API
-├── gateway.py           OpenClaw WebSocket RPC client
-├── templates/           Jinja2 (base, sessions, detail, graph, cost, schedule)
-└── static/
-    ├── app.js           Shared utilities (fetchJSON, fmtTokens, shortenPath…)
-    ├── turns.js         Shared turn renderer
-    └── style.css        Dark Pro design system
-
-npm/                     npm wrapper (downloads pre-built binary via postinstall)
-tests/                   pytest test suite
+~/.openclaw/agents/{id}/sessions/*.jsonl
+                |
+    session_parser.parse_session()
+                |
+        SessionAnalysis
+       /                \
+   cli.py             web.py
+   (ANSI terminal)    (Flask + Jinja2 + REST API)
+                         |
+                      gateway.py --> OpenClaw Gateway (WebSocket RPC)
 ```
+
+```
+clawtracerx/
+  __main__.py          Entrypoint (argparse CLI dispatcher)
+  session_parser.py    JSONL -> SessionAnalysis (Turn / ToolCall / SubagentSpawn)
+  cli.py               CLI commands -> ANSI terminal output
+  web.py               Flask server + REST API + Jinja2 templates
+  gateway.py           OpenClaw WebSocket RPC client (Ed25519 auth)
+  config.py            Configuration (~/.openclaw/tools/clawtracerx/config.json)
+  templates/           Jinja2 HTML (base, sessions, detail, graph, cost, schedule, lab)
+  static/
+    app.js             Shared utilities (fetchJSON, fmtTokens, escHtml, ...)
+    turns.js           Shared turn renderer (detail + lab)
+    style.css          Dark Pro design system (CSS custom properties)
+
+npm/                   npm distribution (pre-built binary via postinstall)
+tests/                 pytest suite (session parser, CLI, web, gateway)
+```
+
+---
+
+## Development
+
+```bash
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest -v
+
+# Lint
+ruff check clawtracerx/ tests/
+
+# Dev server with hot reload
+ctrace web --debug --port 8901
+```
+
+---
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+See the [CI pipeline](.github/workflows/ci.yml) for the test matrix (Python 3.9 + 3.12, Ubuntu + macOS).
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE)

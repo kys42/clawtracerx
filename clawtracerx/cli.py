@@ -2,17 +2,23 @@
 ClawTracerX CLI — Command-line interface for OpenClaw agent monitoring.
 """
 
+from __future__ import annotations
+
 import json
-import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 from clawtracerx.session_parser import (
-    parse_session, list_sessions, load_cron_runs,
-    load_subagent_runs, get_raw_turn_lines,
-    load_session_metadata, _parse_session_context,
-    AGENTS_DIR, KST, _ts_to_dt, _truncate,
+    AGENTS_DIR,
+    KST,
+    _truncate,
+    _ts_to_dt,
+    get_raw_turn_lines,
+    list_sessions,
+    load_cron_runs,
+    load_subagent_runs,
+    parse_session,
 )
 
 # --- ANSI colors ---
@@ -133,7 +139,11 @@ def cmd_analyze(session_ref: str, no_subagents: bool = False):
         print(f"{RED}Session not found: {session_ref}{RESET}")
         return
 
-    analysis = parse_session(file_path, recursive_subagents=not no_subagents)
+    try:
+        analysis = parse_session(file_path, recursive_subagents=not no_subagents)
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        print(f"{RED}Failed to parse session: {e}{RESET}")
+        return
     _print_analysis(analysis, depth=0)
 
 
@@ -508,7 +518,11 @@ def _resolve_session(ref: str) -> Optional[Path]:
         return None
 
     # Try UUID prefix search across all agents
-    for agent_dir in AGENTS_DIR.iterdir():
+    try:
+        agent_dirs = list(AGENTS_DIR.iterdir())
+    except OSError:
+        return None
+    for agent_dir in agent_dirs:
         if not agent_dir.is_dir():
             continue
         sessions_dir = agent_dir / "sessions"
@@ -527,7 +541,11 @@ def cmd_context(session_ref: str):
         print(f"{RED}Session not found: {session_ref}{RESET}")
         return
 
-    analysis = parse_session(file_path, recursive_subagents=False)
+    try:
+        analysis = parse_session(file_path, recursive_subagents=False)
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        print(f"{RED}Failed to parse session: {e}{RESET}")
+        return
 
     print(f"\n{BOLD}Context Injection for session {CYAN}{analysis.session_id[:10]}{RESET} {BOLD}({analysis.agent_id}){RESET}")
     print("=" * 60)
