@@ -1348,6 +1348,7 @@ def _serialize_spawn(spawn):
         "cost_usd": round(spawn.cost_usd, 6) if spawn.cost_usd else None,
         "outcome": spawn.outcome,
         "announce_stats": spawn.announce_stats,
+        "tool_call_id": spawn.tool_call_id,
     }
 
 

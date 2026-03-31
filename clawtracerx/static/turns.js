@@ -268,6 +268,10 @@ function renderTurn(t, animIdx) {
 
         <!-- Thinking + Tool calls (interleaved by round, merged headers) -->
         ${(() => {
+          const spawnsByTcId = {};
+          for (const s of t.subagent_spawns) {
+            if (s.tool_call_id) spawnsByTcId[s.tool_call_id] = s;
+          }
           const roundTcs = {};
           for (const tc of t.tool_calls) {
             const r = tc.round_idx ?? 0;
@@ -291,7 +295,7 @@ function renderTurn(t, animIdx) {
                   html += `
                   <div class="tool-calls">
                     <div class="tc-header">${_t('turns.tool_calls')}</div>
-                    ${pendingTcs.map(tc => renderToolCall(tc)).join('')}
+                    ${pendingTcs.map(tc => renderToolCall(tc, spawnsByTcId)).join('')}
                   </div>`;
                   pendingTcs = [];
                 }
@@ -308,7 +312,7 @@ function renderTurn(t, animIdx) {
               html += `
               <div class="tool-calls">
                 <div class="tc-header">${_t('turns.tool_calls')}</div>
-                ${pendingTcs.map(tc => renderToolCall(tc)).join('')}
+                ${pendingTcs.map(tc => renderToolCall(tc, spawnsByTcId)).join('')}
               </div>`;
             }
           } else {
@@ -320,7 +324,7 @@ function renderTurn(t, animIdx) {
             if (t.tool_calls.length) html += `
             <div class="tool-calls">
               <div class="tc-header">${_t('turns.tool_calls')}</div>
-              ${t.tool_calls.map(tc => renderToolCall(tc)).join('')}
+              ${t.tool_calls.map(tc => renderToolCall(tc, spawnsByTcId)).join('')}
             </div>`;
           }
           if (t.thinking_encrypted) html += `<div class="thinking-block encrypted"><span class="thinking-label">${_t('turns.thinking_encrypted')}</span></div>`;
@@ -333,8 +337,8 @@ function renderTurn(t, animIdx) {
           ${t.delivery_texts.map(dt => `<span class="delivery-tag">📨 ${escHtml(dt)}</span>`).join('')}
         </div>` : ''}
 
-        <!-- Subagent spawns -->
-        ${t.subagent_spawns.map(s => renderSubagent(s, 0)).join('')}
+        <!-- Subagent spawns not linked to a tool call (fallback) -->
+        ${t.subagent_spawns.filter(s => !s.tool_call_id).map(s => renderSubagent(s, 0)).join('')}
 
         <!-- Assistant response -->
         ${t.assistant_texts.map(txt => `
@@ -355,7 +359,7 @@ function getToolCategory(name) {
   return 'other';
 }
 
-function renderToolCall(tc) {
+function renderToolCall(tc, spawnsByTcId) {
   const icon = toolIcon(tc.name);
   const category = getToolCategory(tc.name);
   const errorClass = tc.is_error ? 'tc-error' : '';
@@ -395,7 +399,7 @@ function renderToolCall(tc) {
       <pre>${escHtml(tc.result_text)}</pre>
       ${resultFullBtn}
     </div>
-  </div>`;
+  </div>${spawnsByTcId && spawnsByTcId[tc.id] ? renderSubagent(spawnsByTcId[tc.id], 0) : ''}`;
 }
 
 function extractAgentId(childSessionKey) {

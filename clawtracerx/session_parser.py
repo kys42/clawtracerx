@@ -87,6 +87,7 @@ class SubagentSpawn:
     cost_usd: Optional[float] = None
     outcome: str = "unknown"
     announce_stats: Optional[dict] = None  # parsed from announce message
+    tool_call_id: str = ""  # links back to the sessions_spawn ToolCall.id
 
 
 @dataclass
@@ -1029,6 +1030,7 @@ def _build_turns(
                         task=_truncate(spawn_args.get("task", spawn_args.get("prompt", "")), 300),
                         child_session_key=child_key,
                         child_session_id=_extract_session_id_from_key(child_key),
+                        tool_call_id=tc_id,
                     )
 
                     reg = get_subagent_run(run_id)
