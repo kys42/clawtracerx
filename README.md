@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/image.png" alt="ClawTracerX" width="180" />
+
 # ClawTracerX
 
 **See what your AI agents actually do.**
