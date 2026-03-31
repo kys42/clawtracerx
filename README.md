@@ -45,6 +45,26 @@ ClawTracerX cracks open every session so you can see:
 - How much each turn actually cost in tokens and dollars
 - Which subagents were spawned, what tasks they were given, and what happened inside them
 
+### Turn-level execution tracing
+
+Most monitoring tools show agent sessions as a flat chat log — user said X, agent said Y. ClawTracerX treats each turn as an **execution unit** and reconstructs what happened inside:
+
+```
+Turn 5                                    3m 12s  $0.42  85.2K tokens
+  💭 Thinking (round 0)                   ← first reasoning pass
+  🔍 grep "handleAuth"                    ← searches codebase
+  📁 read src/auth.ts                     ← reads the match
+  💭 Thinking (round 1)                   ← reasons about what it found
+  ✏️ edit src/auth.ts                     ← applies the fix
+  🔀 Subagent: test-runner ✅ ok          ← spawns child agent
+     ├─ Child Turn 0: exec pytest  2.1s
+     ├─ Child Turn 1: read test output
+     └─ Child Turn 2: "All 14 tests pass"
+  💬 "Fixed the auth bug and tests pass"  ← final response
+```
+
+Every thinking block, tool call (with duration, args, result), and subagent spawn is shown **in execution order within the turn** — not as a separate flat list. Subagent sessions are parsed recursively and rendered inline, so you can drill down into child (and grandchild) agent executions without leaving the page.
+
 | 1.98M tokens in a single cron turn | Errors hidden inside tool calls |
 |:---:|:---:|
 | ![Session header](docs/screenshots/why-session-header.png) | ![Errors](docs/screenshots/why-session-errors.png) |
