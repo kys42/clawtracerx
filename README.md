@@ -45,6 +45,10 @@ ClawTracerX cracks open every session so you can see:
 - How much each turn actually cost in tokens and dollars
 - Which subagents were spawned, what tasks they were given, and what happened inside them
 
+| 1.98M tokens in a single cron turn | Errors hidden inside tool calls |
+|:---:|:---:|
+| ![Session header](docs/screenshots/why-session-header.png) | ![Errors](docs/screenshots/why-session-errors.png) |
+
 ---
 
 ## Features
