@@ -275,7 +275,8 @@ def _print_turn(turn, prefix: str):
         _print_subagent(spawn, prefix + "     ")
 
     # Assistant text (final response)
-    for text in turn.assistant_texts:
+    for at in turn.assistant_texts:
+        text = at["text"] if isinstance(at, dict) else at
         preview = _truncate(text.replace("\n", " "), 150)
         if preview:
             print(f"{prefix}     💬 {DIM}\"{preview}\"{RESET}")
@@ -330,7 +331,8 @@ def _print_subagent(spawn, prefix: str):
         for child_turn in spawn.child_turns:
             for tc in child_turn.tool_calls:
                 _print_tool_call(tc, prefix + "│     ")
-            for text in child_turn.assistant_texts:
+            for at in child_turn.assistant_texts:
+                text = at["text"] if isinstance(at, dict) else at
                 preview = _truncate(text.replace("\n", " "), 100)
                 if preview:
                     print(f"{prefix}│     💬 {DIM}\"{preview}\"{RESET}")

@@ -939,7 +939,10 @@ def _build_turns(
                     if ctype == "text":
                         text = c.get("text", "").strip()
                         if text:
-                            current_turn.assistant_texts.append(c.get("text", ""))
+                            current_turn.assistant_texts.append({
+                                "text": c.get("text", ""),
+                                "round_idx": _turn_round_idx,
+                            })
 
                     elif ctype == "thinking":
                         thinking_text = c.get("thinking", "")

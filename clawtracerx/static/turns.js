@@ -266,7 +266,7 @@ function renderTurn(t, animIdx) {
           ${renderTokenBar(t.usage)}
         </div>
 
-        <!-- Thinking + Tool calls (interleaved by round, merged headers) -->
+        <!-- Thinking + Tool calls + Assistant texts (interleaved by round) -->
         ${(() => {
           const spawnsByTcId = {};
           for (const s of t.subagent_spawns) {
@@ -277,20 +277,44 @@ function renderTurn(t, animIdx) {
             const r = tc.round_idx ?? 0;
             (roundTcs[r] = roundTcs[r] || []).push(tc);
           }
+          const roundTexts = {};
+          for (const at of t.assistant_texts) {
+            const r = (typeof at === 'object' && at.round_idx != null) ? at.round_idx : 0;
+            const txt = (typeof at === 'object') ? at.text : at;
+            (roundTexts[r] = roundTexts[r] || []).push(txt);
+          }
           let html = '';
           if (t.thinking_blocks && t.thinking_blocks.length > 0) {
             const maxR = Math.max(
               t.thinking_blocks.length - 1,
               ...Object.keys(roundTcs).map(Number),
+              ...Object.keys(roundTexts).map(Number),
               0
             );
-            // Accumulate tool calls across rounds; flush when thinking appears or at end
             let pendingTcs = [];
             for (let r = 0; r <= maxR; r++) {
               const th = t.thinking_blocks[r];
               const tcs = roundTcs[r] || [];
+              const texts = roundTexts[r] || [];
+              const needFlush = th || texts.length;
+              if (needFlush && pendingTcs.length) {
+                html += `
+                <div class="tool-calls">
+                  <div class="tc-header">${_t('turns.tool_calls')}</div>
+                  ${pendingTcs.map(tc => renderToolCall(tc, spawnsByTcId)).join('')}
+                </div>`;
+                pendingTcs = [];
+              }
               if (th) {
-                // Flush accumulated tool calls before this thinking block
+                html += `
+                <div class="thinking-block">
+                  <div class="thinking-label">${_t('turns.thinking')}</div>
+                  <pre class="thinking-content">${escHtml(th)}</pre>
+                </div>`;
+              }
+              if (tcs.length) pendingTcs.push(...tcs);
+              if (texts.length) {
+                // Flush tool calls from this round first
                 if (pendingTcs.length) {
                   html += `
                   <div class="tool-calls">
@@ -299,13 +323,12 @@ function renderTurn(t, animIdx) {
                   </div>`;
                   pendingTcs = [];
                 }
-                html += `
-                <div class="thinking-block">
-                  <div class="thinking-label">${_t('turns.thinking')}</div>
-                  <pre class="thinking-content">${escHtml(th)}</pre>
-                </div>`;
+                html += texts.map(txt => `
+                <div class="msg-block assistant-msg">
+                  <div class="msg-role">${_t('turns.assistant')}</div>
+                  <pre class="msg-content">${escHtml(txt)}</pre>
+                </div>`).join('');
               }
-              if (tcs.length) pendingTcs.push(...tcs);
             }
             // Flush remaining tool calls
             if (pendingTcs.length) {
@@ -326,6 +349,15 @@ function renderTurn(t, animIdx) {
               <div class="tc-header">${_t('turns.tool_calls')}</div>
               ${t.tool_calls.map(tc => renderToolCall(tc, spawnsByTcId)).join('')}
             </div>`;
+            // assistant texts for non-thinking-blocks path
+            const texts = t.assistant_texts.map(at => (typeof at === 'object') ? at.text : at);
+            if (texts.length) {
+              html += texts.map(txt => `
+              <div class="msg-block assistant-msg">
+                <div class="msg-role">${_t('turns.assistant')}</div>
+                <pre class="msg-content">${escHtml(txt)}</pre>
+              </div>`).join('');
+            }
           }
           if (t.thinking_encrypted) html += `<div class="thinking-block encrypted"><span class="thinking-label">${_t('turns.thinking_encrypted')}</span></div>`;
           return html;
@@ -339,13 +371,6 @@ function renderTurn(t, animIdx) {
 
         <!-- Subagent spawns not linked to a tool call (fallback) -->
         ${t.subagent_spawns.filter(s => !s.tool_call_id).map(s => renderSubagent(s, 0)).join('')}
-
-        <!-- Assistant response -->
-        ${t.assistant_texts.map(txt => `
-        <div class="msg-block assistant-msg">
-          <div class="msg-role">${_t('turns.assistant')}</div>
-          <pre class="msg-content">${escHtml(txt)}</pre>
-        </div>`).join('')}
       </div>
     </div>
   </div>`;
@@ -490,10 +515,12 @@ function renderChildTurn(ct, depth) {
       </div>` : ''}
       ${ct.tool_calls.map(tc => renderToolCall(tc)).join('')}
       ${nestedSubagents}
-      ${ct.assistant_texts.map(txt => `
+      ${ct.assistant_texts.map(at => {
+        const txt = (typeof at === 'object') ? at.text : at;
+        return `
         <pre class="child-response">${escHtml(truncate(txt, 500))}</pre>
         ${makeShowFullBtn(_t('turns.show_full'), _t('turns.assistant'), txt, 500)}
-      `).join('')}
+      `}).join('')}
     </div>
   </div>`;
 }

@@ -1280,7 +1280,11 @@ def _serialize_turn(turn):
         "index": turn.index,
         "user_text": turn.user_text[:500],
         "user_source": turn.user_source,
-        "assistant_texts": [t[:1000] for t in turn.assistant_texts],
+        "assistant_texts": [
+            {"text": t["text"][:1000], "round_idx": t["round_idx"]}
+            if isinstance(t, dict) else {"text": t[:1000], "round_idx": 0}
+            for t in turn.assistant_texts
+        ],
         "tool_calls": [_serialize_tc(tc) for tc in turn.tool_calls],
         "subagent_spawns": [_serialize_spawn(s) for s in turn.subagent_spawns],
         "thinking_text": turn.thinking_text[:2000] if turn.thinking_text else None,
@@ -1499,7 +1503,10 @@ def _build_turn_flow(turn):
     return {
         "user_msg": _truncate(turn.user_text, 300),
         "user_source": turn.user_source,
-        "assistant_msg": _truncate(turn.assistant_texts[-1] if turn.assistant_texts else "", 300),
+        "assistant_msg": _truncate(
+            (turn.assistant_texts[-1]["text"] if isinstance(turn.assistant_texts[-1], dict) else turn.assistant_texts[-1])
+            if turn.assistant_texts else "", 300
+        ),
         "cost": round(turn.cost.get("total", 0), 4),
         "tokens": turn.usage.get("totalTokens", 0),
         "duration_ms": turn.duration_ms,
