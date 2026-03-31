@@ -25,6 +25,10 @@ Parses JSONL session transcripts into a web dashboard + CLI. See every turn, too
 |:---:|:---:|:---:|
 | ![Home](docs/screenshots/home.png) | ![Sessions](docs/screenshots/sessions.png) | ![Cost](docs/screenshots/cost.png) |
 
+| Session Detail | Schedule |
+|:---:|:---:|
+| ![Session Detail](docs/screenshots/detail.png) | ![Schedule](docs/screenshots/schedule.png) |
+
 ---
 
 ## Features
