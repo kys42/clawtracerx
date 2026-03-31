@@ -1,6 +1,6 @@
 {
   "name": "clawtracerx",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "ClawTracerX — OpenClaw Agent Monitor",
   "bin": {
     "ctrace": "bin/ctrace"
